@@ -1,0 +1,6 @@
+# Call a tool
+string name             # Tool name
+string args_json        # JSON: {"arg1": value1, "arg2": value2}
+---
+bool success
+string result_json      # JSON result or error message

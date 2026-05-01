@@ -1,0 +1,1589 @@
+/* ===== Platform Auth (physicar.ai) ===== */
+const PlatformAuth = {
+  API_URL: 'https://api.physicar.ai',
+  TOKEN_KEY: 'physicar_session',
+  user: null,
+
+  getToken() { return localStorage.getItem(this.TOKEN_KEY); },
+  setToken(t) { localStorage.setItem(this.TOKEN_KEY, t); },
+  clearToken() { localStorage.removeItem(this.TOKEN_KEY); localStorage.removeItem(this.TOKEN_KEY + '_user'); },
+  _saveUser() { if (this.user) localStorage.setItem(this.TOKEN_KEY + '_user', JSON.stringify(this.user)); },
+  _loadUser() { try { return JSON.parse(localStorage.getItem(this.TOKEN_KEY + '_user')); } catch { return null; } },
+
+  async init() {
+    const token = this.getToken();
+    if (!token) { this._updateUI(); return; }
+    this.user = this._loadUser();
+    this._updateUI();
+    try {
+      const res = await fetch(this.API_URL + '/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (res.status === 401) { this.clearToken(); this.user = null; this._updateUI(); return; }
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      this.user = d.user;
+      await this._mergeProfile(token);
+      this._saveUser();
+    } catch {}
+    this._updateUI();
+  },
+
+  async signin(email, password) {
+    const res = await fetch(this.API_URL + '/auth/signin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || e.message || 'Sign in failed'); }
+    const d = await res.json();
+    this.setToken(d.token);
+    this.user = d.user;
+    await this._mergeProfile(d.token);
+    this._saveUser();
+    this._updateUI();
+  },
+
+  async logout() {
+    const token = this.getToken();
+    if (token) fetch(this.API_URL + '/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }).catch(() => {});
+    this.clearToken(); this.user = null; this._updateUI();
+    if (typeof AGENT !== 'undefined') AGENT.onAuthChange();
+  },
+
+  isLoggedIn() { return !!this.user; },
+
+  // Re-validate token against /auth/me. Returns true if still valid.
+  // Clears token+user and updates UI on 401.
+  async verify() {
+    const token = this.getToken();
+    if (!token) { if (this.user) { this.user = null; this._updateUI(); } return false; }
+    try {
+      const res = await fetch(this.API_URL + '/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (res.status === 401) {
+        this.clearToken(); this.user = null; this._updateUI();
+        return false;
+      }
+      if (!res.ok) return !!this.user; // network/server hiccup — keep current state
+      const d = await res.json();
+      this.user = d.user;
+      await this._mergeProfile(token);
+      this._saveUser();
+      this._updateUI();
+      return true;
+    } catch {
+      return !!this.user; // offline/transient: keep current state
+    }
+  },
+
+  showSigninModal() {
+    if (document.querySelector('.signin-modal-overlay')) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'signin-modal-overlay';
+    // Use mousedown+up tracking (via data-close-on-backdrop) so a text-drag
+    // that ends outside the modal does NOT close it. Plain onclick was buggy
+    // because clicking a label/text and dragging would fire on the overlay.
+    overlay.setAttribute('data-close-on-backdrop', 'PlatformAuth._closeSigninModal');
+
+    // Offline variant: show "no internet" message with WiFi Settings action.
+    const isOffline = (typeof AGENT !== 'undefined' && AGENT._lastOnline === false);
+    if (isOffline) {
+      overlay.innerHTML = `<div class="signin-modal" style="text-align:center">
+        <div style="margin:8px auto 12px;color:var(--accent)"><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="3" y1="3" x2="21" y2="21" stroke-width="2.5"/></svg></div>
+        <h3>No internet connection</h3>
+        <div style="color:var(--muted);margin:8px 0 18px;font-size:0.9rem">Sign in requires an internet connection.<br>Connect to WiFi to continue.</div>
+        <div class="signin-actions"><button class="btn-cancel" onclick="PlatformAuth._closeSigninModal()">Close</button><button class="btn-signin" id="signin-wifi-btn">WiFi Settings</button></div></div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#signin-wifi-btn').onclick = () => {
+        overlay.remove();
+        if (typeof WIFI !== 'undefined') WIFI.open('wifi-list');
+      };
+      return;
+    }
+
+    overlay.innerHTML = `<div class="signin-modal"><h3>PHYSICAR AI Sign In</h3>
+      <div class="signin-field"><label>Email</label><input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email"></div>
+      <div class="signin-field"><label>Password</label><input type="password" id="signin-password" placeholder="Password" autocomplete="current-password"></div>
+      <div class="signin-error" id="signin-error"></div>
+      <div class="signin-actions"><button class="btn-cancel" onclick="PlatformAuth._closeSigninModal()">Cancel</button><button class="btn-signin" id="signin-submit">Sign In</button></div>
+      <div class="signin-info">Sign up at <a href="https://physicar.ai" target="_blank" style="color:var(--accent)">physicar.ai</a></div></div>`;
+    document.body.appendChild(overlay);
+    const emailEl = overlay.querySelector('#signin-email'), passEl = overlay.querySelector('#signin-password');
+    const submitBtn = overlay.querySelector('#signin-submit'), errorEl = overlay.querySelector('#signin-error');
+    const doSignin = async () => {
+      const email = emailEl.value.trim(), pass = passEl.value;
+      if (!email || !pass) { errorEl.textContent = 'Enter email and password'; errorEl.style.display = 'block'; return; }
+      submitBtn.disabled = true; submitBtn.textContent = 'Signing in...';
+      try { await PlatformAuth.signin(email, pass); overlay.remove(); if (typeof AGENT !== 'undefined') AGENT.onAuthChange(); }
+      catch (e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; submitBtn.disabled = false; submitBtn.textContent = 'Sign In'; }
+    };
+    submitBtn.onclick = doSignin;
+    passEl.onkeydown = (e) => { if (e.key === 'Enter') doSignin(); };
+    emailEl.focus();
+  },
+
+  _closeSigninModal() {
+    document.querySelector('.signin-modal-overlay')?.remove();
+  },
+
+  // Fetch /api/profile and merge classroom + credit fields onto this.user.
+  // Site mirrors this dual-mode display:
+  //  - personal user: credit_balance ($X.XX)
+  //  - classroom student: classroom_sponsor_used / classroom_sponsor_limit
+  async _mergeProfile(token) {
+    try {
+      const cr = await fetch(this.API_URL + '/api/profile', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!cr.ok) return;
+      const p = await cr.json();
+      const prof = p.profile || {};
+      this.user.credit_balance = Number(prof.credit_balance || 0);
+      this.user.classroom_id = prof.classroom_id || null;
+      this.user.classroom_name = p.classroom_name || null;
+      this.user.classroom_sponsor_used = Number(prof.classroom_sponsor_used || 0);
+      this.user.classroom_sponsor_limit = Number(prof.classroom_sponsor_limit || 0);
+      this.user.classroom_sponsor_active = !!prof.classroom_sponsor_active;
+      this.user.display_name = prof.display_name || this.user.display_name;
+    } catch {}
+  },
+
+  _initials(name, email) {
+    if (name) {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      return name.substring(0, 2).toUpperCase();
+    }
+    if (email) return email.substring(0, 2).toUpperCase();
+    return '??';
+  },
+
+  _updateUI() {
+    const c = $('nav-user-area'); if (!c) return;
+    let html;
+    if (this.user) {
+      const u = this.user;
+      const initials = this._initials(u.display_name, u.email);
+      const displayLabel = u.display_name || (u.email || '').split('@')[0] || 'User';
+      const fmt = (n) => '$' + (Number(n) || 0).toFixed(2);
+      let creditsBlock;
+      if (u.classroom_id) {
+        creditsBlock = `<div class="menu-credits-label">Classroom credits</div>
+          <div class="menu-credits-value">
+            <span class="menu-credits-sub">used</span> <strong>${fmt(u.classroom_sponsor_used)}</strong>
+            <span class="menu-credits-sep">/</span>
+            <span class="menu-credits-sub">limit</span> <strong>${fmt(u.classroom_sponsor_limit)}</strong>
+          </div>
+          ${u.classroom_name ? `<div class="menu-credits-classroom">${u.classroom_name}</div>` : ''}`;
+      } else {
+        creditsBlock = `<div class="menu-credits-label">Credits</div>
+          <div class="menu-credits-value"><strong>${fmt(u.credit_balance)}</strong></div>`;
+      }
+      html = `<div class="nav-user" onclick="PlatformAuth._toggleMenu()"><span class="user-avatar">${initials}</span></div>
+        <div class="nav-user-menu" id="nav-user-menu">
+          <div class="menu-header">
+            <div class="menu-name">${displayLabel}</div>
+            <div class="menu-email">${u.email || ''}</div>
+          </div>
+          <div class="menu-divider"></div>
+          <div class="menu-credits">${creditsBlock}</div>
+          <div class="menu-divider"></div>
+          <button class="menu-item" onclick="PlatformAuth.logout()">Sign Out</button>
+        </div>`;
+    } else {
+      html = `<button class="nav-user" onclick="PlatformAuth.showSigninModal()" style="border-color:var(--border)"><span style="font-size:0.9rem; padding: 0.2rem 0.4rem;">Sign In</span></button>`;
+    }
+    if (c._lastHTML === html) return; // idempotent: keep dropdown open
+    // Preserve dropdown open state across re-render
+    const wasOpen = $('nav-user-menu')?.classList.contains('open');
+    c.innerHTML = html;
+    c._lastHTML = html;
+    if (wasOpen) $('nav-user-menu')?.classList.add('open');
+  },
+
+  _toggleMenu() {
+    const m = $('nav-user-menu');
+    if (!m) return;
+    m.classList.toggle('open');
+    if (m.classList.contains('open')) {
+      // Refresh profile/credits on demand (instead of waiting for 10-min poll).
+      this.verify();
+      const close = (e) => { if (!m.contains(e.target) && !m.previousElementSibling?.contains(e.target)) { m.classList.remove('open'); document.removeEventListener('click', close); } };
+      setTimeout(() => document.addEventListener('click', close), 0);
+    }
+  }
+};
+
+/* ===== Agent Chat Module ===== */
+const AGENT = {
+  chatId: null,
+  turn: null,
+  isWaiting: false,
+  tools: [],
+  systemToolNames: new Set(),
+  enabledTools: new Set(),
+  knownTools: new Set(),
+  lastSentPrompt: null,
+  // History of completed/cancelled pairs (rebuilt on reload from localStorage).
+  // Each entry: { turn, status: 'done'|'cancelled', user_message, assistant_message }
+  _pairs: [],
+  // Reference to the pair currently being assembled (one of `_pairs[-1]`, kept
+  // separate so streaming text can append to its assistant_message in place).
+  _currentPair: null,
+  _abortCtl: null,
+  _persistKey: 'agent_chat_v1',
+
+  // TTS
+  ttsEnabled: true,
+  ttsTarget: 'browser',  // 'off' | 'browser' | 'kit'
+  isSimMode: false,
+  audioContext: null,
+  gainNode: null,
+  audioQueue: [],
+  isPlayingAudio: false,
+  scheduledSources: [],
+  scheduledEndTime: 0,
+  isFirstChunk: true,
+  initialBufferingDone: false,
+  bufferingTimer: null,
+  MIN_BUFFER_DURATION_MS: 1500,
+
+  init() {
+    this.loadConfig();
+    this._refreshGate(true);
+    this.refreshTools();
+    this._loadModels();
+    this._detectMode();
+    this._restoreChat();
+    // Re-check internet/login gate periodically (3s for fast feedback)
+    setInterval(() => this._refreshGate(true), 3000);
+    document.addEventListener('click', (e) => {
+      const pop = $('tts-popover');
+      if (pop && pop.classList.contains('show') && !e.target.closest('.tts-wrap')) {
+        pop.classList.remove('show');
+      }
+    });
+  },
+
+  async _detectMode() {
+    try {
+      const res = await api('/info');
+      const info = await res.json();
+      this.isSimMode = info.mode === 'sim';
+    } catch { this.isSimMode = false; }
+    // If sim mode and currently set to kit, force to browser
+    if (this.isSimMode && this.ttsTarget === 'kit') {
+      this.ttsTarget = 'browser';
+      this.ttsEnabled = true;
+      this.saveConfig();
+    }
+    this._updateTTSBtn();
+  },
+
+  onAuthChange() { this._refreshGate(); },
+
+  // Gate: check internet connectivity first, then login.
+  // States: 'offline' (no internet) | 'signin' (need login) | 'ready'
+  async _refreshGate(force = false) {
+    const overlay = $('agent-signin-overlay'), chat = $('agent-chat-area');
+    if (!overlay || !chat) return;
+
+    // 1) Internet check
+    let online = this._lastOnline;
+    if (force || online === undefined) {
+      try {
+        const res = await fetch('/network/internet');
+        const d = await res.json();
+        online = !!(d.wifi || d.ethernet);
+      } catch { online = false; }
+      this._lastOnline = online;
+    }
+
+    if (!online) {
+      this._didFirstVerify = false; // re-verify when we come back online
+      this._gateState = 'offline';
+      // Globe with a diagonal slash (no internet)
+      $('agent-gate-icon').innerHTML = '<svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="3" y1="3" x2="21" y2="21" stroke-width="2.5"/></svg>';
+      $('agent-gate-msg').innerHTML = 'No internet connection.<br>Connect to a WiFi network to use the AI agent.';
+      $('agent-gate-btn').textContent = 'WiFi Settings';
+      overlay.style.display = 'flex';
+      chat.style.display = 'none';
+      return;
+    }
+
+    // 2) Token re-verification only on first online entry. Periodic verify removed —
+    //    profile is refreshed when user opens the dropdown, and 401 during chat
+    //    triggers immediate re-gate.
+    if (PlatformAuth.getToken() && !this._didFirstVerify) {
+      this._didFirstVerify = true;
+      await PlatformAuth.verify();
+    }
+
+    // 3) Login check
+    if (!PlatformAuth.isLoggedIn()) {
+      this._gateState = 'signin';
+      $('agent-gate-icon').innerHTML = '<img src="/static/img/logo.png" alt="PhysiCar" style="width:80px;height:auto;opacity:0.5">';
+      $('agent-gate-msg').textContent = 'Sign in to physicar.ai to use the AI agent.';
+      $('agent-gate-btn').textContent = 'Sign In';
+      overlay.style.display = 'flex';
+      chat.style.display = 'none';
+      return;
+    }
+
+    this._gateState = 'ready';
+    overlay.style.display = 'none';
+    chat.style.display = 'flex';
+  },
+
+  gateAction() {
+    if (this._gateState === 'offline') {
+      if (typeof WIFI !== 'undefined') WIFI.open('wifi-list');
+    } else {
+      PlatformAuth.showSigninModal();
+    }
+  },
+
+  // ── Fingerprint ──
+  getPromptId() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top'; ctx.font = '14px Arial'; ctx.fillText('fingerprint', 2, 2);
+    const data = canvas.toDataURL();
+    let hash = 0;
+    for (let i = 0; i < data.length; i++) { hash = ((hash << 5) - hash) + data.charCodeAt(i); hash |= 0; }
+    return 'agent-' + Math.abs(hash).toString(36);
+  },
+
+  // ── Config ──
+  // Default system instructions used on first load (no saved config yet).
+  DEFAULT_INSTRUCTIONS: 'You are PhysiCar, a small and cute AI robot. PhysiCar is an RC car equipped with a pan-tilt camera and a LiDAR sensor. Always reply in the first person (say "I", not "the car").',
+
+  loadConfig() {
+    const saved = localStorage.getItem('agent_config');
+    if (!saved) {
+      // First run: seed the default instructions and persist them.
+      const el = $('agent-instructions');
+      if (el) el.value = this.DEFAULT_INSTRUCTIONS;
+      this._updateTTSBtn();
+      this._updateInstructionsPreview();
+      this.saveConfig();
+      return;
+    }
+    try {
+      const cfg = JSON.parse(saved);
+      if (cfg.instructions != null) { const el = $('agent-instructions'); if (el) el.value = cfg.instructions; }
+      if (cfg.model) this._savedModel = cfg.model;
+      // Migrate legacy 'none' value (from older versions) to 'medium'.
+      if (cfg.reasoningEffort && cfg.reasoningEffort !== 'none') {
+        const el = $('agent-reasoning'); if (el) el.value = cfg.reasoningEffort;
+      }
+      if (cfg.enabledTools) this.enabledTools = new Set(cfg.enabledTools);
+      // Tools we've already shown the user. Used so newly-appearing tools
+      // default to enabled, but tools the user explicitly disabled stay
+      // disabled across refreshes.
+      if (cfg.knownTools) this.knownTools = new Set(cfg.knownTools);
+      if (cfg.ttsTarget != null) { this.ttsTarget = cfg.ttsTarget; this.ttsEnabled = cfg.ttsTarget !== 'off'; }
+      else if (cfg.ttsEnabled != null) { this.ttsEnabled = cfg.ttsEnabled; this.ttsTarget = cfg.ttsEnabled ? 'browser' : 'off'; }
+      if (cfg.volume != null) { const el = $('agent-volume'); if (el) el.value = cfg.volume; }
+    } catch {}
+    this._updateTTSBtn();
+    this._updateInstructionsPreview();
+  },
+
+  saveConfig() {
+    const cfg = {
+      instructions: $('agent-instructions')?.value || '',
+      model: $('agent-model')?.value || '',
+      reasoningEffort: $('agent-reasoning')?.value || 'low',
+      enabledTools: Array.from(this.enabledTools),
+      knownTools: Array.from(this.knownTools || []),
+      ttsEnabled: this.ttsEnabled,
+      ttsTarget: this.ttsTarget,
+      volume: parseInt($('agent-volume')?.value) || 80
+    };
+    localStorage.setItem('agent_config', JSON.stringify(cfg));
+  },
+
+  // ── Models ──
+  // Loads the public model catalog from the platform API and populates the
+  // <select id="agent-model"> dropdown. Each model is tagged with its
+  // `reasoning_effort_supported` flag so the Reasoning row can be shown only
+  // when the currently selected model supports it.
+  async _loadModels() {
+    const sel = $('agent-model'); if (!sel) return;
+    try {
+      const res = await fetch(PlatformAuth.API_URL + '/chat/models');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const models = (data && data.models) || [];
+      this._modelInfo = {};
+      sel.innerHTML = '';
+      for (const m of models) {
+        this._modelInfo[m.model] = m;
+        const opt = document.createElement('option');
+        opt.value = m.model;
+        opt.textContent = m.model;
+        sel.appendChild(opt);
+      }
+      // Restore saved selection if still available, else default to first.
+      const saved = this._savedModel;
+      if (saved && this._modelInfo[saved]) sel.value = saved;
+      else if (models.length) sel.value = models[0].model;
+    } catch (e) {
+      sel.innerHTML = '<option value="" disabled selected>(failed to load models)</option>';
+      console.error('loadModels:', e);
+    }
+    this.onModelChange();
+  },
+
+  // Toggle the Reasoning row visibility based on the currently selected model.
+  onModelChange() {
+    const sel = $('agent-model');
+    const row = $('agent-reasoning-row');
+    const info = this._modelInfo && sel ? this._modelInfo[sel.value] : null;
+    const supports = !!(info && info.reasoning_effort_supported);
+    if (row) row.style.display = supports ? '' : 'none';
+    this.saveConfig();
+  },
+
+  // ── Tools ──
+  async refreshTools() {
+    const list = $('agent-tools-list'); if (!list) return;
+    list.innerHTML = '<span class="cfg-label">Loading...</span>';
+    try {
+      const res = await api('/agent/tool/list?include_system=true');
+      const data = await res.json();
+      this.tools = data.tools || [];
+      this.systemToolNames = new Set(data.system_tool_names || []);
+      if (!this.tools.length) { list.innerHTML = '<span class="cfg-label">No tools available</span>'; return; }
+      // Enable any tool we've never seen before; respect the user's explicit
+      // choice for tools we've already shown them. Mark every visible tool
+      // as known so future toggles persist.
+      if (!this.knownTools) this.knownTools = new Set();
+      this.tools.filter(t => !this.systemToolNames.has(t.name)).forEach(t => {
+        if (!this.knownTools.has(t.name)) {
+          this.enabledTools.add(t.name);
+          this.knownTools.add(t.name);
+        }
+      });
+      const sorted = [...this.tools].sort((a, b) => {
+        const as = this.systemToolNames.has(a.name), bs = this.systemToolNames.has(b.name);
+        if (as !== bs) return as ? 1 : -1;
+        return a.name.localeCompare(b.name);
+      });
+      list.innerHTML = sorted.map(t => {
+        const sys = this.systemToolNames.has(t.name);
+        return `<div class="tool-item"><input type="checkbox" ${this.enabledTools.has(t.name)?'checked':''} onchange="AGENT.toggleTool('${t.name}',this.checked)">
+          <span class="tool-name${sys?' system':''}" onclick="AGENT.showToolDetail('${t.name}')">${t.name}</span>${!sys?`<span class="tool-del" onclick="AGENT.deleteTool('${t.name}')">&times;</span>`:''}</div>`;
+      }).join('');
+      this.saveConfig();
+    } catch (e) { list.innerHTML = '<span class="cfg-label">Error: ' + e.message + '</span>'; }
+  },
+
+  toggleTool(name, on) { if (on) this.enabledTools.add(name); else this.enabledTools.delete(name); this.saveConfig(); },
+
+  async deleteTool(name) {
+    if (!confirm('Delete "' + name + '"?')) return;
+    try { await api('/agent/tool/delete/' + name, { method: 'POST' }); this.enabledTools.delete(name); this.knownTools.delete(name); this.refreshTools(); }
+    catch (e) { showToast(e.message, true); }
+  },
+
+  async resetTools() {
+    if (!confirm('Reset all tools to defaults?')) return;
+    try { await api('/agent/tool/reset', { method: 'POST' }); this.enabledTools.clear(); this.knownTools.clear(); this.refreshTools(); }
+    catch (e) { showToast(e.message, true); }
+  },
+
+  // ── Instructions preview/editor ──
+  // Refresh the read-only preview block so it mirrors the hidden textarea.
+  _updateInstructionsPreview() {
+    const preview = $('agent-instructions-preview');
+    const ta = $('agent-instructions');
+    if (!preview || !ta) return;
+    preview.textContent = ta.value || '';
+  },
+
+  // Open a modal to edit the system instructions in a comfortable area.
+  editInstructions() {
+    const ta = $('agent-instructions');
+    const current = ta ? (ta.value || '') : '';
+    const modal = document.createElement('div');
+    modal.className = 'tool-modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
+    modal.innerHTML = `
+      <div class="tool-modal">
+        <div class="tool-modal-header">
+          <span class="tool-modal-title">Instructions</span>
+        </div>
+        <div class="tool-modal-body">
+          <textarea class="instructions-modal-textarea" id="instructions-modal-text"></textarea>
+        </div>
+        <div class="tool-modal-footer">
+          <button class="btn-primary" onclick="AGENT.saveInstructions()">Save</button>
+          <button class="btn-secondary" onclick="AGENT.closeToolModal()">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const textEl = $('instructions-modal-text');
+    if (textEl) { textEl.value = current; setTimeout(() => textEl.focus(), 50); }
+    this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
+    document.addEventListener('keydown', this._modalEsc);
+  },
+
+  saveInstructions() {
+    const textEl = $('instructions-modal-text');
+    const ta = $('agent-instructions');
+    if (textEl && ta) ta.value = textEl.value;
+    this._updateInstructionsPreview();
+    this.saveConfig();
+    this.closeToolModal();
+  },
+
+  // ── Tool detail / edit / add modal ──
+  // Open a modal showing the tool's Python code. Editable for non-system
+  // tools; read-only for system tools. Definition (name/description/params)
+  // is auto-derived from the code's signature + docstring on save, so there
+  // is no separate definition editor.
+  async showToolDetail(name) {
+    const isSystem = this.systemToolNames.has(name);
+    let code = '';
+    try {
+      const res = await api('/agent/tool/get/' + name + '?include_code=true');
+      const data = await res.json();
+      code = (data && (data.code || (data.tool && data.tool.code))) || '';
+    } catch (e) {
+      showToast('Failed to load tool: ' + e.message, true);
+      return;
+    }
+    if (!code) code = isSystem ? '# Source not available for system tools' : '# No code available';
+    const modal = document.createElement('div');
+    modal.className = 'tool-modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
+    modal.innerHTML = `
+      <div class="tool-modal">
+        <div class="tool-modal-header">
+          <span class="tool-modal-title">${name}${isSystem ? ' <span class="system-badge">system</span>' : ''}</span>
+        </div>
+        <div class="tool-modal-body">
+          <div id="ace-code-container" class="ace-editor-host"></div>
+        </div>
+        <div class="tool-modal-footer">
+          ${!isSystem ? `<button class="btn-primary" onclick="AGENT.saveTool('${name}')">Save</button>` : ''}
+          <button class="btn-secondary" onclick="AGENT.closeToolModal()">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
+    document.addEventListener('keydown', this._modalEsc);
+    this._initAceEditor('ace-code-container', code, isSystem, 'python');
+    this._aceCodeEditor = this._aceLastEditor;
+  },
+
+  showAddToolDialog() {
+    const tmpl = `"""New tool description"""
+
+from typing import Annotated
+from pydantic import Field
+
+
+def tool(
+    param1: Annotated[str, Field(description="Parameter description")]
+) -> dict:
+    """Tool description.
+
+    Args:
+        param1: Parameter description.
+    """
+    return {"result": param1}
+`;
+    const modal = document.createElement('div');
+    modal.className = 'tool-modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
+    modal.innerHTML = `
+      <div class="tool-modal">
+        <div class="tool-modal-header">
+          <span class="tool-modal-title">New tool</span>
+        </div>
+        <div class="tool-modal-body">
+          <label>Tool name</label>
+          <input type="text" id="new-tool-name" placeholder="my_tool" autocomplete="off" />
+          <div style="height:0.6rem"></div>
+          <div id="ace-new-container" class="ace-editor-host"></div>
+        </div>
+        <div class="tool-modal-footer">
+          <button class="btn-primary" onclick="AGENT.addTool()">Add</button>
+          <button class="btn-secondary" onclick="AGENT.closeToolModal()">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
+    document.addEventListener('keydown', this._modalEsc);
+    this._initAceEditor('ace-new-container', tmpl, false, 'python');
+    this._aceCodeEditor = this._aceLastEditor;
+    setTimeout(() => $('new-tool-name')?.focus(), 50);
+  },
+
+  async addTool() {
+    const nameEl = $('new-tool-name');
+    const name = (nameEl?.value || '').trim();
+    if (!name) { showToast('Please enter a tool name', true); return; }
+    if (!/^[a-z_][a-z0-9_]*$/.test(name)) {
+      showToast('Lowercase letters, digits, and underscores only', true); return;
+    }
+    if (this.tools.some(t => t.name === name)) {
+      showToast('A tool named "' + name + '" already exists', true); return;
+    }
+    const code = this._aceCodeEditor ? this._aceCodeEditor.getValue() : '';
+    if (!code.trim()) { showToast('Code is empty', true); return; }
+    try {
+      const res = await api('/agent/tool/set/' + name, { method: 'POST', body: { code } });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.success === false) throw new Error(data.message || 'Failed to add');
+      this.closeToolModal();
+      this.enabledTools.add(name);
+      await this.refreshTools();
+      showToast('Tool "' + name + '" added');
+    } catch (e) { showToast(e.message, true); }
+  },
+
+  async saveTool(name) {
+    if (!this._aceCodeEditor) {
+      showToast('Switch to the Code tab to edit', true); return;
+    }
+    const code = this._aceCodeEditor.getValue();
+    if (!code.trim()) { showToast('Code is empty', true); return; }
+    try {
+      const res = await api('/agent/tool/set/' + name, { method: 'POST', body: { code } });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.success === false) throw new Error(data.message || 'Failed to save');
+      this.closeToolModal();
+      await this.refreshTools();
+      showToast('Saved');
+    } catch (e) { showToast(e.message, true); }
+  },
+
+  closeToolModal() {
+    document.querySelectorAll('.tool-modal-overlay').forEach(m => m.remove());
+    if (this._modalEsc) { document.removeEventListener('keydown', this._modalEsc); this._modalEsc = null; }
+    this._aceCodeEditor = null;
+    this._aceLastEditor = null;
+  },
+
+  // Initialize Ace Editor on a container; lazy-waits until the global `ace`
+  // is available (loaded from CDN in index.html).
+  _initAceEditor(containerId, code, readOnly, mode) {
+    const tryInit = () => {
+      if (typeof ace === 'undefined') { setTimeout(tryInit, 80); return; }
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const editor = ace.edit(el);
+      editor.setTheme('ace/theme/monokai');
+      editor.session.setMode('ace/mode/' + (mode || 'python'));
+      editor.setValue(code || '', -1);
+      editor.setReadOnly(!!readOnly);
+      editor.setOptions({
+        fontSize: '13px',
+        showPrintMargin: false,
+        tabSize: 4,
+        useSoftTabs: true,
+        highlightActiveLine: !readOnly,
+      });
+      this._aceLastEditor = editor;
+    };
+    tryInit();
+  },
+
+  getEnabledToolsForAPI() {
+    return this.tools.filter(t => this.enabledTools.has(t.name))
+      .map(t => ({ name: t.name, description: t.description || '', properties: t.properties || [] }));
+  },
+
+  // ── YAML pretty render ──
+  _yamlify(obj, indent = 0) {
+    const pad = '  '.repeat(indent);
+    if (obj === null || obj === undefined) return 'null';
+    if (typeof obj === 'string') return obj;
+    if (typeof obj !== 'object') return String(obj);
+    if (Array.isArray(obj)) {
+      if (!obj.length) return '[]';
+      return obj.map(v => {
+        if (v !== null && typeof v === 'object') {
+          const inner = this._yamlify(v, indent + 1);
+          return `${pad}-\n${inner}`;
+        }
+        return `${pad}- ${this._yamlify(v, 0)}`;
+      }).join('\n');
+    }
+    const keys = Object.keys(obj);
+    if (!keys.length) return '{}';
+    return keys.map(k => {
+      const v = obj[k];
+      if (v !== null && typeof v === 'object') {
+        return `${pad}${k}:\n${this._yamlify(v, indent + 1)}`;
+      }
+      return `${pad}${k}: ${this._yamlify(v, 0)}`;
+    }).join('\n');
+  },
+
+  _escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  },
+
+  // Pretty structured renderer (HTML, not yaml text).
+  // Returns an HTMLElement representing the value.
+  _renderPretty(value) {
+    const wrap = document.createElement('div');
+    wrap.className = 'pretty';
+    wrap.appendChild(this._prettyNode(value));
+    return wrap;
+  },
+
+  _prettyNode(value) {
+    // null/undefined
+    if (value === null || value === undefined) {
+      const s = document.createElement('span');
+      s.className = 'pretty-null';
+      s.textContent = 'null';
+      return s;
+    }
+    // primitive
+    if (typeof value !== 'object') {
+      const s = document.createElement('span');
+      s.className = 'pretty-' + typeof value;
+      s.textContent = typeof value === 'string' ? value : String(value);
+      return s;
+    }
+    // array
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        const s = document.createElement('span'); s.className = 'pretty-empty'; s.textContent = '(empty)'; return s;
+      }
+      // primitive array → inline chips
+      const allPrim = value.every(v => v === null || typeof v !== 'object');
+      if (allPrim) {
+        const row = document.createElement('div'); row.className = 'pretty-chips';
+        value.forEach(v => {
+          const chip = document.createElement('span');
+          chip.className = 'pretty-chip';
+          chip.textContent = v === null ? 'null' : String(v);
+          row.appendChild(chip);
+        });
+        return row;
+      }
+      // object array → list
+      const ul = document.createElement('ul'); ul.className = 'pretty-list';
+      value.forEach(v => {
+        const li = document.createElement('li');
+        li.appendChild(this._prettyNode(v));
+        ul.appendChild(li);
+      });
+      return ul;
+    }
+    // object
+    const keys = Object.keys(value);
+    if (keys.length === 0) {
+      const s = document.createElement('span'); s.className = 'pretty-empty'; s.textContent = '(empty)'; return s;
+    }
+    const dl = document.createElement('div'); dl.className = 'pretty-kv';
+    for (const k of keys) {
+      const v = value[k];
+      const row = document.createElement('div'); row.className = 'pretty-row';
+      const key = document.createElement('div'); key.className = 'pretty-key'; key.textContent = k;
+      const val = document.createElement('div'); val.className = 'pretty-val';
+      val.appendChild(this._prettyNode(v));
+      row.appendChild(key); row.appendChild(val);
+      dl.appendChild(row);
+    }
+    return dl;
+  },
+
+  // Normalize a tool result to a content array.
+  // - {type:'text'|'image',...} → [it]
+  // - [{type:...}, ...] → as-is
+  // - else → [{type:'text', text: yaml(it)}]
+  _resultToContents(result) {
+    if (Array.isArray(result) && result.length && result.every(c => c && typeof c === 'object' && typeof c.type === 'string')) {
+      return result;
+    }
+    if (result && typeof result === 'object' && (result.type === 'text' || result.type === 'image')) {
+      return [result];
+    }
+    return [{ type: 'text', text: this._yamlify(result) }];
+  },
+
+  // ── Chat ──
+  clearChat() {
+    if (this._abortCtl) { try { this._abortCtl.abort(); } catch {} this._abortCtl = null; }
+    this.chatId = null; this.turn = null; this.lastSentPrompt = null; this.stopTTS();
+    this._pairs = []; this._currentPair = null;
+    this._updateChatIdDisplay();
+    this._pairEls = null;
+    const msgs = $('agent-messages');
+    if (msgs) msgs.innerHTML = '<div class="chat-welcome">Ask the AI agent to control your PhysiCar</div>';
+    this._persistChat();
+  },
+
+  handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); } },
+
+  adjustInput() {
+    const el = $('agent-input'); if (!el) return;
+    el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  },
+
+  // Send button click router: sends if idle, stops if busy.
+  onSendBtn() {
+    if (this.isWaiting) this.stop();
+    else this.send();
+  },
+
+  // Abort the in-flight request and any TTS playback. Marks the in-progress
+  // pair as `cancelled` so the next send visually overwrites it.
+  stop() {
+    if (!this.isWaiting) return;
+    if (this._abortCtl) { try { this._abortCtl.abort(); } catch {} this._abortCtl = null; }
+    this.stopTTS();
+    if (this._currentPair) {
+      this._currentPair.status = 'cancelled';
+      this._pairEls?.pair?.classList.add('cancelled');
+    }
+    this._persistChat();
+    this._setWaiting(false);
+  },
+
+  // Drop the trailing `cancelled` pair (if any) so the next request overwrites
+  // it both visually (DOM) and on the wire (same `turn` is re-sent).
+  _dropTrailingCancelled() {
+    while (this._pairs.length && this._pairs[this._pairs.length - 1].status === 'cancelled') {
+      const dropped = this._pairs.pop();
+      // Remove the matching DOM node — `dataset.turn` matches when the server
+      // had already assigned a turn before cancel; otherwise it's still '?'.
+      const msgs = $('agent-messages'); if (!msgs) continue;
+      const candidate = msgs.querySelector('.chat-pair.cancelled:last-of-type');
+      if (candidate) candidate.remove();
+    }
+    this._pairEls = null;
+    this._currentPair = null;
+  },
+
+  async send() {
+    if (this.isWaiting) return;
+    const input = $('agent-input'), text = input?.value.trim();
+    if (!text) return;
+    input.value = ''; input.style.height = 'auto';
+    this.saveConfig();
+
+    // Overwrite any previously cancelled trailing pair before opening a new one.
+    this._dropTrailingCancelled();
+
+    const userMsg = { contents: [{ type: 'text', text }] };
+    this._openPair(userMsg);
+    this._setWaiting(true);
+    this.stopTTS();
+
+    // Build contents (sensor state is now fetched on-demand via the get_state tool)
+    const contents = [{ type: 'text', text }];
+
+    // Prompt (change detection)
+    const instructions = $('agent-instructions')?.value || '';
+    const model = $('agent-model')?.value || '';
+    const info = this._modelInfo && this._modelInfo[model];
+    const supportsReasoning = !!(info && info.reasoning_effort_supported);
+    const re = $('agent-reasoning')?.value || 'low';
+    const tools = this.getEnabledToolsForAPI();
+    const currentPrompt = { instructions, model, reasoning_effort: supportsReasoning ? re : null, tools };
+    const promptChanged = JSON.stringify(currentPrompt) !== JSON.stringify(this.lastSentPrompt);
+
+    const body = { prompt_id: this.getPromptId(), user_message: { contents }, stream: true, audio: this.ttsEnabled };
+    if (promptChanged) { body.prompt = currentPrompt; this.lastSentPrompt = currentPrompt; }
+    if (this.chatId) body.chat_id = this.chatId;
+    if (this.turn != null) body.turn = this.turn;
+
+    // Endpoint: /chat (logged in only — guest mode removed)
+    const token = PlatformAuth.getToken();
+    if (!token) { this._addError('Sign in required'); this._setWaiting(false); return; }
+    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+
+    this._abortCtl = new AbortController();
+    try {
+      const res = await fetch(PlatformAuth.API_URL + '/chat', { method: 'POST', headers, body: JSON.stringify(body), signal: this._abortCtl.signal });
+      if (res.status === 401) { PlatformAuth.clearToken(); PlatformAuth.user = null; PlatformAuth._updateUI(); this._refreshGate(true); throw new Error('Session expired. Please sign in again.'); }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || e.message || `HTTP ${res.status}`); }
+      await this._processStream(res);
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        // Cancellation already handled by stop().
+      } else {
+        this._showTyping(false); this._addError(e.message);
+        if (this._currentPair) { this._currentPair.status = 'cancelled'; this._pairEls?.pair?.classList.add('cancelled'); }
+      }
+    }
+    finally { this._abortCtl = null; this._setWaiting(false); this._persistChat(); }
+  },
+
+  // Toggle the busy state: shows the typing indicator, swaps the send button
+  // into a stop (square) button, and disables the input so users can't
+  // double-submit while a response is streaming.
+  _setWaiting(busy) {
+    this.isWaiting = !!busy;
+    this._showTyping(!!busy);
+    const btn = $('agent-send');
+    const input = $('agent-input');
+    if (btn) {
+      btn.classList.toggle('busy', !!busy);
+      btn.disabled = false;  // keep clickable so it can act as Stop
+      btn.title = busy ? 'Stop' : 'Send';
+    }
+    if (input) input.disabled = !!busy;
+  },
+
+  async _processStream(res) {
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '', content = '', toolCalls = [], typingHidden = false, textPart = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6);
+        if (raw === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(raw);
+          switch (ev.type) {
+            case 'text':
+              if (!typingHidden) { this._showTyping(false); typingHidden = true; }
+              content += ev.content;
+              if (!textPart) textPart = this._appendAssistantText(content);
+              else this._updateAssistantText(textPart, content);
+              this._scrollBottom();
+              break;
+            case 'audio':
+              if (this.ttsEnabled && ev.data) this._handleAudioChunk(ev.data);
+              break;
+            case 'tool_call':
+              if (!typingHidden) { this._showTyping(false); typingHidden = true; }
+              toolCalls.push({ call_id: ev.call_id, name: ev.name, arguments: ev.arguments });
+              break;
+            case 'done':
+              if (!typingHidden) { this._showTyping(false); typingHidden = true; }
+              if (ev.chat_id) { this.chatId = ev.chat_id; this._updateChatIdDisplay(); }
+              if (ev.turn !== undefined) {
+                this.turn = ev.turn + 1;
+                // Stamp the current pair label with the server-assigned turn.
+                if (this._currentPair) this._currentPair.turn = ev.turn;
+                if (this._pairEls && this._pairEls.pair) {
+                  this._pairEls.pair.dataset.pairIndex = String(ev.turn);
+                  const idxEl = this._pairEls.pairLabel?.querySelector('.pair-index');
+                  if (idxEl) idxEl.textContent = '#' + ev.turn;
+                }
+              }
+              if (ev.tool_calls?.length) toolCalls = ev.tool_calls;
+              // Persist the completed assistant_message into the current pair.
+              if (this._currentPair) {
+                this._currentPair.status = 'done';
+                this._currentPair.assistant_message = this._currentPair.assistant_message || { contents: [], tool_calls: [] };
+                if (content) this._currentPair.assistant_message.contents = [{ type: 'text', text: content }];
+              }
+              if (ev.usage && PlatformAuth.user) {
+                const u = PlatformAuth.user;
+                const usage = Number(ev.usage) || 0;
+                if (u.classroom_id) {
+                  // Classroom student: sponsor_used increments toward sponsor_limit.
+                  u.classroom_sponsor_used = Math.max(0, (u.classroom_sponsor_used || 0) + usage);
+                } else {
+                  // Personal user: credit_balance decrements.
+                  u.credit_balance = Math.max(0, (u.credit_balance || 0) - usage);
+                }
+                PlatformAuth._saveUser(); PlatformAuth._updateUI();
+              }
+              break;
+            case 'error':
+              this._addError(ev.message || 'Stream error');
+              break;
+          }
+        } catch {}
+      }
+    }
+    // After assistant is done, render its tool_calls into the assistant box.
+    for (const tc of toolCalls) {
+      let args = {};
+      if (typeof tc.arguments === 'string') { try { args = JSON.parse(tc.arguments); } catch { args = tc.arguments; } }
+      else if (tc.arguments) args = tc.arguments;
+      const callId = tc.call_id || tc.id || ('tc_' + (++this._callSeq));
+      tc._uiCallId = callId;
+      this._appendAssistantToolCall(tc.name, args, callId);
+    }
+    if (toolCalls.length > 0) await this._executeToolCalls(toolCalls);
+    this._scrollBottom();
+  },
+
+  async _executeToolCalls(toolCalls) {
+    // Each tool call → one tool_output part inside a new user message (next turn).
+    const outputs = [];
+    // Open the next user message bubble that will carry tool_call_outputs.
+    this._openPair({ contents: [], tool_call_outputs: [] });
+    for (const tc of toolCalls) {
+      let args = {};
+      if (typeof tc.arguments === 'string') { try { args = JSON.parse(tc.arguments); } catch {} }
+      else if (tc.arguments) args = tc.arguments;
+      const callId = tc._uiCallId || tc.call_id || tc.id || ('tc_' + (++this._callSeq));
+      try {
+        const res = await api('/agent/tool/call/' + tc.name, { method: 'POST', body: args, timeout: 30000 });
+        const resp = await res.json();
+        // /agent/tool/call wraps as {success, result}. Unwrap.
+        const payload = (resp && typeof resp === 'object' && 'result' in resp) ? resp.result : resp;
+        const cs = this._resultToContents(payload);
+        const ok = !(resp && resp.success === false);
+        this._appendUserToolOutput(tc.name, cs, !ok, callId);
+        outputs.push({ call_id: tc.call_id, contents: cs });
+      } catch (e) {
+        const cs = [{ type: 'text', text: 'Error: ' + e.message }];
+        this._appendUserToolOutput(tc.name, cs, true, callId);
+        outputs.push({ call_id: tc.call_id, contents: cs });
+      }
+    }
+    if (outputs.length) {
+      this._showTyping(true); this.stopTTS();
+      const token = PlatformAuth.getToken();
+      if (!token) return;
+      const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+      const body = { prompt_id: this.getPromptId(), user_message: { contents: [], tool_call_outputs: outputs }, stream: true, audio: this.ttsEnabled };
+      if (this.chatId) body.chat_id = this.chatId;
+      if (this.turn != null) body.turn = this.turn;
+      try {
+        const res = await fetch(PlatformAuth.API_URL + '/chat', { method: 'POST', headers, body: JSON.stringify(body), signal: this._abortCtl?.signal });
+        if (res.status === 401) { PlatformAuth.clearToken(); PlatformAuth.user = null; PlatformAuth._updateUI(); this._refreshGate(true); throw new Error('Session expired. Please sign in again.'); }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        await this._processStream(res);
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          // Cancelled — already handled by stop().
+        } else {
+          this._showTyping(false); this._addError(e.message);
+          if (this._currentPair) { this._currentPair.status = 'cancelled'; this._pairEls?.pair?.classList.add('cancelled'); }
+        }
+      }
+    }
+    this.refreshTools();
+  },
+
+  // ── TTS ──
+  toggleTTS() {
+    const pop = $('tts-popover');
+    if (pop) pop.classList.toggle('show');
+  },
+  setTTSTarget(target) {
+    this.ttsTarget = target;
+    this.ttsEnabled = target !== 'off';
+    if (!this.ttsEnabled) this.stopTTS();
+    this._updateTTSBtn();
+    const pop = $('tts-popover');
+    if (pop) pop.classList.remove('show');
+    this.saveConfig();
+  },
+  _updateTTSBtn() {
+    const b = $('agent-tts-btn');
+    if (!b) return;
+    const off = this.ttsTarget === 'off';
+    b.classList.toggle('active', !off);
+    b.classList.toggle('tts-off', off);
+    const label = $('tts-label');
+    if (label) {
+      if (off) { label.textContent = 'Off'; label.style.display = ''; }
+      else { label.textContent = this.ttsTarget === 'kit' ? 'Device' : 'Local'; label.style.display = ''; }
+    }
+    const pop = $('tts-popover');
+    if (pop) {
+      pop.querySelectorAll('.tts-opt').forEach(o => {
+        o.classList.toggle('selected', o.dataset.target === this.ttsTarget);
+        if (o.dataset.target === 'kit') {
+          o.disabled = this.isSimMode;
+          o.classList.toggle('disabled', this.isSimMode);
+        }
+      });
+    }
+    const vol = $('agent-volume');
+    if (vol) {
+      vol.disabled = off;
+      vol.closest('.tts-vol')?.classList.toggle('disabled', off);
+    }
+    this._updateVolLabel();
+  },
+  _updateVolLabel() {
+    const pct = $('tts-vol-pct');
+    const vol = $('agent-volume');
+    if (pct && vol) pct.textContent = vol.value + '%';
+    // Apply volume change immediately to playing audio
+    if (this.gainNode && vol) {
+      this.gainNode.gain.value = parseInt(vol.value) / 100;
+    }
+    // Apply to device immediately (volume-only message)
+    if (this.ttsTarget === 'kit' && vol) {
+      api('/control/audio', { method: 'POST', body: {
+        channel: 'tts', volume: parseInt(vol.value) / 100
+      }}).catch(() => {});
+    }
+  },
+
+  _handleAudioChunk(base64Data) {
+    // Kit playback — volume is controlled separately via _updateVolLabel
+    if (this.ttsTarget === 'kit') {
+      // Send initial volume on first chunk
+      if (this.isFirstChunk) {
+        const vol = (parseInt($('agent-volume')?.value) || 80) / 100;
+        api('/control/audio', { method: 'POST', body: {
+          channel: 'tts', volume: vol
+        }}).catch(() => {});
+      }
+      api('/control/audio', { method: 'POST', body: {
+        data: base64Data, format: 'pcm', channel: 'tts',
+        sample_rate: 24000, audio_channels: 1, bits_per_sample: 16
+      }}).catch(() => {});
+      this.isFirstChunk = false;
+      return;  // kit only — skip browser playback
+    }
+
+    // Browser Web Audio API playback
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const view = new DataView(bytes.buffer);
+    const samples = new Float32Array(bytes.length / 2);
+    for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768;
+    if (this.isFirstChunk) {
+      this.isFirstChunk = false;
+      const fadeLen = Math.min(480, samples.length);
+      for (let i = 0; i < fadeLen; i++) { const t = i / fadeLen; samples[i] *= t * t * (3 - 2 * t); }
+    }
+    this.audioQueue.push(samples);
+    if (!this.isPlayingAudio) {
+      if (!this.initialBufferingDone) {
+        const totalMs = this.audioQueue.reduce((s, a) => s + (a.length / 24), 0);
+        if (totalMs >= this.MIN_BUFFER_DURATION_MS) { this.initialBufferingDone = true; this._startAudioPlayback(); }
+        else if (!this.bufferingTimer) {
+          this.bufferingTimer = setTimeout(() => { if (!this.isPlayingAudio && this.audioQueue.length > 0) { this.initialBufferingDone = true; this._startAudioPlayback(); } }, this.MIN_BUFFER_DURATION_MS);
+        }
+      } else this._scheduleAudioChunks();
+    }
+  },
+
+  _startAudioPlayback() {
+    if (!this.audioContext) { this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 }); this.gainNode = this.audioContext.createGain(); this.gainNode.connect(this.audioContext.destination); }
+    const vol = (parseInt($('agent-volume')?.value) || 80) / 100;
+    this.gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+    this.gainNode.gain.linearRampToValueAtTime(vol, this.audioContext.currentTime + 0.1);
+    this.isPlayingAudio = true; this.scheduledEndTime = this.audioContext.currentTime;
+    this._scheduleAudioChunks();
+  },
+
+  _scheduleAudioChunks() {
+    if (!this.audioContext || !this.isPlayingAudio) return;
+    while (this.audioQueue.length > 0) {
+      const samples = this.audioQueue.shift();
+      const buffer = this.audioContext.createBuffer(1, samples.length, 24000);
+      buffer.getChannelData(0).set(samples);
+      const source = this.audioContext.createBufferSource();
+      source.buffer = buffer; source.connect(this.gainNode);
+      const startAt = Math.max(this.scheduledEndTime, this.audioContext.currentTime);
+      source.start(startAt); this.scheduledEndTime = startAt + buffer.duration;
+      this.scheduledSources.push(source);
+      source.onended = () => {
+        this.scheduledSources = this.scheduledSources.filter(s => s !== source);
+        if (this.audioQueue.length > 0) this._scheduleAudioChunks();
+        else if (this.scheduledSources.length === 0) { this.isPlayingAudio = false; this.isFirstChunk = true; this.initialBufferingDone = false; }
+      };
+    }
+  },
+
+  stopTTS() {
+    if (this.bufferingTimer) { clearTimeout(this.bufferingTimer); this.bufferingTimer = null; }
+    this.audioQueue = [];
+    this.scheduledSources.forEach(s => { try { s.stop(); } catch {} });
+    this.scheduledSources = [];
+    this.isPlayingAudio = false; this.isFirstChunk = true; this.initialBufferingDone = false;
+    api('/control/audio', { method: 'POST', body: { channel: 'tts', stop: true } }).catch(() => {});
+  },
+
+  // ── Markdown ──
+  _formatMarkdown(text) {
+    text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = text.split('\n');
+    let html = '', inList = false;
+    for (const line of lines) {
+      if (line.match(/^#{1,3}\s/)) { if (inList) { html += '</ul>'; inList = false; } html += '<strong style="display:block;margin-top:0.5em">' + line.replace(/^#+\s*/, '') + '</strong>'; }
+      else if (line.match(/^\s*[-*]\s/)) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + line.replace(/^\s*[-*]\s*/, '') + '</li>'; }
+      else { if (inList) { html += '</ul>'; inList = false; } html += (line === '' ? '<br>' : line + '<br>'); }
+    }
+    if (inList) html += '</ul>';
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent)">$1</a>');
+    return html;
+  },
+
+  // ── DOM (pair-based rendering reflecting the API MessagePair model) ──
+  // A "pair" = one user message + one assistant message (matches the API).
+  // - User message body holds: text/image contents + tool_call_outputs (from prior turn).
+  // - Assistant message body holds: text contents + tool_calls (this turn).
+  // _pairEls tracks the currently open (in-progress) pair so streamed text /
+  // tool_calls can be appended to its assistant box.
+
+  _newPart(kind) {
+    const p = document.createElement('div');
+    p.className = 'msg-part ' + kind;
+    return p;
+  },
+
+  _renderContentParts(host, contents) {
+    for (const c of (contents || [])) {
+      if (!c || !c.type) continue;
+      if (c.type === 'image' && c.base64) {
+        const mime = c.mime || 'image/jpeg';
+        const part = this._newPart('image');
+        part.innerHTML = `<img class="part-image" src="data:${mime};base64,${c.base64}" alt="image" onclick="window.open(this.src, '_blank')">`;
+        host.appendChild(part);
+      } else if (c.type === 'text') {
+        const part = this._newPart('text');
+        part.innerHTML = '<div class="part-text">' + this._formatMarkdown(c.text || '') + '</div>';
+        host.appendChild(part);
+      }
+    }
+  },
+
+  _renderToolPart(kind /* 'tool-call' | 'tool-output' */, name, body /* args | contents */, isError, callId) {
+    // <details> = native collapsible; <summary> = clickable header.
+    const part = document.createElement('details');
+    part.className = 'msg-part ' + kind;
+    if (isError) part.classList.add('error');
+    if (callId) {
+      part.dataset.callId = callId;
+      // Track pair number for visual linking (#1, #2, ...).
+      if (!this._callIdToIndex) this._callIdToIndex = new Map();
+      let idx = this._callIdToIndex.get(callId);
+      if (!idx) { idx = this._callIdToIndex.size + 1; this._callIdToIndex.set(callId, idx); }
+      part.dataset.callIndex = String(idx);
+      // Hover linking: highlight matching partner part.
+      part.addEventListener('mouseenter', () => this._highlightCall(callId, true));
+      part.addEventListener('mouseleave', () => this._highlightCall(callId, false));
+    }
+
+    const head = document.createElement('summary');
+    head.className = 'part-tool-head';
+    const chev = document.createElement('span');
+    chev.className = 'part-tool-chev';
+    chev.textContent = '▸';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'part-tool-name';
+    nameEl.textContent = name || '';
+    head.appendChild(chev);
+    head.appendChild(nameEl);
+    if (kind === 'tool-output' && isError) {
+      const err = document.createElement('span');
+      err.className = 'part-tool-err';
+      err.textContent = 'error';
+      head.appendChild(err);
+    }
+    part.appendChild(head);
+
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'part-tool-body';
+
+    if (kind === 'tool-call') {
+      const args = body || {};
+      if (args && typeof args === 'object' && Object.keys(args).length > 0) {
+        bodyEl.appendChild(this._renderPretty(args));
+      } else {
+        const empty = document.createElement('span');
+        empty.className = 'pretty-empty';
+        empty.textContent = '(no arguments)';
+        bodyEl.appendChild(empty);
+      }
+    } else {
+      // tool-output: contents array (text + images)
+      for (const c of (body || [])) {
+        if (!c || !c.type) continue;
+        if (c.type === 'image' && c.base64) {
+          const mime = c.mime || 'image/jpeg';
+          const img = document.createElement('img');
+          img.className = 'part-image';
+          img.src = `data:${mime};base64,${c.base64}`;
+          img.onclick = () => window.open(img.src, '_blank');
+          bodyEl.appendChild(img);
+        } else if (c.type === 'text') {
+          const txt = c.text == null ? '' : String(c.text);
+          const trimmed = txt.trim();
+          // Try to parse as JSON for structured render
+          let parsed = null;
+          if (trimmed && (trimmed[0] === '{' || trimmed[0] === '[')) {
+            try { parsed = JSON.parse(trimmed); } catch {}
+          }
+          if (parsed !== null && typeof parsed === 'object') {
+            bodyEl.appendChild(this._renderPretty(parsed));
+          } else {
+            // Plain text — keep newlines but use normal font (not monospace)
+            const p = document.createElement('div');
+            p.className = 'pretty-text';
+            p.textContent = txt;
+            bodyEl.appendChild(p);
+          }
+        }
+      }
+    }
+    part.appendChild(bodyEl);
+    return part;
+  },
+
+  // Open a new chat pair. `userMsg` = { contents, tool_call_outputs? }.
+  // Layout per message bubble:
+  //   contents (rendered directly, no section header)
+  //   tool_calls / tool_call_outputs (section header `<key>[N]` below)
+  _openPair(userMsg) {
+    const msgs = $('agent-messages'); if (!msgs) return null;
+    msgs.querySelector('.chat-welcome')?.remove();
+
+    const pair = document.createElement('div'); pair.className = 'chat-pair';
+    const pairLabel = document.createElement('div'); pairLabel.className = 'pair-label';
+    // Predict the index as (last persisted turn) + 1 so the label doesn't
+    // pop from "?" → "N" once the server `done` event arrives. The server's
+    // authoritative `turn` overwrites this in the done handler.
+    const predicted = (this.turn != null) ? this.turn : this._pairs.length;
+    pairLabel.innerHTML = '<span class="pair-index">#' + predicted + '</span>';
+    pair.appendChild(pairLabel);
+
+    // ── user message ──
+    const userBox = document.createElement('div'); userBox.className = 'chat-msg user';
+    const userBody = document.createElement('div'); userBody.className = 'msg-body';
+    userBox.appendChild(userBody);
+    pair.appendChild(userBox);
+
+    // contents (no section header — rendered inline)
+    const userContentsBody = document.createElement('div');
+    userContentsBody.className = 'msg-contents';
+    userBody.appendChild(userContentsBody);
+    this._renderContentParts(userContentsBody, (userMsg && userMsg.contents) || []);
+
+    // tool_call_outputs[] section (with header)
+    const tcoOutputs = (userMsg && userMsg.tool_call_outputs) || [];
+    const tcoSection = this._makeSchemaSection('tool_call_outputs', tcoOutputs.length);
+    userBody.appendChild(tcoSection);
+    for (const o of tcoOutputs) {
+      tcoSection.querySelector('.schema-section-body').appendChild(
+        this._renderToolPart('tool-output', o.name || '', o.contents || [], !!o.error, o.call_id)
+      );
+    }
+
+    // ── assistant message ──
+    const assistantBox = document.createElement('div'); assistantBox.className = 'chat-msg assistant';
+    const assistantBody = document.createElement('div'); assistantBody.className = 'msg-body';
+    assistantBox.appendChild(assistantBody);
+    pair.appendChild(assistantBox);
+
+    // contents (no section header — rendered inline)
+    const aContentsBody = document.createElement('div');
+    aContentsBody.className = 'msg-contents';
+    assistantBody.appendChild(aContentsBody);
+
+    // tool_calls[] section (with header)
+    const aToolCallsSection = this._makeSchemaSection('tool_calls', 0);
+    assistantBody.appendChild(aToolCallsSection);
+
+    msgs.appendChild(pair);
+    this._pairEls = {
+      pair, pairLabel, userBox, userBody, assistantBox, assistantBody,
+      userContentsBody,
+      tcoBody: tcoSection.querySelector('.schema-section-body'),
+      tcoSection,
+      aContentsBody,
+      aToolCallsBody: aToolCallsSection.querySelector('.schema-section-body'),
+      aToolCallsSection,
+    };
+    // Track this pair as the current in-progress pair for persistence.
+    const pairData = {
+      turn: null,
+      status: 'pending',
+      user_message: {
+        contents: (userMsg && userMsg.contents) ? JSON.parse(JSON.stringify(userMsg.contents)) : [],
+        tool_call_outputs: (userMsg && userMsg.tool_call_outputs) ? JSON.parse(JSON.stringify(userMsg.tool_call_outputs)) : [],
+      },
+      assistant_message: { contents: [], tool_calls: [] },
+    };
+    this._pairs.push(pairData);
+    this._currentPair = pairData;
+    this._refreshSchemaCounts();
+    this._scrollBottom();
+    return this._pairEls;
+  },
+
+  // Build a labeled schema section. `key` is the API field name (snake_case);
+  // displayed as Title Case (e.g. tool_call_outputs → "Tool Call Outputs").
+  _makeSchemaSection(key, count) {
+    const wrap = document.createElement('div');
+    wrap.className = 'schema-section';
+    wrap.dataset.key = key;
+    const title = key.split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+    const head = document.createElement('div');
+    head.className = 'schema-section-head';
+    head.innerHTML = '<span class="schema-key">' + title + '</span>'
+      + '<span class="schema-count">[<span class="schema-count-n">' + (count || 0) + '</span>]</span>';
+    const body = document.createElement('div');
+    body.className = 'schema-section-body';
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    return wrap;
+  },
+
+  // Refresh `[N]` counts on every schema section in the current pair, and
+  // hide entire sections that have zero items so the chat doesn't show
+  // empty "Tool Calls [0]" / "Tool Call Outputs [0]" headers.
+  _refreshSchemaCounts() {
+    if (!this._pairEls) return;
+    const update = (section) => {
+      if (!section) return;
+      const body = section.querySelector('.schema-section-body');
+      const n = body ? body.children.length : 0;
+      const nEl = section.querySelector('.schema-count-n');
+      if (nEl) nEl.textContent = String(n);
+      section.style.display = n > 0 ? '' : 'none';
+    };
+    update(this._pairEls.tcoSection);
+    update(this._pairEls.aToolCallsSection);
+  },
+
+  // Streamed assistant text: append/create the text part inside assistant_message.contents[].
+  _appendAssistantText(text) {
+    if (!this._pairEls) this._openPair({ contents: [] });
+    const { aContentsBody } = this._pairEls;
+    let part = aContentsBody.querySelector('.msg-part.text:last-of-type');
+    if (!part || part !== aContentsBody.lastChild) {
+      part = this._newPart('text');
+      part.innerHTML = '<div class="part-text"></div>';
+      aContentsBody.appendChild(part);
+      this._refreshSchemaCounts();
+    }
+    part.querySelector('.part-text').innerHTML = this._formatMarkdown(text);
+    return part;
+  },
+
+  _updateAssistantText(part, text) {
+    if (!part) return;
+    const t = part.querySelector('.part-text');
+    if (t) t.innerHTML = this._formatMarkdown(text);
+  },
+
+  _appendAssistantToolCall(name, args, callId) {
+    if (!this._pairEls) this._openPair({ contents: [] });
+    const { aToolCallsBody } = this._pairEls;
+    aToolCallsBody.appendChild(this._renderToolPart('tool-call', name, args, false, callId));
+    if (this._currentPair) {
+      this._currentPair.assistant_message.tool_calls.push({ call_id: callId, name, arguments: args });
+    }
+    this._refreshSchemaCounts();
+    this._scrollBottom();
+  },
+
+  // After a tool runs locally, append its result as a tool-output part inside
+  // user_message.tool_call_outputs[] of the *current* (already-open) pair.
+  _appendUserToolOutput(name, contents, isError, callId) {
+    if (!this._pairEls) this._openPair({ contents: [], tool_call_outputs: [] });
+    const { tcoBody } = this._pairEls;
+    tcoBody.appendChild(this._renderToolPart('tool-output', name, contents, isError, callId));
+    if (this._currentPair) {
+      this._currentPair.user_message.tool_call_outputs.push({ call_id: callId, name, contents, error: !!isError });
+    }
+    this._refreshSchemaCounts();
+    this._scrollBottom();
+  },
+
+  // Highlight both ends of a tool_call ↔ tool_output pair across messages.
+  _highlightCall(callId, on) {
+    const msgs = $('agent-messages'); if (!msgs) return;
+    const els = msgs.querySelectorAll('.msg-part[data-call-id="' + CSS.escape(callId) + '"]');
+    els.forEach(el => el.classList.toggle('linked', on));
+  },
+
+  _addError(msg) {
+    const msgs = $('agent-messages'); if (!msgs) return null;
+    msgs.querySelector('.chat-welcome')?.remove();
+    const div = document.createElement('div'); div.className = 'chat-msg error';
+    div.textContent = msg;
+    msgs.appendChild(div); this._scrollBottom(); return div;
+  },
+
+  _showTyping(show) { const el = $('agent-typing'); if (el) el.classList.toggle('visible', show); },
+  _scrollBottom() { const m = $('agent-messages'); if (m) m.scrollTop = m.scrollHeight; },
+
+  // Show/hide the chat_id pill in the chat header. We set the textContent
+  // and rely on the CSS `:empty` rule to hide it when there is no chat_id.
+  _updateChatIdDisplay() {
+    const el = $('agent-chat-id'); if (!el) return;
+    el.textContent = this.chatId || '';
+  },
+
+  // ── Persistence ──
+  // Save the current chat (chat_id, next-turn, all pairs) to localStorage so
+  // a page reload restores it.
+  _persistChat() {
+    try {
+      const data = {
+        chat_id: this.chatId,
+        turn: this.turn,
+        pairs: this._pairs,
+      };
+      localStorage.setItem(this._persistKey, JSON.stringify(data));
+    } catch {}
+  },
+
+  // Rehydrate chat from localStorage. Any pair without a final `done` becomes
+  // a `cancelled` pair (since reload definitely interrupted streaming).
+  _restoreChat() {
+    let data;
+    try {
+      const raw = localStorage.getItem(this._persistKey);
+      if (!raw) return;
+      data = JSON.parse(raw);
+    } catch { return; }
+    if (!data || !Array.isArray(data.pairs) || !data.pairs.length) return;
+    this.chatId = data.chat_id || null;
+    this.turn = data.turn != null ? data.turn : null;
+    this._updateChatIdDisplay();
+    const msgs = $('agent-messages');
+    if (msgs) msgs.querySelector('.chat-welcome')?.remove();
+    this._pairs = [];
+    for (const p of data.pairs) {
+      const status = p.status === 'done' ? 'done' : 'cancelled';
+      // Re-open the DOM scaffold using the saved user_message.
+      this._openPair(p.user_message || { contents: [] });
+      // _openPair pushed a fresh entry; replace it with the saved one (preserving status).
+      const fresh = this._pairs.pop();
+      const restored = {
+        turn: p.turn != null ? p.turn : null,
+        status,
+        user_message: p.user_message || { contents: [] },
+        assistant_message: p.assistant_message || { contents: [], tool_calls: [] },
+      };
+      this._pairs.push(restored);
+      this._currentPair = restored;
+      // Stamp the turn label.
+      if (this._pairEls && this._pairEls.pair) {
+        if (restored.turn != null) {
+          this._pairEls.pair.dataset.pairIndex = String(restored.turn);
+          const idxEl = this._pairEls.pairLabel?.querySelector('.pair-index');
+          if (idxEl) idxEl.textContent = '#' + restored.turn;
+        }
+        if (status === 'cancelled') this._pairEls.pair.classList.add('cancelled');
+      }
+      // Re-render the assistant_message contents and tool_calls.
+      const am = restored.assistant_message;
+      if (am.contents && am.contents.length && this._pairEls) {
+        this._renderContentParts(this._pairEls.aContentsBody, am.contents);
+      }
+      for (const tc of (am.tool_calls || [])) {
+        if (this._pairEls) {
+          this._pairEls.aToolCallsBody.appendChild(
+            this._renderToolPart('tool-call', tc.name || '', tc.arguments || {}, false, tc.call_id)
+          );
+        }
+      }
+      this._refreshSchemaCounts();
+    }
+    this._currentPair = null;
+    this._scrollBottom();
+  }
+};

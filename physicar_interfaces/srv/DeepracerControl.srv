@@ -1,0 +1,10 @@
+# Start or stop DeepRacer inference and autonomous driving
+
+# Request
+bool start    # True to start inference, False to stop
+
+---
+
+# Response
+bool success         # True if command succeeded
+string message       # Status message

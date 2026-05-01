@@ -1,0 +1,5 @@
+# Delete a tool
+string name             # Tool name to delete
+---
+bool success
+string message

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSICAR DEVICE</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/deepracer.css">
+<link rel="stylesheet" href="/static/css/control.css">
+<link rel="stylesheet" href="/static/css/agent.css">
+<link rel="stylesheet" href="/static/css/wifi.css">
+<link rel="stylesheet" href="/static/css/joy_settings.css">
+<script>
+  // When loaded inside an iframe (e.g. kiosk / studio "Home" panel),
+  // hide the Network/Settings buttons in the top-right — those screens
+  // own those concerns at the host level and the inner iframe shouldn't
+  // duplicate them.
+  try { if (window.self !== window.top) document.documentElement.classList.add('embedded'); } catch (_) { document.documentElement.classList.add('embedded'); }
+</script>
+</head>
+<body>
+<div class="app">
+  <!-- Nav -->
+  <nav>
+    <span class="nav-brand" aria-label="PhysiCar"><img src="/static/img/logo.png" alt="PhysiCar"></span>
+    <div class="nav-menu" id="nav-menu">
+      <button class="nav-item" data-page="control">Control</button>
+      <button class="nav-item" data-page="agent">Agent</button>
+      <button class="nav-item" data-page="deepracer">DeepRacer</button>
+    </div>
+    <select class="nav-select" id="nav-select" aria-label="Page">
+      <option value="control">Control</option>
+      <option value="agent">Agent</option>
+      <option value="deepracer">DeepRacer</option>
+    </select>
+    <div class="nav-spacer"></div>
+    <button class="nav-wifi" id="nav-wifi-btn" title="Network" onclick="if(window.PHYSICAR_MODE==='sim'){showToast('Not supported in simulation mode',true);return}WIFI.open()" aria-label="Network">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+    </button>
+    <button class="nav-wifi" id="nav-settings-btn" title="Settings" onclick="if(window.PHYSICAR_MODE==='sim'){showToast('Not supported in simulation mode',true);return}SETTINGS.open()" aria-label="Settings">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <div id="nav-user-area"></div>
+  </nav>
+
+  <div class="main">
+    <!-- Content -->
+    <div class="content">
+
+      <!-- DeepRacer Page -->
+      <div class="page active" id="page-deepracer">
+        <div class="dr-layout">
+          <!-- Top: Controls bar -->
+          <div class="dr-top-bar card">
+            <div class="dr-controls">
+              <div class="dr-control-section">
+                <button class="btn btn-primary" id="dr-btn-start" onclick="DR.start()">&#9654; Start</button>
+                <button class="btn btn-danger" id="dr-btn-stop" onclick="DR.stop()" disabled>&#9724; Stop</button>
+              </div>
+              <div class="dr-control-section">
+                <label>Mode</label>
+                <select id="dr-mode" onchange="DR.setMode(this.value)">
+                  <option value="greedy">Greedy</option>
+                  <option value="softmax">Softmax (Stochastic)</option>
+                  <option value="mean">Mean (Weighted Avg)</option>
+                </select>
+              </div>
+              <div class="dr-control-section">
+                <label>Speed</label>
+                <span id="dr-speed-pct" style="font-weight:600; min-width:48px; text-align:center;">100%</span>
+                <div class="speed-btn-group">
+                  <button onclick="DR.adjustSpeed(5)">+</button>
+                  <button onclick="DR.adjustSpeed(-5)">−</button>
+                </div>
+              </div>
+            </div>
+            <div class="dr-active-model" id="dr-active-model">
+              <span class="dr-active-label">Model</span>
+              <span class="dr-active-name" id="dr-active-name">—</span>
+              <span class="dr-active-state" id="dr-active-state"></span>
+            </div>
+          </div>
+
+          <!-- Bottom: Models (left 30%) + Viz/Prob (right 70%) -->
+          <div class="dr-body">
+            <div class="dr-sidebar card">
+              <div class="card-title">Models <div class="nav-spacer"></div>
+                <label class="import-btn" id="dr-import-btn" title="Import model (.tar.gz)">➕ Import model
+                  <input type="file" accept=".tar.gz,.gz" id="dr-import-input" onchange="DR.importModel(this)" style="display:none">
+                </label>
+              </div>
+              <div class="model-list" id="dr-model-list">
+                <div class="model-empty">Loading...</div>
+              </div>
+            </div>
+
+            <div class="dr-main">
+              <div class="card">
+                <div class="card-title">Visualization</div>
+                <canvas class="dr-action-canvas" id="dr-action-canvas"></canvas>
+                <div class="dr-action-info">
+                  <span>Speed: <strong id="dr-speed">0.00</strong> m/s</span>
+                  <span>Steering: <strong id="dr-steering">0</strong>&deg;</span>
+                  <span>Rate: <strong id="dr-rate">-</strong> Hz</span>
+                </div>
+              </div>
+              <div class="card" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+                <div class="card-title">Probabilities</div>
+                <div style="flex:1; overflow-y:auto;">
+                  <div class="dr-prob-chart" id="dr-prob-chart">
+                    <div class="model-empty">Load a model to see actions</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Control Page -->
+      <div class="page" id="page-control">
+        <div class="ctrl-layout">
+          <!-- Left: Speed / Steering -->
+          <div class="ctrl-half">
+            <div class="card ctrl-card">
+              <div class="card-title">
+                Speed / Steering
+                <div class="nav-spacer"></div>
+                <div class="ctrl-mode-switch">
+                  <button class="ctrl-mode active" data-group="drive" data-mode="continuous" onclick="CTRL.setMode('drive','continuous')">Continuous</button>
+                  <button class="ctrl-mode" data-group="drive" data-mode="discrete" onclick="CTRL.setMode('drive','discrete')">Discrete</button>
+                </div>
+              </div>
+              <div class="ctrl-area" id="ctrl-drive-area">
+                <!-- Continuous: joystick -->
+                <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
+                  <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
+                </div>
+                <!-- Discrete: 8-way grid -->
+                <div class="ctrl-dpad hidden" id="ctrl-drive-dpad">
+                  <div class="dpad-grid">
+                    <button class="dpad-btn" data-dir="fwd-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="fwd"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="fwd-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
+                    <div class="dpad-center"></div>
+                    <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="bwd-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="bwd"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="bwd-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="ctrl-info">
+                <span>Speed: <strong id="ctrl-speed">0.00</strong> m/s</span>
+                <span>Steer: <strong id="ctrl-steer">0</strong>°</span>
+              </div>
+              <div class="ctrl-max-speed">
+                <label>Max: <strong id="ctrl-max-speed-val">1.0</strong> m/s</label>
+                <input type="range" id="ctrl-max-speed" min="0.1" max="3.0" step="0.1" value="1.0" oninput="CTRL.setMaxSpeed(this.value)">
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Pan / Tilt -->
+          <div class="ctrl-half">
+            <div class="card ctrl-card">
+              <div class="card-title">
+                Pan / Tilt
+                <div class="nav-spacer"></div>
+                <div class="ctrl-mode-switch">
+                  <button class="ctrl-mode active" data-group="cam" data-mode="continuous" onclick="CTRL.setMode('cam','continuous')">Continuous</button>
+                  <button class="ctrl-mode" data-group="cam" data-mode="discrete" onclick="CTRL.setMode('cam','discrete')">Discrete</button>
+                </div>
+              </div>
+              <div class="ctrl-area" id="ctrl-cam-area">
+                <!-- Continuous: joystick -->
+                <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
+                  <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
+                </div>
+                <!-- Discrete: 8-way grid -->
+                <div class="ctrl-dpad hidden" id="ctrl-cam-dpad">
+                  <div class="dpad-grid">
+                    <button class="dpad-btn" data-dir="up-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="up"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="up-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
+                    <div class="dpad-center"></div>
+                    <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="dn-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="dn"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
+                    <button class="dpad-btn" data-dir="dn-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="ctrl-info">
+                <span>Pan: <strong id="ctrl-pan">0</strong>°</span>
+                <span>Tilt: <strong id="ctrl-tilt">0</strong>°</span>
+              </div>
+              <div class="ctrl-max-speed" aria-hidden="true" style="visibility:hidden">
+                <label>Max: <strong>1.0</strong> m/s</label>
+                <input type="range" min="0" max="1" step="1" value="0" tabindex="-1">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Page -->
+      <div class="page" id="page-agent">
+        <div class="agent-layout">
+          <!-- Config Panel -->
+          <div class="agent-config">
+            <div class="cfg-group">
+              <div class="cfg-header" onclick="this.parentElement.classList.toggle('collapsed')">Instructions <span class="cfg-toggle">▼</span></div>
+              <div class="cfg-body">
+                <div class="instructions-preview" id="agent-instructions-preview" onclick="AGENT.editInstructions()" tabindex="0" role="button" title="Click to edit"></div>
+                <textarea id="agent-instructions" hidden></textarea>
+              </div>
+            </div>
+            <div class="cfg-group">
+              <div class="cfg-header" onclick="this.parentElement.classList.toggle('collapsed')">Model <span class="cfg-toggle">▼</span></div>
+              <div class="cfg-body">
+                <div class="cfg-row">
+                  <span class="cfg-label">Model</span>
+                  <select class="cfg-select" id="agent-model" onchange="AGENT.onModelChange()">
+                    <option value="" disabled selected>Loading…</option>
+                  </select>
+                </div>
+                <div class="cfg-row" id="agent-reasoning-row" style="display:none">
+                  <span class="cfg-label">Reasoning</span>
+                  <select class="cfg-select" id="agent-reasoning" onchange="AGENT.saveConfig()">
+                    <option value="low" selected>Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="cfg-group">
+              <div class="cfg-header" onclick="this.parentElement.classList.toggle('collapsed')">Tools <span class="cfg-toggle">▼</span></div>
+              <div class="cfg-body">
+                <div class="tool-list" id="agent-tools-list"><span class="cfg-label">Loading...</span></div>
+                <div class="tool-actions">
+                  <button onclick="AGENT.showAddToolDialog()">+ Add</button>
+                  <button onclick="AGENT.refreshTools()">Refresh</button>
+                  <button onclick="AGENT.resetTools()">Reset</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Chat Panel -->
+          <div class="agent-chat" id="agent-chat-area">
+            <div class="chat-header">
+              <span class="chat-title">Chat</span>
+              <div class="chat-spacer"></div>
+              <span class="chat-id-pill" id="agent-chat-id" title="chat_id"></span>
+              <div class="chat-spacer"></div>
+              <button class="chat-clear" onclick="AGENT.clearChat()">Clear</button>
+            </div>
+            <div class="chat-messages" id="agent-messages">
+              <div class="chat-welcome">Ask the AI agent to control your PhysiCar</div>
+            </div>
+            <div class="chat-typing" id="agent-typing"><span></span><span></span><span></span></div>
+            <div class="chat-input-area">
+              <div class="tts-wrap">
+                <div class="tts-popover" id="tts-popover">
+                  <div class="tts-opts">
+                    <div class="tts-popover-title">TTS Output</div>
+                    <button class="tts-opt" data-target="off" onclick="AGENT.setTTSTarget('off')">Off</button>
+                    <button class="tts-opt" data-target="browser" onclick="AGENT.setTTSTarget('browser')">Local</button>
+                    <button class="tts-opt" data-target="kit" onclick="AGENT.setTTSTarget('kit')">Device</button>
+                  </div>
+                  <div class="tts-vol">
+                    <span class="tts-vol-label">Vol</span>
+                    <input type="range" min="0" max="100" step="10" value="80" id="agent-volume" orient="vertical" oninput="AGENT._updateVolLabel()" onchange="AGENT.saveConfig()">
+                    <span class="tts-vol-pct" id="tts-vol-pct">80%</span>
+                  </div>
+                </div>
+                <span class="tts-title">TTS</span>
+                <button class="tts-toggle" id="agent-tts-btn" onclick="AGENT.toggleTTS()">🔊</button>
+                <span class="tts-label" id="tts-label">Local</span>
+              </div>
+              <textarea class="chat-input" id="agent-input" placeholder="Type a message..." rows="1" onkeydown="AGENT.handleKey(event)" oninput="AGENT.adjustInput()"></textarea>
+              <button class="chat-send" id="agent-send" onclick="AGENT.onSendBtn()">
+                <svg class="icon-send" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <svg class="icon-stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Gate overlay (offline or signin required) -->
+          <div class="agent-signin-required" id="agent-signin-overlay" style="display:none">
+            <div class="signin-icon" id="agent-gate-icon">🔒</div>
+            <div class="signin-msg" id="agent-gate-msg">Sign in to physicar.ai to use the AI agent</div>
+            <button id="agent-gate-btn" onclick="AGENT.gateAction()">Sign In</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sensor Panel (Right) -->
+    <div class="panel" id="sensor-panel">
+      <div class="panel-section panel-section-flush">
+        <div class="panel-title">Camera
+          <select id="cam-res" onchange="changeCameraRes()">
+            <option value="480" selected>480x360</option>
+            <option value="320">320x240</option>
+            <option value="160">160x120</option>
+          </select>
+        </div>
+        <img class="panel-camera panel-zoomable" id="p-camera" alt="Camera" onclick="openSensorModal('camera')" title="Click to enlarge">
+      </div>
+      <div class="panel-section panel-section-flush">
+        <div class="panel-title">LiDAR
+          <select id="lidar-step" onchange="changeLidarStep()">
+            <option value="0.5">0.5&deg;</option>
+            <option value="1">1&deg;</option>
+            <option value="3" selected>3&deg;</option>
+            <option value="5">5&deg;</option>
+            <option value="10">10&deg;</option>
+          </select>
+          <select id="lidar-range" onchange="changeLidarRange()">
+            <option value="2">2m</option>
+            <option value="4" selected>4m</option>
+            <option value="8">8m</option>
+            <option value="16">16m</option>
+          </select>
+        </div>
+        <canvas class="panel-lidar panel-zoomable" id="p-lidar" onclick="openSensorModal('lidar')" title="Click to enlarge"></canvas>
+      </div>
+      <div class="panel-section">
+        <div class="panel-title">Motion</div>
+        <div class="panel-row"><span class="panel-label">Speed</span><span class="panel-value" id="p-speed">0.0 m/s</span></div>
+        <div class="panel-row"><span class="panel-label">Steering</span><span class="panel-value" id="p-steering">0&deg;</span></div>
+        <div class="panel-row"><span class="panel-label">Pan / Tilt</span><span class="panel-value" id="p-pantilt">0&deg; / 0&deg;</span></div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-title">Battery</div>
+        <div class="panel-row">
+          <span class="panel-value" id="p-battery">--%</span>
+          <span class="panel-value" id="p-voltage">--V</span>
+        </div>
+        <div class="battery-bar"><div class="battery-fill" id="p-battery-fill" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WiFi Modal -->
+<div class="wifi-overlay" id="wifi-overlay" data-close-on-backdrop="WIFI.close">
+  <div class="wifi-dialog" role="dialog" aria-modal="true" aria-labelledby="wifi-title">
+    <div class="wifi-head">
+      <h3 id="wifi-title">Network</h3>
+      <button class="wifi-x" onclick="WIFI.close()" aria-label="Close">&times;</button>
+    </div>
+
+    <!-- Step 1: Scan list -->
+    <div class="wifi-step" id="wifi-step-scan">
+      <!-- Sub-tabs: Connect / Internet / Bluetooth -->
+      <div class="wifi-net-tabs">
+        <button class="wifi-net-tab active" data-nettab="ap" onclick="WIFI.switchTab('ap')">Connect</button>
+        <button class="wifi-net-tab" data-nettab="internet" onclick="WIFI.switchTab('internet')">Internet</button>
+        <button class="wifi-net-tab" data-nettab="bluetooth" onclick="WIFI.switchTab('bluetooth')">Bluetooth</button>
+      </div>
+
+      <!-- AP Panel: Step 1 (laptop → WiFi → device + SSID/PW) + Step 2 (URL) -->
+      <div class="wifi-net-panel active" id="wifi-net-ap">
+        <div class="connect-step">
+          <div class="connect-step-header">
+            <span class="connect-step-num">Step 1</span>
+            <span class="connect-step-title">Connect to WiFi</span>
+          </div>
+          <div class="connect-diagram">
+            <div class="connect-node">
+              <img src="/static/img/network-labtop.png" alt="Laptop" class="connect-node-img">
+              <div class="connect-node-label">Your Laptop</div>
+            </div>
+            <div class="connect-arrow">
+              <img src="/static/img/network-arrow.png" alt="connects via" class="connect-arrow-img">
+              <div class="connect-arrow-label">WiFi</div>
+            </div>
+            <div class="connect-node">
+              <img src="/static/img/network-physicar.png" alt="PhysiCar" class="connect-node-img">
+              <div class="connect-node-label">PhysiCar Device</div>
+            </div>
+          </div>
+          <div class="connect-cards">
+            <div class="connect-info-card">
+              <div class="connect-info-label">WiFi SSID</div>
+              <div class="connect-info-row">
+                <div class="connect-info-value" id="net-ap-ssid">—</div>
+              </div>
+            </div>
+            <div class="connect-info-card">
+              <div class="connect-info-label">WiFi PW</div>
+              <div class="connect-info-row">
+                <div class="connect-info-value masked" id="net-ap-pw" onclick="WIFI.toggleApPw()">••••••••</div>
+                <button class="connect-info-eye" onclick="WIFI.toggleApPw()" aria-label="Show password">👁</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="connect-step">
+          <div class="connect-step-header">
+            <span class="connect-step-num">Step 2</span>
+            <span class="connect-step-title">Open in browser</span>
+          </div>
+          <div class="connect-url">
+            <div class="connect-url-value" id="net-ap-url">https://device.physicar.ai</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Internet Panel: WiFi + Ethernet sections combined -->
+      <div class="wifi-net-panel" id="wifi-net-internet">
+        <!-- Internet status -->
+        <div class="wifi-section-title">Internet</div>
+        <div class="wifi-card-row"><span class="wifi-card-label">Status</span><span class="wifi-card-value" id="internet-status">—</span></div>
+
+        <!-- WiFi section -->
+        <div class="wifi-section-title">WiFi</div>
+        <div class="wifi-empty-state" id="wifi-pane-disconnected" style="display:none">
+          <div class="wifi-empty-msg">Not connected to WiFi</div>
+          <button class="btn btn-primary" onclick="WIFI.openList()">Connect</button>
+        </div>
+        <div id="wifi-pane-connected" style="display:none">
+          <div class="wifi-card-row"><span class="wifi-card-label">Name</span><span class="wifi-card-value" id="wifi-current-ssid">—</span></div>
+          <div class="wifi-card-row"><span class="wifi-card-label">IP</span><span class="wifi-card-value" id="wifi-current-ip">—</span></div>
+          <div class="wifi-section-actions"><button class="btn btn-secondary" onclick="WIFI.openList()">Change</button></div>
+        </div>
+
+        <!-- LAN section (compact inline) -->
+        <div class="wifi-section-title">LAN</div>
+        <div class="wifi-inline" id="eth-pane-disconnected" style="display:none">
+          <span class="wifi-inline-msg">Disconnected</span>
+          <span class="wifi-inline-hint">Plug in cable to enable</span>
+        </div>
+        <div class="wifi-inline" id="eth-pane-connected" style="display:none">
+          <span class="wifi-card-label">IP</span><span class="wifi-card-value" id="net-eth-ip">—</span>
+        </div>
+      </div>
+
+      <!-- Bluetooth Panel -->
+      <div class="wifi-net-panel" id="wifi-net-bluetooth">
+        <div class="bt-list bt-list-card" id="bt-paired-main"><div class="bt-empty">No paired devices</div></div>
+        <div class="wifi-pane-actions"><button class="btn btn-secondary" onclick="BT.openManage()">Add Device</button></div>
+      </div>
+    </div>
+
+    <!-- Step 2: Password -->
+    <div class="wifi-step" id="wifi-step-pw" style="display:none">
+      <div class="wifi-pw-ssid">Connect to <strong id="wifi-pw-ssid">Network</strong></div>
+      <div class="wifi-status" id="wifi-status"></div>
+      <div class="wifi-field" id="wifi-identity-field" style="display:none">
+        <label for="wifi-identity">Username</label>
+        <input type="text" id="wifi-identity" autocomplete="username" placeholder="ID">
+      </div>
+      <div class="wifi-field">
+        <label for="wifi-password">Password</label>
+        <div class="wifi-pw-wrap">
+          <input type="password" id="wifi-password" autocomplete="current-password" placeholder="Enter password">
+          <button type="button" class="wifi-eye" id="wifi-eye" onclick="WIFI.togglePw()" aria-label="Show password">👁</button>
+        </div>
+      </div>
+      <div class="wifi-actions">
+        <button class="btn btn-secondary" id="wifi-back" onclick="WIFI.back()">Back</button>
+        <button class="btn btn-primary" id="wifi-connect" onclick="WIFI.connect()">Connect</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- WiFi List Popup (overlays the WiFi modal; opened by clicking WiFi Name row) -->
+<div class="wifi-overlay wifi-list-overlay" id="wifi-list-overlay" data-close-on-backdrop="WIFI.closeList">
+  <div class="wifi-dialog" role="dialog" aria-modal="true" aria-labelledby="wifi-list-title">
+    <div class="wifi-head">
+      <h3 id="wifi-list-title">Internet (WiFi)</h3>
+      <div style="display:flex;align-items:center;gap:0.3rem">
+        <button class="wifi-rescan" id="wifi-rescan" onclick="WIFI.scan()" title="Rescan">↻</button>
+        <button class="wifi-x" onclick="WIFI.closeList()" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="wifi-step">
+      <div class="wifi-list" id="wifi-list">
+        <div class="wifi-empty">Scanning…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bluetooth Manage Modal -->
+<div class="wifi-overlay wifi-list-overlay" id="bt-manage-overlay" data-close-on-backdrop="BT.closeManage">
+  <div class="wifi-dialog" role="dialog" aria-modal="true" aria-labelledby="bt-manage-title">
+    <div class="wifi-head">
+      <h3 id="bt-manage-title">Add Bluetooth Device</h3>
+      <div style="display:flex;align-items:center;gap:0.3rem">
+        <button class="wifi-rescan" id="bt-rescan" onclick="BT.scan()" title="Rescan">↻</button>
+        <button class="wifi-x" onclick="BT.closeManage()" aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <div class="wifi-step">
+      <div class="bt-section-title">Available</div>
+      <div class="bt-list" id="bt-scan-list"><div class="bt-empty">Scanning…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Connect Spinner Overlay (covers any modal during long wifi connect/activate) -->
+<div class="connect-spinner-overlay" id="connect-spinner" aria-hidden="true">
+  <div class="connect-spinner-box">
+    <div class="connect-spinner"></div>
+    <div class="connect-spinner-msg" id="connect-spinner-msg">Connecting…</div>
+    <div class="connect-spinner-sub" id="connect-spinner-sub"></div>
+  </div>
+</div>
+
+<!-- WiFi Switch Confirmation Modal -->
+<div class="wifi-overlay wifi-confirm-overlay" id="wifi-switch-confirm" style="display:none" data-close-on-backdrop="WIFI._closeSwitchConfirm">
+  <div class="wifi-dialog wifi-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="wifi-switch-title">
+    <div class="wifi-head">
+      <h3 id="wifi-switch-title">Connect to <span id="wifi-switch-to">—</span>?</h3>
+      <button class="wifi-x" onclick="WIFI._closeSwitchConfirm()" aria-label="Close">&times;</button>
+    </div>
+    <div class="wifi-step">
+      <div class="wifi-confirm-body">
+        <div class="wifi-confirm-icon">⚠️</div>
+        <div class="wifi-confirm-line"><strong id="wifi-switch-from">WiFi</strong> will disconnect. Reconnect after the change.</div>
+      </div>
+      <div class="wifi-actions">
+        <button class="btn btn-secondary" onclick="WIFI._closeSwitchConfirm()">Cancel</button>
+        <button class="btn btn-primary" id="wifi-switch-ok">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="wifi-overlay" id="settings-overlay" data-close-on-backdrop="SETTINGS.close">
+  <div class="wifi-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="wifi-head">
+      <h3 id="settings-title">Settings</h3>
+      <button class="wifi-x" onclick="SETTINGS.close()" aria-label="Close">&times;</button>
+    </div>
+    <div class="wifi-step">
+      <div class="wifi-net-tabs">
+        <button class="wifi-net-tab active" data-settab="password" onclick="SETTINGS.switchTab('password')">Password</button>
+        <button class="wifi-net-tab" data-settab="calibration" onclick="SETTINGS.switchTab('calibration')">Calibration</button>
+        <button class="wifi-net-tab" data-settab="joystick" onclick="SETTINGS.switchTab('joystick')">Joystick</button>
+        <button class="wifi-net-tab" data-settab="sn" onclick="SETTINGS.switchTab('sn')">S/N</button>
+      </div>
+
+      <!-- Password Panel -->
+      <div class="wifi-net-panel active" id="settings-panel-password">
+        <div class="wifi-card-row"><span class="wifi-card-label">Password</span><span class="wifi-card-value masked" id="settings-pw-value">••••••••</span><button class="wifi-eye-sm" id="settings-pw-toggle" onclick="SETTINGS.togglePw()" aria-label="Show">👁</button></div>
+        <div class="settings-hint">Your PhysiCar Device access password.</div>
+
+        <div class="settings-section-title">Change Password</div>
+        <div class="settings-form">
+          <div class="settings-pw-input-wrap">
+            <input type="password" id="settings-pw-new" placeholder="New password (8–63 chars, no spaces)" autocomplete="new-password" oninput="SETTINGS.sanitizePw(this)" onkeydown="if(event.key==='Enter')SETTINGS.changePassword()">
+            <button type="button" class="wifi-eye-sm" id="settings-pw-new-toggle" onclick="SETTINGS.toggleNewPw()" aria-label="Show password">👁</button>
+          </div>
+          <div class="settings-form-status" id="settings-pw-status"></div>
+          <button class="btn btn-primary" id="settings-pw-submit" onclick="SETTINGS.changePassword()">Change</button>
+          <div class="settings-hint">Changing the password reboots the device.<br>Hotspot/WiFi/SSH all use this password.</div>
+        </div>
+
+        <div class="settings-section-title">Reset Password</div>
+        <div class="settings-form">
+          <div class="settings-form-status" id="settings-pw-reset-status"></div>
+          <button class="btn btn-primary" id="settings-pw-reset" onclick="SETTINGS.resetPassword()">Reset to Default</button>
+          <div class="settings-hint">Removes the saved password and reverts to the device default (serial-number-based on production, "physicar" in DEV/SIM). Reboots the device.</div>
+        </div>
+      </div>
+
+      <!-- S/N Panel -->
+      <div class="wifi-net-panel" id="settings-panel-sn">
+        <div class="sn-block">
+          <div class="sn-value" id="settings-sn-value">—</div>
+          <div class="sn-qr" id="settings-sn-qr"></div>
+        </div>
+      </div>
+
+      <!-- Calibration Panel -->
+      <div class="wifi-net-panel" id="settings-panel-calibration">
+        <div class="wifi-card-row"><span class="wifi-card-label">Steering Center</span><div class="cal-control"><button class="cal-btn" onclick="SETTINGS.adjust('steering', -1)">−</button><span class="cal-value" id="settings-cal-steering">0°</span><button class="cal-btn" onclick="SETTINGS.adjust('steering', 1)">+</button></div></div>
+        <div class="wifi-card-row"><span class="wifi-card-label">Pan Center</span><div class="cal-control"><button class="cal-btn" onclick="SETTINGS.adjust('pan', -1)">−</button><span class="cal-value" id="settings-cal-pan">0°</span><button class="cal-btn" onclick="SETTINGS.adjust('pan', 1)">+</button></div></div>
+        <div class="wifi-card-row"><span class="wifi-card-label">Tilt Center</span><div class="cal-control"><button class="cal-btn" onclick="SETTINGS.adjust('tilt', -1)">−</button><span class="cal-value" id="settings-cal-tilt">0°</span><button class="cal-btn" onclick="SETTINGS.adjust('tilt', 1)">+</button></div></div>
+        <div class="wifi-card-row"><span class="wifi-card-label">Reverse Direction</span><label class="cal-switch"><input type="checkbox" id="settings-cal-reverse" onchange="SETTINGS.toggleReverse()"><span class="cal-slider"></span></label></div>
+        <div class="wifi-card-row"><span class="wifi-card-label">Emergency Stop</span><label class="cal-switch"><input type="checkbox" id="settings-cal-emergency" onchange="SETTINGS.toggleEmergency()"><span class="cal-slider"></span></label></div>
+      </div>
+
+      <!-- Joystick Panel -->
+      <div class="wifi-net-panel" id="settings-panel-joystick">
+        <div class="wifi-card-row"><span class="wifi-card-label">Enabled</span><label class="cal-switch"><input type="checkbox" id="settings-joy-enabled" onchange="SETTINGS.joyToggleEnabled()"><span class="cal-slider"></span></label></div>
+        <div class="wifi-card-row"><span class="wifi-card-label">Connected</span><span class="wifi-card-value" id="settings-joy-conn">—</span></div>
+        <div class="settings-hint" id="settings-joy-status">Connect a controller to see live input.</div>
+
+        <div class="settings-section-title">Live Input</div>
+        <div class="joy-live" id="settings-joy-live">
+          <div class="joy-live-empty">Waiting for /joy …</div>
+        </div>
+
+        <div class="settings-section-title">Mapping</div>
+        <div class="joy-map-list" id="settings-joy-map">
+          <!-- populated by SETTINGS.renderMapping() -->
+        </div>
+
+        <div class="settings-section-title">Axis Tuning</div>
+        <div class="joy-tune" id="settings-joy-tune">
+          <!-- populated by SETTINGS.renderMapping() -->
+        </div>
+
+        <div class="settings-form" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" onclick="SETTINGS.joyReset()">Reset to defaults</button>
+        </div>
+        <div class="settings-hint">Click <b>Capture</b> on a row, then move/press the control on your gamepad to bind it.  Changes save automatically.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/vendor/qrcode.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script src="/static/js/wifi.js"></script>
+<script src="/static/js/bluetooth.js"></script>
+<script src="/static/js/joy_settings.js"></script>
+<script src="/static/js/settings.js"></script>
+<script src="/static/js/deepracer.js"></script>
+<script src="/static/js/control.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.min.js"></script>
+<script src="/static/js/agent.js"></script>
+<script>
+/* ===== Init ===== */
+(async function init() {
+  console.log('[INIT] Starting...');
+  const h = location.hash.slice(1);
+  navigate(h || 'control');
+
+  const healthy = await checkHealth();
+  console.log('[INIT] Health:', healthy);
+  setInterval(checkHealth, 10000);
+
+  // Restore saved select values
+  ['cam-res', 'lidar-step', 'lidar-range'].forEach(id => {
+    const v = localStorage.getItem(id);
+    if (v && $(id)) $(id).value = v;
+  });
+
+  startStateStream();
+  startLidarStream();
+  startCameraStream();
+  console.log('[INIT] All streams started');
+
+  DR.init();
+  CTRL.init();
+  PlatformAuth.init();
+  AGENT.init();
+
+  // Detect mode (sim/real) once at startup
+  try {
+    const r = await fetch('/info');
+    const info = await r.json();
+    window.PHYSICAR_MODE = info.mode || 'real';
+  } catch { window.PHYSICAR_MODE = 'real'; }
+  if (window.PHYSICAR_MODE === 'sim') {
+    document.body.classList.add('sim-mode');
+    document.title = 'PHYSICAR DEVICE (SIM)';
+  }
+
+  setInterval(() => {
+    console.log('[STREAM] state=' + (stateES ? 'rs:' + stateES.readyState + ' msgs:' + _stateCount : 'null')
+      + ' lidar=' + (lidarES ? 'rs:' + lidarES.readyState + ' msgs:' + _lidarCount : 'null'));
+  }, 5000);
+})();
+</script>
+</body>
+</html>

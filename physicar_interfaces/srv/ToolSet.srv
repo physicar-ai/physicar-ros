@@ -1,0 +1,6 @@
+# Set (add/overwrite) a tool
+string name             # Tool name (filename without .py)
+string code             # Python source code
+---
+bool success
+string message

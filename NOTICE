@@ -1,0 +1,14 @@
+PhysiCar ROS 2
+Copyright 2026 AICASTLE Inc. (주식회사 에이아이캐슬)
+
+This product includes software developed by AICASTLE Inc. and contributors.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product also includes the following third-party software, each
+distributed under its own license (see the respective package directory):
+
+  * camera_ros            -- MIT License
+  * rplidar_ros           -- BSD-2-Clause License
+  * rf2o_laser_odometry   -- GPLv3 License
+
+"PhysiCar" is a trademark of AICASTLE Inc.

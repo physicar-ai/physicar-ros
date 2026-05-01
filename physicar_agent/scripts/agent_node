@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+"""PhysiCar Agent Node launcher."""
+from physicar_agent.agent_node import main
+main()

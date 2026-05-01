@@ -1,0 +1,6 @@
+# Get tool details and source code
+string name             # Tool name
+bool include_code       # Include source code (default: true for non-system tools)
+---
+bool found              # Tool exists
+string info_json        # JSON: {name, description, properties, code?, system?}

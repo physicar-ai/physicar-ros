@@ -1,0 +1,4 @@
+# Reset tools to builtin defaults
+---
+bool success
+int32 tool_count        # Number of tools after reset

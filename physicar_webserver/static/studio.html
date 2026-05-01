@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSICAR Studio</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;display:flex;flex-direction:column}
+
+/* ── Top Bar ── */
+.toolbar{
+  height:34px;min-height:34px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 10px;background:#000;border-bottom:1px solid #333;
+  user-select:none;flex-shrink:0;
+}
+.toolbar .group{display:flex;align-items:center;gap:6px}
+.toolbar .ratio{color:#fff;font-size:12px;font-family:monospace}
+.toolbar label{color:#fff;font-size:13px}
+.toolbar select{
+  background:#111;color:#eee;border:1px solid #444;border-radius:3px;
+  padding:2px 6px;font-size:13px;cursor:pointer;outline:none;
+}
+.toolbar select:hover{border-color:#666}
+.toolbar select:focus{border-color:#1a73e8}
+.toolbar .info{color:#fff;font-size:12px;font-family:monospace;min-width:80px}
+.toolbar .btn-reload{
+  background:none;border:1px solid #444;border-radius:3px;color:#fff;
+  font-size:14px;width:22px;height:22px;cursor:pointer;display:flex;
+  align-items:center;justify-content:center;padding:0;line-height:1;
+}
+.toolbar .btn-reload:hover{border-color:#666;color:#fff}
+
+/* ── Panels Container ── */
+.panels{display:flex;flex:1;position:relative;overflow:hidden;height:calc(100vh - 34px)}
+.panel{
+  position:relative;overflow:hidden;
+  display:flex;flex-direction:column;height:100%;
+}
+.panel iframe{
+  flex:1;width:100%;height:100%;border:none;background:#111;
+}
+.panel-empty{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  color:#555;font-size:14px;
+}
+
+/* ── Divider ── */
+.divider{
+  width:4px;cursor:col-resize;background:#0f3460;
+  flex-shrink:0;position:relative;z-index:10;
+  transition:background .15s;
+}
+.divider:hover,.divider.dragging{background:#1a73e8}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="group">
+    <label>Left</label>
+    <select id="sel-left"></select>
+    <button class="btn-reload" id="reload-left" title="Reload">&#8635;</button>
+    <span class="info" id="info-left"></span>
+  </div>
+  <span class="ratio" id="ratio-display"></span>
+  <div class="group">
+    <label>Right</label>
+    <select id="sel-right"></select>
+    <button class="btn-reload" id="reload-right" title="Reload">&#8635;</button>
+    <span class="info" id="info-right"></span>
+  </div>
+</div>
+
+<div class="panels" id="panels"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ── Monitor definitions (add new ones here) ── */
+  const MONITORS = [
+    { id: 'home',  label: 'Home',   path: '/',       port: 8000, desc: 'FastAPI' },
+    { id: 'gz',    label: 'Gazebo', path: '/gz/',     port: 9002, desc: '3D Sim'  },
+    { id: 'vnc',   label: 'VNC',    path: '/vnc/',    port: 6080, desc: 'noVNC'   },
+    { id: 'myapp', label: 'MyApp',  path: '/myapp/',  port: 5000, desc: 'Flask'   },
+  ];
+
+  const DEF_LEFT = 'home', DEF_RIGHT = 'gz', DEF_RATIO = 0.7;
+  let leftId = DEF_LEFT;
+  let rightId = DEF_RIGHT;
+  let splitRatio = DEF_RATIO;
+
+  const selLeft  = document.getElementById('sel-left');
+  const selRight = document.getElementById('sel-right');
+  const panels   = document.getElementById('panels');
+
+  /* ── Info + Reload ── */
+  const infoLeft  = document.getElementById('info-left');
+  const infoRight = document.getElementById('info-right');
+
+  document.getElementById('reload-left').addEventListener('click', () => {
+    if(lpEl){ const f = lpEl.querySelector('iframe'); if(f) f.src = f.src; }
+  });
+  document.getElementById('reload-right').addEventListener('click', () => {
+    if(rpEl){ const f = rpEl.querySelector('iframe'); if(f) f.src = f.src; }
+  });
+
+  function buildOptions(sel){
+    sel.innerHTML = '<option value="">— None —</option>';
+    MONITORS.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      sel.appendChild(opt);
+    });
+  }
+
+  const ratioDisplay = document.getElementById('ratio-display');
+
+  function updateInfo(){
+    const l = MONITORS.find(m => m.id === leftId);
+    const r = MONITORS.find(m => m.id === rightId);
+    infoLeft.textContent  = l ? l.path + ' :' + l.port : '';
+    infoRight.textContent = r ? r.path + ' :' + r.port : '';
+    if(l && r){
+      const lp = Math.round(splitRatio * 100);
+      ratioDisplay.textContent = lp + ' : ' + (100 - lp);
+    } else {
+      ratioDisplay.textContent = '';
+    }
+  }
+  buildOptions(selLeft);
+  buildOptions(selRight);
+
+  selLeft.addEventListener('change', () => { leftId = selLeft.value; saveState(); render(); updateInfo(); });
+  selRight.addEventListener('change', () => { rightId = selRight.value; saveState(); render(); updateInfo(); });
+
+  /* ── Track current iframe state to avoid unnecessary reloads ── */
+  let curLeftId = null, curRightId = null;
+  let curLayout = '';  // 'none','single-l','single-r','dual'
+  let lpEl = null, rpEl = null, divEl = null;
+
+  /* ── Render ── */
+  function render(){
+    selLeft.value = leftId;
+    selRight.value = rightId;
+
+    const left  = leftId  ? MONITORS.find(m => m.id === leftId)  : null;
+    const right = rightId ? MONITORS.find(m => m.id === rightId) : null;
+
+    const newLayout = !left && !right ? 'none'
+      : left && !right ? 'single-l'
+      : !left && right ? 'single-r'
+      : 'dual';
+
+    const oldLayout = curLayout;
+    curLayout = newLayout;
+
+    /* ── Transition: reuse panels when possible ── */
+
+    // dual → single-l: keep left, remove divider+right
+    if(oldLayout === 'dual' && newLayout === 'single-l' && lpEl){
+      if(divEl){ divEl.remove(); divEl = null; }
+      if(rpEl){ rpEl.remove(); rpEl = null; curRightId = null; }
+      lpEl.style.width = '100%';
+      if(leftId !== curLeftId){ lpEl.querySelector('iframe').src = left.path; curLeftId = leftId; }
+      return;
+    }
+
+    // dual → single-r: keep right, remove divider+left
+    if(oldLayout === 'dual' && newLayout === 'single-r' && rpEl){
+      if(divEl){ divEl.remove(); divEl = null; }
+      if(lpEl){ lpEl.remove(); lpEl = null; curLeftId = null; }
+      rpEl.style.width = '100%';
+      if(rightId !== curRightId){ rpEl.querySelector('iframe').src = right.path; curRightId = rightId; }
+      return;
+    }
+
+    // single-l → dual: keep left, add divider+right
+    if(oldLayout === 'single-l' && newLayout === 'dual' && lpEl){
+      const leftW  = (splitRatio * 100).toFixed(2) + '%';
+      const rightW = ((1 - splitRatio) * 100).toFixed(2) + '%';
+      lpEl.style.width = 'calc(' + leftW + ' - 2px)';
+      if(leftId !== curLeftId){ lpEl.querySelector('iframe').src = left.path; curLeftId = leftId; }
+      divEl = document.createElement('div'); divEl.className = 'divider';
+      rpEl = makePanel(right, 'calc(' + rightW + ' - 2px)'); curRightId = rightId;
+      panels.appendChild(divEl);
+      panels.appendChild(rpEl);
+      setupDrag(divEl, lpEl, rpEl);
+      return;
+    }
+
+    // single-r → dual: keep right, prepend divider+left
+    if(oldLayout === 'single-r' && newLayout === 'dual' && rpEl){
+      const leftW  = (splitRatio * 100).toFixed(2) + '%';
+      const rightW = ((1 - splitRatio) * 100).toFixed(2) + '%';
+      rpEl.style.width = 'calc(' + rightW + ' - 2px)';
+      if(rightId !== curRightId){ rpEl.querySelector('iframe').src = right.path; curRightId = rightId; }
+      lpEl = makePanel(left, 'calc(' + leftW + ' - 2px)'); curLeftId = leftId;
+      divEl = document.createElement('div'); divEl.className = 'divider';
+      panels.insertBefore(divEl, rpEl);
+      panels.insertBefore(lpEl, divEl);
+      setupDrag(divEl, lpEl, rpEl);
+      return;
+    }
+
+    // single-l → single-r or vice versa, or none → anything: full rebuild
+    if(newLayout !== oldLayout){
+      curLeftId = null; curRightId = null;
+      lpEl = null; rpEl = null; divEl = null;
+      panels.innerHTML = '';
+
+      if(newLayout === 'none'){
+        panels.innerHTML = '<div class="panel-empty">Select a monitor above</div>';
+        return;
+      }
+      if(newLayout === 'single-l'){
+        lpEl = makePanel(left, '100%'); curLeftId = leftId;
+        panels.appendChild(lpEl);
+        return;
+      }
+      if(newLayout === 'single-r'){
+        rpEl = makePanel(right, '100%'); curRightId = rightId;
+        panels.appendChild(rpEl);
+        return;
+      }
+      // dual
+      const leftW  = (splitRatio * 100).toFixed(2) + '%';
+      const rightW = ((1 - splitRatio) * 100).toFixed(2) + '%';
+      lpEl = makePanel(left,  'calc(' + leftW  + ' - 2px)'); curLeftId = leftId;
+      divEl = document.createElement('div'); divEl.className = 'divider';
+      rpEl = makePanel(right, 'calc(' + rightW + ' - 2px)'); curRightId = rightId;
+      panels.appendChild(lpEl);
+      panels.appendChild(divEl);
+      panels.appendChild(rpEl);
+      setupDrag(divEl, lpEl, rpEl);
+      return;
+    }
+
+    // Same layout → patch only changed panels
+    if(newLayout === 'single-l' && leftId !== curLeftId){
+      lpEl.querySelector('iframe').src = left.path; curLeftId = leftId;
+    }
+    if(newLayout === 'single-r' && rightId !== curRightId){
+      rpEl.querySelector('iframe').src = right.path; curRightId = rightId;
+    }
+    if(newLayout === 'dual'){
+      if(leftId !== curLeftId){
+        lpEl.querySelector('iframe').src = left.path; curLeftId = leftId;
+      }
+      if(rightId !== curRightId){
+        rpEl.querySelector('iframe').src = right.path; curRightId = rightId;
+      }
+    }
+  }
+
+  function makePanel(monitor, width){
+    const div = document.createElement('div');
+    div.className = 'panel';
+    div.style.width = width;
+    const iframe = document.createElement('iframe');
+    iframe.src = monitor.path;
+    iframe.setAttribute('loading', 'lazy');
+    iframe.setAttribute('allow', 'autoplay; camera; microphone');
+    div.appendChild(iframe);
+    return div;
+  }
+
+  /* ── Divider drag ── */
+  function setupDrag(divider, leftPanel, rightPanel){
+    let dragging = false;
+    function onDown(e){
+      e.preventDefault(); dragging = true;
+      divider.classList.add('dragging');
+      panels.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = 'none');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onMove, {passive:false});
+      document.addEventListener('touchend', onUp);
+    }
+    function onMove(e){
+      if(!dragging) return;
+      e.preventDefault();
+      const rect = panels.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      splitRatio = Math.max(0.15, Math.min(0.85, (cx - rect.left) / rect.width));
+      leftPanel.style.width  = 'calc(' + (splitRatio * 100).toFixed(2) + '% - 2px)';
+      rightPanel.style.width = 'calc(' + ((1 - splitRatio) * 100).toFixed(2) + '% - 2px)';
+      updateInfo();
+    }
+    function onUp(){
+      dragging = false;
+      divider.classList.remove('dragging');
+      panels.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+      saveState();
+    }
+    divider.addEventListener('mousedown', onDown);
+    divider.addEventListener('touchstart', onDown, {passive:false});
+  }
+
+  /* ── Persist ── */
+  function saveState(){
+    try{ localStorage.setItem('studio', JSON.stringify({leftId, rightId, splitRatio})); }catch(e){}
+  }
+  function loadState(){
+    try{
+      const s = JSON.parse(localStorage.getItem('studio'));
+      if(s){
+        if(s.leftId && MONITORS.some(m => m.id === s.leftId)) leftId = s.leftId;
+        if(s.rightId && MONITORS.some(m => m.id === s.rightId)) rightId = s.rightId;
+        if(typeof s.splitRatio === 'number') splitRatio = s.splitRatio;
+      }
+    }catch(e){}
+  }
+
+  loadState();
+  render();
+  updateInfo();
+})();
+</script>
+</body>
+</html>

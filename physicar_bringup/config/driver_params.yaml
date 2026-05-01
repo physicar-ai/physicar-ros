@@ -1,0 +1,107 @@
+# PhysiCar Driver Configuration
+# Robot Expansion Board Parameters
+
+physicar_driver:
+  ros__parameters:
+    # Serial connection (use udev symlink, not ttyUSB#)
+    serial_port: "/dev/yahboom"
+    baudrate: 115200
+
+    # IMU settings
+    imu_frame_id: "imu_link"
+    publish_rate: 50.0  # Hz
+
+    # Battery monitoring
+    battery_publish_rate: 1.0  # Hz
+    battery_low_threshold: 6.6  # Volts - triggers warning
+
+    # Servo angle limits (degrees)
+    max_pan: 45.0               # ±45° (45°~135°)
+    max_tilt: 45.0              # ±45° (45°~135°)
+    max_steering: 25.0          # ±25° actual maximum wheel steering angle (servo angle derived via sine model)
+    max_speed: 3.0              # ±3.0 m/s max speed limit
+
+    # Center offsets (degrees from 90°)
+    pan_center: 0.0
+    tilt_center: 0.0
+    steering_center: 0.0        # Wheel-frame centre offset (sine model applied)
+
+    # ESC direction (some ESCs have reversed polarity)
+    reverse_direction: false     # true: above 90° = forward, false: below 90° = forward
+
+    # Emergency Stop settings
+    emergency_enabled: true         # Enable Emergency Stop (overridable via calibration.json)
+    emergency_angle_range: 30.0     # Total detection angle range (°), ±15° relative to front
+    emergency_front_margin: 0.25    # Front collision margin (m)
+    emergency_rear_margin: 0.15     # Rear collision margin (m)
+
+    # Robot physical parameters (from URDF measurements)
+    wheel_radius: 0.0375        # meters (37.5mm wheel, 7.5cm diameter)
+    wheelbase: 0.18             # meters (front-to-rear axle distance, measured)
+    track_width: 0.16           # meters (left-right wheel centre distance, measured)
+    steering_ratio: 2.0         # k = Rs/Rk (servo-horn / knuckle-arm radius ratio, for sine model)
+    # Note: sine model: servo_angle = arcsin(sin(wheel_angle) / k)
+
+# RPLidar C1 Configuration
+rplidar_node:
+  ros__parameters:
+    serial_port: "/dev/rplidar"
+    serial_baudrate: 460800
+    frame_id: "lidar_link"
+    inverted: false
+    angle_compensate: true
+    flip_x_axis: true  # Front/back flip correction
+    scan_mode: "Standard"
+
+# Camera Configuration
+# Infrared camera without IR-cut — corrects reddish distortion via ColourGains
+# 320x240: streaming-optimised (minimal overhead)
+# 640x480: when high resolution is needed
+camera:  # node name = 'camera'
+  ros__parameters:
+    width: 640
+    height: 480
+    format: "BGR888"
+    # format: "MJPEG"  # Hardware JPEG - not supported by this camera
+    # 15 fps = 66666 microseconds
+    FrameDurationLimits: [66666, 66666]
+    AwbEnable: false
+    ColourGains: [0.9, 1.0]
+    AeEnable: false
+    ExposureTime: 10000
+    AnalogueGain: 1.5
+    NoiseReductionMode: 1
+    Contrast: 0.75
+    Brightness: 0.05
+    # The OV5647 default CCM is intended for environments with an IR-cut filter →
+    # causes colour distortion on an IR camera.
+    # Override with the identity matrix to disable libcamera's CCM.
+    ColourCorrectionMatrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    # Distortion correction (640x480 capture → undistort+resize → publish 480x360 image_raw)
+    # Calibration values (referenced to 640x480 = measurements at 480x360 × 4/3)
+    undistort.fx: 387.89
+    undistort.fy: 387.19
+    undistort.cx: 312.63
+    undistort.cy: 229.36
+    # OV5647 checkerboard calibration result
+    undistort.k1: -0.3675
+    undistort.k2: 0.1717
+    undistort.p1: -0.0021
+    undistort.p2: -0.0009
+    undistort.k3: -0.0445
+    # Distortion-correction strength: 0.0=off, 0.7=98° FOV (recommended), 1.0=full correction (79°)
+    undistort.dist_scale: 0.7
+    # Output resolution (0 = keep input resolution)
+    undistort.out_width: 480
+    undistort.out_height: 360
+
+# RF2O Laser Odometry Configuration
+rf2o_laser_odometry:
+  ros__parameters:
+    laser_scan_topic: "/scan"
+    odom_topic: "/odom"
+    publish_tf: true
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    init_pose_from_topic: ""  # Must be empty string to start immediately without waiting for initial pose
+    freq: 20.0

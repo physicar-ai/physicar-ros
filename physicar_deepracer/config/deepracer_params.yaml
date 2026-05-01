@@ -1,0 +1,7 @@
+# DeepRacer node parameters
+
+deepracer:
+  ros__parameters:
+    action_selection: greedy  # 'greedy' or 'stochastic'
+    pan: 0.0
+    tilt: -15
