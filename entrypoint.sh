@@ -52,18 +52,11 @@ fi
 
 source "$ROS2_WS/install/setup.bash"
 
-# DDS isolation (see /opt/physicar/fastdds-lo.xml for the long story):
-#   * SUBNET keeps SPDP multicast working across the container/host boundary.
-#     LOCALHOST mode in Jazzy ends up on the legacy ROS_LOCALHOST_ONLY code
-#     path, which the container PID namespace breaks.
-#   * The XML profile binds every transport to 127.0.0.1, so traffic still
-#     can't escape onto the WiFi NIC -- other kits on the same network
-#     can't see our topics.
-#   * UDP-only is enforced inside the XML (useBuiltinTransports=false), so
-#     SHM is fully disabled -- it would otherwise drop across UID boundaries
-#     between root container nodes and the physicar host user.
+# DDS: UDP-only on loopback for host-container communication
+# - SHM disabled (works across UID boundaries: container root ↔ host physicar)
+# - 127.0.0.1 only (no WiFi leak, multiple kits on same network won't conflict)
+export FASTRTPS_DEFAULT_PROFILES_FILE="$SCRIPT_DIR/fastdds-lo.xml"
 export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
-export FASTRTPS_DEFAULT_PROFILES_FILE=/opt/physicar/fastdds-lo.xml
 
 # Launch: SIM=true → Gazebo simulation, otherwise → real robot
 if [ "$SIM" = "true" ]; then

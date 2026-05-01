@@ -142,9 +142,12 @@ Nodes that run:
 - `scan_filter_node`, `deepracer_node`, `joy_node`, `joy_teleop_node`,
   `agent_node`, `webserver_node` — bit-for-bit the same as on hardware.
 - `ros_gz_bridge` (`parameter_bridge`) — bridges:
-  - **Gz → ROS 2:** `/imu`, `/scan`, `/odom`, `/joint_states`, `/camera/image_raw`, `/clock`
+  - **Gz → ROS 2:** `/imu`, `/scan`, `/odom`, `/joint_states`, `/camera/image_raw`, `/clock`, `/model/physicar/tf`
   - **ROS 2 → Gz:** `/cmd_vel`, `/camera/pan`, `/camera/tilt`
   - `GZ_PARTITION=physicar` so it only sees our world.
+- `tf_remap_node` — remaps Gazebo-namespaced TF frames (`physicar/odom`,
+  `physicar/base_footprint`) to standard ROS 2 names (`odom`, `base_footprint`)
+  so SLAM/Nav2 can work without additional configuration.
 - `image_transport republish raw → compressed` — provides `/camera/image_raw/compressed`.
 
 Host-side requirements (handled by `physicar-sim` / Codespaces):

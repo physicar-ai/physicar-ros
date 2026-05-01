@@ -212,9 +212,22 @@ def generate_launch_description():
             '/camera/pan@std_msgs/msg/Float64]gz.msgs.Double',
             '/camera/tilt@std_msgs/msg/Float64]gz.msgs.Double',
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+            '/model/physicar/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
         ],
         output='log',
         additional_env={'GZ_PARTITION': 'physicar'},
+        respawn=True,
+        respawn_delay=2.0,
+    )
+
+    # TF Remap: physicar/odom → odom, physicar/base_footprint → base_footprint
+    # Needed for SLAM/Nav2 which expect standard frame names
+    tf_remap = Node(
+        package='physicar_bringup',
+        executable='tf_remap_node.py',
+        name='tf_remap',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
         respawn=True,
         respawn_delay=2.0,
     )
@@ -233,6 +246,7 @@ def generate_launch_description():
     return LaunchDescription([
         # Gazebo bridge (Gz ↔ ROS2 topics) — container has --network host
         gz_bridge,
+        tf_remap,
         image_republish,
         # ROS nodes only — no hardware, no system processes
         robot_state_publisher,
