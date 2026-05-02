@@ -1214,6 +1214,7 @@ def tool(
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
     html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img class="part-image" src="$2" alt="$1" onclick="window.open(this.src,\'_blank\')" style="max-width:240px;max-height:180px;border-radius:6px;cursor:pointer">');
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent)">$1</a>');
     return html;
   },

@@ -15,13 +15,12 @@ from typing import Annotated, Optional
 from pydantic import Field
 
 from physicar_agent import topic
-from physicar_agent.core import get_stop_event
 
 from physicar_interfaces.msg import Audio
 import threading
 import time
 
-_stop_event = get_stop_event("music")
+_stop_event = threading.Event()
 _CHANNEL = "music"
 _ATTRIBUTION = "Preview provided courtesy of iTunes."
 

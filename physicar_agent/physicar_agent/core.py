@@ -28,21 +28,6 @@ from physicar_interfaces.msg import Audio
 
 
 # ============================================
-# Per-channel stop-event management (shared between tools)
-# ============================================
-_channel_stop_events: Dict[str, threading.Event] = {}
-_channel_lock = threading.Lock()
-
-
-def get_stop_event(channel: str) -> threading.Event:
-    """Return per-channel stop event (creating if missing)"""
-    with _channel_lock:
-        if channel not in _channel_stop_events:
-            _channel_stop_events[channel] = threading.Event()
-        return _channel_stop_events[channel]
-
-
-# ============================================
 # Response helper functions
 # ============================================
 
@@ -328,6 +313,12 @@ class _AgentCore:
         self._discover_services()        # services
         self._discover_actions()         # actions
         
+        # Periodic re-discovery: pick up topics/services that appear after
+        # initial startup (e.g. rf2o /odom which needs /scan_filtered first).
+        self._refresh_timer = self._node.create_timer(
+            2.0, self._periodic_refresh
+        )
+        
         # Background spin removed — agent_node owns spinning
         # self._start_spin_thread()
     
@@ -513,6 +504,12 @@ class _AgentCore:
         if self._owns_node and rclpy.ok():
             self._node.destroy_node()
     
+    def _periodic_refresh(self):
+        """Timer callback — discover newly appeared topics, services, and actions."""
+        self.refresh_topics()
+        self._refresh_services()
+        self._refresh_actions()
+
     def refresh_topics(self):
         """Refresh topic list (discover new topics, auto-detect QoS)"""
         topic_list = self._node.get_topic_names_and_types()
@@ -541,6 +538,62 @@ class _AgentCore:
             self._node.get_logger().info(f"Subscribed to {new_count} new topics")
         
         return new_count
+    
+    def _refresh_services(self):
+        """Discover newly appeared services and create clients."""
+        service_list = self._node.get_service_names_and_types()
+        new_count = 0
+        for name, types in service_list:
+            if name in self._service_clients:
+                continue
+            if not self._should_create_service_client(name):
+                continue
+            if not types:
+                continue
+            srv_class = _get_service_class(types[0])
+            if srv_class is None:
+                continue
+            client = self._node.create_client(srv_class, name)
+            self._service_clients[name] = (client, srv_class)
+            new_count += 1
+        if new_count > 0:
+            self._node.get_logger().info(f"Registered {new_count} new service clients")
+    
+    def _refresh_actions(self):
+        """Discover newly appeared actions and create clients."""
+        try:
+            from rclpy.action import ActionClient
+        except ImportError:
+            return
+        topic_list = self._node.get_topic_names_and_types()
+        action_names = set()
+        for t, _ in topic_list:
+            if '/_action/status' in t:
+                action_names.add(t.replace('/_action/status', ''))
+        new_count = 0
+        for action_name in action_names:
+            if action_name in self._action_clients:
+                continue
+            if not self._should_create_action_client(action_name):
+                continue
+            feedback_topic = f"{action_name}/_action/feedback"
+            action_type_str = None
+            for t, types in topic_list:
+                if t == feedback_topic and types:
+                    full_type = types[0]
+                    if '_FeedbackMessage' in full_type:
+                        action_type_str = full_type.replace('_FeedbackMessage', '')
+                    break
+            if not action_type_str:
+                continue
+            action_class = _get_action_class(action_type_str)
+            if action_class is None:
+                continue
+            client = ActionClient(self._node, action_class, action_name)
+            self._action_clients[action_name] = (client, action_class)
+            new_count += 1
+        if new_count > 0:
+            self._node.get_logger().info(f"Registered {new_count} new action clients")
     
     @property
     def node(self):
@@ -825,42 +878,6 @@ def shutdown():
     if _core:
         _core.shutdown()
         _core = None
-
-
-# ============================================
-# Backwards compatibility (deprecated)
-# ============================================
-
-# Keep the old API (without warnings)
-state = topic  # state['/odom'] → topic['/odom']
-
-def publish(name: str, msg):
-    """[deprecated] Prefer topic.pub()"""
-    topic.pub(name, msg)
-
-def call_service(name: str, request=None, timeout: float = 5.0) -> Any:
-    """[deprecated] Prefer service()"""
-    return service(name, request, timeout)
-
-def call_action(name: str, goal=None, timeout: float = 30.0, feedback_callback: Callable = None) -> Any:
-    """[deprecated] Prefer action()"""
-    return action(name, goal, timeout, feedback_callback)
-
-def services() -> list:
-    """[deprecated] Prefer service.list()"""
-    return service.list()
-
-def actions() -> list:
-    """[deprecated] Prefer action.list()"""
-    return action.list()
-
-def get_node():
-    """[deprecated] Prefer node"""
-    return _get_core().node
-
-def refresh_topics() -> int:
-    """[deprecated] Prefer topic.refresh()"""
-    return topic.refresh()
 
 
 # Register atexit so cleanup runs on process exit

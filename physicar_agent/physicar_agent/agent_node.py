@@ -24,6 +24,7 @@ System tools (reserved, cannot be registered):
 import json
 import rclpy
 from rclpy.node import Node
+from rclpy.callback_groups import ReentrantCallbackGroup
 from std_msgs.msg import Empty
 
 from physicar_interfaces.srv import (
@@ -52,24 +53,36 @@ class AgentNode(Node):
         tool_count = registry.init_tools()
         self.get_logger().info(f"Loaded {tool_count} tools into cache")
         
+        # ReentrantCallbackGroup lets service callbacks run concurrently
+        # with topic subscription callbacks.  Without this, a long-running
+        # tool call (e.g. control loop with time.sleep) blocks all topic
+        # updates and topic.get('/odom') returns stale data.
+        self._srv_cb_group = ReentrantCallbackGroup()
+        
         # Create services
         self.list_srv = self.create_service(
-            ToolList, '/agent/tool/list', self.handle_list
+            ToolList, '/agent/tool/list', self.handle_list,
+            callback_group=self._srv_cb_group
         )
         self.get_srv = self.create_service(
-            ToolGet, '/agent/tool/get', self.handle_get
+            ToolGet, '/agent/tool/get', self.handle_get,
+            callback_group=self._srv_cb_group
         )
         self.call_srv = self.create_service(
-            ToolCall, '/agent/tool/call', self.handle_call
+            ToolCall, '/agent/tool/call', self.handle_call,
+            callback_group=self._srv_cb_group
         )
         self.set_srv = self.create_service(
-            ToolSet, '/agent/tool/set', self.handle_set
+            ToolSet, '/agent/tool/set', self.handle_set,
+            callback_group=self._srv_cb_group
         )
         self.delete_srv = self.create_service(
-            ToolDelete, '/agent/tool/delete', self.handle_delete
+            ToolDelete, '/agent/tool/delete', self.handle_delete,
+            callback_group=self._srv_cb_group
         )
         self.reset_srv = self.create_service(
-            ToolReset, '/agent/tool/reset', self.handle_reset
+            ToolReset, '/agent/tool/reset', self.handle_reset,
+            callback_group=self._srv_cb_group
         )
         
         # Subscribe to reload topic
@@ -234,8 +247,15 @@ def main(args=None):
     rclpy.init(args=args)
     node = AgentNode()
     
+    # MultiThreadedExecutor allows topic callbacks to fire while a
+    # service callback (e.g. control tool's blocking loop) is running.
+    # Without this, topic.get('/odom') never updates during tool execution.
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

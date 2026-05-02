@@ -600,9 +600,9 @@ def init_tools() -> int:
     Returns:
         number of tools loaded
     """
-    # Initialise the folder + auto-copy missing builtins (existing files preserved)
+    # Initialise the folder + always sync builtins to latest version
     TOOLS_PATH.mkdir(parents=True, exist_ok=True)
-    _copy_builtin_tools(overwrite=False)
+    _copy_builtin_tools(overwrite=True)
     
     # Create the venv up-front
     _ensure_venv()

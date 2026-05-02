@@ -14,7 +14,6 @@ install(PROGRAMS
   scripts/audio_node.py
   scripts/cmd_vel_adapter_node.py
   scripts/topic_watchdog_node.py
-  scripts/tf_remap_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

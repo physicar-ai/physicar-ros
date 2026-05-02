@@ -25,13 +25,13 @@ Compared to robot.launch.py, the following are EXCLUDED:
   - physicar_driver (serial/Yahboom board)
   - camera_ros (libcamera)
   - rplidar_ros (serial LiDAR)
-  - rf2o_odometry (laser odom — Gazebo provides /odom directly)
   - audio_node (no audio hardware)
   - setup_audio / setup_hotspot / setup_nginx
 
 The following run identically to the real robot:
   - robot_state_publisher (TF from URDF)
   - scan_filter (/scan → /scan_filtered)
+  - rf2o_odometry (LiDAR-based /odom — same as real car)
   - deepracer_node (inference, always runs)
   - agent_node (AI agent tools)
   - webserver_node (REST API on port 8000)
@@ -74,10 +74,12 @@ def generate_launch_description():
     # Package directories
     pkg_description = get_package_share_directory('physicar_description')
     pkg_teleop = get_package_share_directory('physicar_teleop')
+    pkg_bringup = get_package_share_directory('physicar_bringup')
 
     # URDF file
     urdf_file = os.path.join(pkg_description, 'urdf', 'physicar.urdf.xacro')
     teleop_config = os.path.join(pkg_teleop, 'config', 'joy_mapping.yaml')
+    driver_config = os.path.join(pkg_bringup, 'config', 'driver_params.yaml')
 
     # ── Robot Description (same URDF as real robot) ──
     robot_description = ParameterValue(
@@ -205,14 +207,12 @@ def generate_launch_description():
         arguments=[
             '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
             '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
-            '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model',
             '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
             '/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist',
             '/camera/pan@std_msgs/msg/Float64]gz.msgs.Double',
             '/camera/tilt@std_msgs/msg/Float64]gz.msgs.Double',
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-            '/model/physicar/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
         ],
         output='log',
         additional_env={'GZ_PARTITION': 'physicar'},
@@ -220,14 +220,23 @@ def generate_launch_description():
         respawn_delay=2.0,
     )
 
-    # TF Remap: physicar/odom → odom, physicar/base_footprint → base_footprint
-    # Needed for SLAM/Nav2 which expect standard frame names
-    tf_remap = Node(
-        package='physicar_bringup',
-        executable='tf_remap_node.py',
-        name='tf_remap',
-        output='screen',
-        parameters=[{'use_sim_time': True}],
+    # RF2O Laser Odometry — identical to real car (robot.launch.py)
+    # Publishes /odom topic AND odom→base_footprint TF from /scan_filtered.
+    # Gazebo's internal pose TF is NOT bridged — sim uses rf2o exclusively
+    # for parity with the real robot.
+    rf2o_odometry = Node(
+        package='rf2o_laser_odometry',
+        executable='rf2o_laser_odometry_node',
+        name='rf2o_laser_odometry',
+        output='log',
+        arguments=['--ros-args', '--log-level', 'error'],
+        parameters=[
+            driver_config,
+            {
+                'laser_scan_topic': '/scan_filtered',
+                'use_sim_time': True,
+            },
+        ],
         respawn=True,
         respawn_delay=2.0,
     )
@@ -246,12 +255,12 @@ def generate_launch_description():
     return LaunchDescription([
         # Gazebo bridge (Gz ↔ ROS2 topics) — container has --network host
         gz_bridge,
-        tf_remap,
         image_republish,
         # ROS nodes only — no hardware, no system processes
         robot_state_publisher,
         cmd_vel_adapter,
         scan_filter,
+        rf2o_odometry,
         deepracer_node,
         agent_node,
         joy_node,
