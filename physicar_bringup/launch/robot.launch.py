@@ -160,9 +160,8 @@ def generate_launch_description():
     # Camera: camera_ros captures 640x480 → undistort+resize → publishes 480x360 image_raw
     # camera_ros publishes /camera/image_raw/compressed automatically (image_transport standard)
 
-    # RF2O Laser Odometry (LiDAR-based odometry for /odom topic)
-    # Provides odometry estimation from consecutive laser scans
-    # Uses /scan_filtered to avoid invalid readings (16m, inf, etc.)
+    # RF2O Laser Odometry → /odom/laser (raw, no TF)
+    # EKF fuses this with IMU → /odom (final) + odom→base_footprint TF
     rf2o_odometry = Node(
         package='rf2o_laser_odometry',
         executable='rf2o_laser_odometry_node',
@@ -173,6 +172,20 @@ def generate_launch_description():
             driver_config,
             {'laser_scan_topic': '/scan_filtered'},
         ],
+        condition=IfCondition(use_lidar),
+        respawn=True,
+        respawn_delay=2.0,
+    )
+
+    # EKF: fuses rf2o (/odom/laser) + IMU (/imu) → /odom + TF
+    ekf_config = os.path.join(pkg_bringup, 'config', 'ekf_params.yaml')
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='log',
+        parameters=[ekf_config],
+        remappings=[('odometry/filtered', '/odom')],
         condition=IfCondition(use_lidar),
         respawn=True,
         respawn_delay=2.0,
@@ -357,6 +370,7 @@ def generate_launch_description():
         scan_filter,
         camera_driver,
         rf2o_odometry,
+        ekf_node,
         audio_node,
         deepracer_node,
         agent_node,

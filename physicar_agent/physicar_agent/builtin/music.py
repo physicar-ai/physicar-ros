@@ -14,7 +14,7 @@ results.
 from typing import Annotated, Optional
 from pydantic import Field
 
-from physicar_agent import topic
+from physicar_agent import topic, service, action, text, image
 
 from physicar_interfaces.msg import Audio
 import threading

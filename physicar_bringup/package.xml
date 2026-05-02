@@ -41,6 +41,7 @@
   <!-- Hardware Drivers -->
   <exec_depend>rplidar_ros</exec_depend>
   <exec_depend>rf2o_laser_odometry</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
 
   <!-- Agent -->
   <exec_depend>physicar_agent</exec_depend>

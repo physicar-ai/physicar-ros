@@ -31,7 +31,8 @@ Compared to robot.launch.py, the following are EXCLUDED:
 The following run identically to the real robot:
   - robot_state_publisher (TF from URDF)
   - scan_filter (/scan → /scan_filtered)
-  - rf2o_odometry (LiDAR-based /odom — same as real car)
+  - rf2o_odometry (LiDAR-based /odom/laser — raw laser odom)
+  - ekf_filter_node (fuses rf2o + IMU → /odom)
   - deepracer_node (inference, always runs)
   - agent_node (AI agent tools)
   - webserver_node (REST API on port 8000)
@@ -206,6 +207,7 @@ def generate_launch_description():
         executable='parameter_bridge',
         arguments=[
             '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
+            '/mag@sensor_msgs/msg/MagneticField[gz.msgs.Magnetometer',
             '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model',
             '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image',
@@ -214,16 +216,17 @@ def generate_launch_description():
             '/camera/tilt@std_msgs/msg/Float64]gz.msgs.Double',
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
         ],
+        remappings=[
+            ('/mag', '/imu/mag'),
+        ],
         output='log',
         additional_env={'GZ_PARTITION': 'physicar'},
         respawn=True,
         respawn_delay=2.0,
     )
 
-    # RF2O Laser Odometry — identical to real car (robot.launch.py)
-    # Publishes /odom topic AND odom→base_footprint TF from /scan_filtered.
-    # Gazebo's internal pose TF is NOT bridged — sim uses rf2o exclusively
-    # for parity with the real robot.
+    # RF2O Laser Odometry → /odom/laser (raw, no TF)
+    # EKF fuses this with IMU → /odom (final) + odom→base_footprint TF
     rf2o_odometry = Node(
         package='rf2o_laser_odometry',
         executable='rf2o_laser_odometry_node',
@@ -241,6 +244,19 @@ def generate_launch_description():
         respawn_delay=2.0,
     )
 
+    # EKF: fuses rf2o (/odom/laser) + IMU (/imu) → /odom + TF
+    ekf_config = os.path.join(pkg_bringup, 'config', 'ekf_params.yaml')
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='log',
+        parameters=[ekf_config, {'use_sim_time': True}],
+        remappings=[('odometry/filtered', '/odom')],
+        respawn=True,
+        respawn_delay=2.0,
+    )
+
     # image_transport: /camera/image_raw (raw) → /camera/image_raw/compressed (jpeg)
     image_republish = ExecuteProcess(
         cmd=[
@@ -252,6 +268,26 @@ def generate_launch_description():
         output='log',
     )
 
+    # Topic Watchdog (sim mode)
+    # Monitors /odom/laser — if rf2o gets stuck after a Gazebo world switch
+    # (sim time backward jump blocks its Rate::sleep()), kills it so
+    # respawn=True restarts it fresh.  Uses wall time (no use_sim_time)
+    # so it's immune to sim time issues.
+    topic_watchdog = TimerAction(
+        period=10.0,
+        actions=[
+            Node(
+                package='physicar_bringup',
+                executable='topic_watchdog_node.py',
+                name='topic_watchdog',
+                output='screen',
+                parameters=[{'mode': 'sim'}],
+                respawn=True,
+                respawn_delay=5.0,
+            )
+        ]
+    )
+
     return LaunchDescription([
         # Gazebo bridge (Gz ↔ ROS2 topics) — container has --network host
         gz_bridge,
@@ -261,9 +297,11 @@ def generate_launch_description():
         cmd_vel_adapter,
         scan_filter,
         rf2o_odometry,
+        ekf_node,
         deepracer_node,
         agent_node,
         joy_node,
         teleop_node,
         webserver_node,
+        topic_watchdog,
     ])

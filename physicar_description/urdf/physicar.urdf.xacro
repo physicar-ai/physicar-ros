@@ -185,7 +185,7 @@
   <joint name="imu_joint" type="fixed">
     <parent link="base_link"/>
     <child link="imu_link"/>
-    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <origin xyz="0 0 0.0275" rpy="0 0 0"/>  <!-- 6.5cm from floor (base_link is at wheel_radius=3.75cm) -->
   </joint>
 
   <!-- ========== REAR WHEELS (Passive) ========== -->

@@ -36,7 +36,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu, BatteryState, JointState, LaserScan
+from sensor_msgs.msg import Imu, MagneticField, BatteryState, JointState, LaserScan
 from std_msgs.msg import Float64, Float64MultiArray
 
 # Custom interfaces
@@ -288,6 +288,7 @@ class PhysicarDriverNode(Node):
 
         # Publishers
         self.imu_pub = self.create_publisher(Imu, '/imu', qos_sensor)
+        self.mag_pub = self.create_publisher(MagneticField, '/imu/mag', qos_sensor)
         self.battery_pub = self.create_publisher(BatteryState, '/battery_state', qos)
         self.joint_state_pub = self.create_publisher(JointState, '/joint_states', qos)
 
@@ -1394,6 +1395,17 @@ class PhysicarDriverNode(Node):
         msg.orientation_covariance[0] = -1.0
 
         self.imu_pub.publish(msg)
+
+        # Publish magnetometer data
+        mag = imu_data.get('mag')
+        if mag:
+            mag_msg = MagneticField()
+            mag_msg.header = msg.header
+            # Rosmaster_Lib returns µT; ROS MagneticField expects Tesla
+            mag_msg.magnetic_field.x = mag[0] * 1e-6
+            mag_msg.magnetic_field.y = mag[1] * 1e-6
+            mag_msg.magnetic_field.z = mag[2] * 1e-6
+            self.mag_pub.publish(mag_msg)
 
     def publish_joint_states(self):
         """Publish joint states for visualization with Ackermann geometry."""

@@ -469,7 +469,7 @@ const AGENT = {
       list.innerHTML = sorted.map(t => {
         const sys = this.systemToolNames.has(t.name);
         return `<div class="tool-item"><input type="checkbox" ${this.enabledTools.has(t.name)?'checked':''} onchange="AGENT.toggleTool('${t.name}',this.checked)">
-          <span class="tool-name${sys?' system':''}" onclick="AGENT.showToolDetail('${t.name}')">${t.name}</span>${!sys?`<span class="tool-del" onclick="AGENT.deleteTool('${t.name}')">&times;</span>`:''}</div>`;
+          <span class="tool-name${sys?' system':''}" onclick="AGENT.showToolDetail('${t.name}')">${t.name}</span></div>`;
       }).join('');
       this.saveConfig();
     } catch (e) { list.innerHTML = '<span class="cfg-label">Error: ' + e.message + '</span>'; }
@@ -485,8 +485,13 @@ const AGENT = {
 
   async resetTools() {
     if (!confirm('Reset all tools to defaults?')) return;
-    try { await api('/agent/tool/reset', { method: 'POST' }); this.enabledTools.clear(); this.knownTools.clear(); this.refreshTools(); }
-    catch (e) { showToast(e.message, true); }
+    const list = $('agent-tools-list');
+    if (list) list.innerHTML = '<span class="cfg-label">Resetting...</span>';
+    try {
+      await api('/agent/tool/reset', { method: 'POST' });
+      this.enabledTools.clear(); this.knownTools.clear();
+      this.refreshTools();
+    } catch (e) { showToast(e.message, true); if (list) list.innerHTML = ''; }
   },
 
   // ── Instructions preview/editor ──
@@ -504,7 +509,6 @@ const AGENT = {
     const current = ta ? (ta.value || '') : '';
     const modal = document.createElement('div');
     modal.className = 'tool-modal-overlay';
-    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
     modal.innerHTML = `
       <div class="tool-modal">
         <div class="tool-modal-header">
@@ -535,22 +539,23 @@ const AGENT = {
   },
 
   // ── Tool detail / edit / add modal ──
-  // Open a modal showing the tool's Python code. Editable for non-system
-  // tools; read-only for system tools. Definition (name/description/params)
-  // is auto-derived from the code's signature + docstring on save, so there
-  // is no separate definition editor.
+  // Open a modal showing the tool's definition + code in tabs.
+  // Definition tab: read-only JSON view.
+  // Code tab: editable for non-system tools; disabled for system tools.
   async showToolDetail(name) {
     const isSystem = this.systemToolNames.has(name);
-    let code = '';
+    let code = '', definition = {};
     try {
       const res = await api('/agent/tool/get/' + name + '?include_code=true');
       const data = await res.json();
       code = (data && (data.code || (data.tool && data.tool.code))) || '';
+      definition = { name: data.name, description: data.description, properties: data.properties };
     } catch (e) {
       showToast('Failed to load tool: ' + e.message, true);
       return;
     }
     if (!code) code = isSystem ? '# Source not available for system tools' : '# No code available';
+    const defHtml = this._buildDefHtml(definition);
     const modal = document.createElement('div');
     modal.className = 'tool-modal-overlay';
     modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
@@ -558,20 +563,108 @@ const AGENT = {
       <div class="tool-modal">
         <div class="tool-modal-header">
           <span class="tool-modal-title">${name}${isSystem ? ' <span class="system-badge">system</span>' : ''}</span>
+          <div style="flex:1"></div>
+          <button class="tool-modal-close" onclick="AGENT.closeToolModal()">&times;</button>
+        </div>
+        <div class="tool-modal-tabs">
+          <button class="tool-tab active" data-tab="definition" onclick="AGENT._switchToolTab('definition')">Definition</button>
+          <button class="tool-tab${isSystem ? ' disabled' : ''}" data-tab="code" onclick="AGENT._switchToolTab('code')"${isSystem ? ' disabled' : ''}>Code</button>
         </div>
         <div class="tool-modal-body">
-          <div id="ace-code-container" class="ace-editor-host"></div>
+          <div class="tool-tab-content active" data-tab="definition">
+            ${defHtml}
+          </div>
+          <div class="tool-tab-content" data-tab="code">
+            <div id="ace-code-container" class="ace-editor-host"></div>
+          </div>
         </div>
         <div class="tool-modal-footer">
-          ${!isSystem ? `<button class="btn-primary" onclick="AGENT.saveTool('${name}')">Save</button>` : ''}
-          <button class="btn-secondary" onclick="AGENT.closeToolModal()">Close</button>
+          ${!isSystem ? `<button class="btn-primary tool-save-btn" disabled style="display:none" onclick="AGENT.saveTool('${name}')">Save</button>` : ''}
+          <div style="flex:1"></div>
+          ${!isSystem ? `<button class="btn-icon tool-delete-btn" onclick="AGENT.deleteToolFromModal('${name}')" title="Delete">🗑</button>` : ''}
         </div>
       </div>`;
     document.body.appendChild(modal);
     this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
     document.addEventListener('keydown', this._modalEsc);
-    this._initAceEditor('ace-code-container', code, isSystem, 'python');
-    this._aceCodeEditor = this._aceLastEditor;
+    this._toolModalDirty = false;
+    if (!isSystem) {
+      this._initAceEditor('ace-code-container', code, false, 'python');
+      this._aceCodeEditor = this._aceLastEditor;
+      // Track changes to show Save button
+      if (this._aceCodeEditor) {
+        const origCode = code;
+        this._aceCodeEditor.session.on('change', () => {
+          const dirty = this._aceCodeEditor.getValue() !== origCode;
+          this._toolModalDirty = dirty;
+          const saveBtn = document.querySelector('.tool-save-btn');
+          if (saveBtn) saveBtn.disabled = !dirty;
+        });
+      }
+    }
+  },
+
+  _escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
+
+  _buildDefHtml(def) {
+    const esc = this._escHtml.bind(this);
+    const props = def.properties || [];
+    let propsHtml = '';
+    if (Array.isArray(props) && props.length) {
+      propsHtml = props.map(p => {
+        const req = p.required ? '<span class="def-required">required</span>' : '<span class="def-optional">optional</span>';
+        return `<div class="def-prop">
+          <div class="def-prop-header">
+            <span class="def-prop-name">${esc(p.name || '')}</span>
+            <span class="def-prop-type">${esc(p.type || 'any')}</span>
+            ${req}
+          </div>
+          ${p.description ? `<div class="def-prop-desc">${esc(p.description)}</div>` : ''}
+        </div>`;
+      }).join('');
+    } else {
+      propsHtml = '<div class="def-empty">No parameters</div>';
+    }
+    return `<div class="def-card">
+      <div class="def-section">
+        <div class="def-label">Name</div>
+        <div class="def-value" style="font-family:var(--mono,ui-monospace,monospace);font-weight:600">${esc(def.name || '')}</div>
+      </div>
+      <div class="def-section">
+        <div class="def-label">Description</div>
+        <div class="def-value" style="white-space:pre-line">${def.description ? esc(def.description) : '<span class="def-empty">No description</span>'}</div>
+      </div>
+      <div class="def-section">
+        <div class="def-label">Parameters</div>
+        <div class="def-props">${propsHtml}</div>
+      </div>
+    </div>`;
+  },
+
+  _switchToolTab(tab) {
+    document.querySelectorAll('.tool-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.querySelectorAll('.tool-tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === tab));
+    // Show/hide Save based on tab (Delete always visible)
+    const saveBtn = document.querySelector('.tool-save-btn');
+    if (saveBtn) saveBtn.style.display = (tab === 'code') ? '' : 'none';
+    // Resize ace on tab switch
+    if (tab === 'code' && this._aceCodeEditor) {
+      setTimeout(() => this._aceCodeEditor.resize(), 0);
+    }
+  },
+
+  async deleteToolFromModal(name) {
+    if (!confirm('Delete "' + name + '"?')) return;
+    try {
+      await api('/agent/tool/delete/' + name, { method: 'POST' });
+      this.enabledTools.delete(name);
+      this.knownTools.delete(name);
+      this.closeToolModal();
+      this.refreshTools();
+      showToast('Deleted "' + name + '"');
+    } catch (e) { showToast(e.message, true); }
   },
 
   showAddToolDialog() {
@@ -598,6 +691,8 @@ def tool(
       <div class="tool-modal">
         <div class="tool-modal-header">
           <span class="tool-modal-title">New tool</span>
+          <div style="flex:1"></div>
+          <button class="tool-modal-close" onclick="AGENT.closeToolModal()">&times;</button>
         </div>
         <div class="tool-modal-body">
           <label>Tool name</label>
@@ -606,8 +701,8 @@ def tool(
           <div id="ace-new-container" class="ace-editor-host"></div>
         </div>
         <div class="tool-modal-footer">
+          <div style="flex:1"></div>
           <button class="btn-primary" onclick="AGENT.addTool()">Add</button>
-          <button class="btn-secondary" onclick="AGENT.closeToolModal()">Cancel</button>
         </div>
       </div>`;
     document.body.appendChild(modal);
@@ -1202,21 +1297,15 @@ def tool(
 
   // ── Markdown ──
   _formatMarkdown(text) {
-    text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const lines = text.split('\n');
-    let html = '', inList = false;
-    for (const line of lines) {
-      if (line.match(/^#{1,3}\s/)) { if (inList) { html += '</ul>'; inList = false; } html += '<strong style="display:block;margin-top:0.5em">' + line.replace(/^#+\s*/, '') + '</strong>'; }
-      else if (line.match(/^\s*[-*]\s/)) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + line.replace(/^\s*[-*]\s*/, '') + '</li>'; }
-      else { if (inList) { html += '</ul>'; inList = false; } html += (line === '' ? '<br>' : line + '<br>'); }
+    if (typeof marked !== 'undefined' && marked.parse) {
+      try {
+        return marked.parse(text, { breaks: true });
+      } catch (e) {
+        // fallback below
+      }
     }
-    if (inList) html += '</ul>';
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img class="part-image" src="$2" alt="$1" onclick="window.open(this.src,\'_blank\')" style="max-width:240px;max-height:180px;border-radius:6px;cursor:pointer">');
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent)">$1</a>');
-    return html;
+    // Fallback: basic escaping + line breaks
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   },
 
   // ── DOM (pair-based rendering reflecting the API MessagePair model) ──

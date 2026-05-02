@@ -96,11 +96,12 @@ camera:  # node name = 'camera'
     undistort.out_height: 360
 
 # RF2O Laser Odometry Configuration
+# Publishes to /odom/laser (raw). EKF fuses with IMU → /odom (final).
 rf2o_laser_odometry:
   ros__parameters:
     laser_scan_topic: "/scan"
-    odom_topic: "/odom"
-    publish_tf: true
+    odom_topic: "/odom/laser"
+    publish_tf: false           # EKF publishes odom→base_footprint TF
     base_frame_id: "base_footprint"
     odom_frame_id: "odom"
     init_pose_from_topic: ""  # Must be empty string to start immediately without waiting for initial pose

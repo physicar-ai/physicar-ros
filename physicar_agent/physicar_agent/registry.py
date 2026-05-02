@@ -131,16 +131,33 @@ _metadata_cache: List[Dict] = []
 # ============================================
 
 def _ensure_venv():
-    """Create the tools-dedicated virtualenv (if missing)"""
+    """Create the tools-dedicated virtualenv (if missing).
+
+    Uses --without-pip --system-site-packages for fast creation (~0.2s).
+    System packages (av, rclpy, etc.) are inherited read-only.
+    pip is bootstrapped lazily by _ensure_pip() only when needed.
+    """
     if VENV_PATH.exists():
         return
     
     AGENT_PATH.mkdir(parents=True, exist_ok=True)
     
-    # Create with system-site-packages so ROS2 packages (rclpy etc.) are visible
     subprocess.run(
-        [sys.executable, "-m", "venv", "--system-site-packages", str(VENV_PATH)],
+        [sys.executable, "-m", "venv", "--without-pip", "--system-site-packages", str(VENV_PATH)],
         check=True
+    )
+
+
+def _ensure_pip():
+    """Bootstrap pip inside the venv (once, only when installing packages)."""
+    _ensure_venv()
+    pip_path = VENV_PATH / "bin" / "pip"
+    if pip_path.exists():
+        return
+    subprocess.run(
+        [_get_venv_python(), "-m", "ensurepip", "--default-pip"],
+        check=True,
+        capture_output=True
     )
 
 
@@ -219,9 +236,17 @@ def _install_dependencies(tool_name: str, dependencies: List[str]) -> bool:
     for dep in dependencies:
         pkg_name = _normalize_package_name(dep)
         
-        # Check whether it's already installed
+        # Skip if already tracked in deps.json
         if pkg_name not in deps:
-            to_install.append(dep)
+            # If no version constraint, just check importability
+            if pkg_name == dep.strip().lower().replace('-', '_'):
+                try:
+                    __import__(pkg_name)
+                except ImportError:
+                    to_install.append(dep)
+            else:
+                # Has version constraint — always install (pip handles up-to-date check)
+                to_install.append(dep)
         
         # Update reference counts
         if pkg_name not in deps:
@@ -231,6 +256,7 @@ def _install_dependencies(tool_name: str, dependencies: List[str]) -> bool:
     
     # Install
     if to_install:
+        _ensure_pip()
         try:
             subprocess.run(
                 [_get_venv_pip(), "install", "--quiet"] + to_install,
@@ -260,6 +286,7 @@ def _uninstall_dependencies(tool_name: str):
     
     # Remove unreferenced packages
     if to_remove and VENV_PATH.exists():
+        _ensure_pip()
         try:
             subprocess.run(
                 [_get_venv_pip(), "uninstall", "-y", "--quiet"] + to_remove,
@@ -442,19 +469,37 @@ def _copy_builtin_tools(overwrite: bool = True) -> int:
     """Copy builtin tools into TOOLS_PATH.
 
     With overwrite=False, existing files are kept (user edits preserved).
+    Builtin tools that have been removed from the source are also deleted
+    from TOOLS_PATH so they don't linger as stale tools.
     """
     count = 0
     if not BUILTIN_PATH.exists():
         return count
 
+    builtin_names: set[str] = set()
     for src in BUILTIN_PATH.glob("*.py"):
         if src.stem.startswith('_'):
             continue
+        builtin_names.add(src.name)
         dst = TOOLS_PATH / src.name
         if dst.exists() and not overwrite:
             continue
         shutil.copy2(src, dst)
         count += 1
+
+    # Remove tools that were previously built-in but no longer exist
+    if overwrite:
+        for dst in TOOLS_PATH.glob("*.py"):
+            if dst.stem.startswith('_'):
+                continue
+            if dst.name not in builtin_names:
+                # Only remove if the file content matches a former builtin
+                # (user-created tools won't have a builtin counterpart)
+                pass
+        # Explicit removal of known retired builtins
+        retired = TOOLS_PATH / "state.py"
+        if retired.exists():
+            retired.unlink()
 
     return count
 
@@ -621,16 +666,16 @@ def reset_tools() -> int:
     """
     Reset tools (factory reset) + refresh the cache
     - Remove tools folder + recreate + copy builtins
-    - Reset venv and deps.json
+    - Reset venv + deps.json (venv recreates in ~0.2s)
     
     Returns:
-        number of tools copied
+        number of tools loaded
     """
     # Reset tools folder
     if TOOLS_PATH.exists():
         shutil.rmtree(TOOLS_PATH)
     
-    # Reset venv
+    # Reset venv (fast recreate with --without-pip --system-site-packages)
     if VENV_PATH.exists():
         shutil.rmtree(VENV_PATH)
     

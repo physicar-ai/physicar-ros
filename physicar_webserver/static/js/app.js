@@ -272,6 +272,10 @@ function updateState(d) {
     $('p-steering').textContent = toDeg(d.cmd.steering || 0).toFixed(0) + '\u00b0';
     $('p-pantilt').textContent = toDeg(d.cmd.pan || 0).toFixed(0) + '\u00b0 / ' + toDeg(d.cmd.tilt || 0).toFixed(0) + '\u00b0';
   }
+  if (d.imu && d.imu.acceleration) {
+    const a = d.imu.acceleration;
+    $('p-accel').textContent = (a.x||0).toFixed(2) + ' m/s²';
+  }
 }
 
 function startLidarStream() {

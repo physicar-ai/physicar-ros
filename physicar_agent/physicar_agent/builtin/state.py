@@ -6,10 +6,10 @@ from typing import Annotated
 
 from pydantic import Field
 
-from physicar_agent import topic
+from physicar_agent import topic, service, action, text, image
 
 
-_VALID = {"camera", "lidar", "speed", "steering", "pan", "tilt", "battery"}
+_VALID = {"camera", "lidar", "imu", "speed", "steering", "pan", "tilt", "battery"}
 
 
 def _camera_jpeg_b64() -> str | None:
@@ -103,7 +103,7 @@ def _battery() -> dict | None:
 
 def tool(
     include: Annotated[list, Field(
-        description="Which items to fetch. Allowed: camera, lidar, speed, steering, pan, tilt, battery"
+        description="Which items to fetch. Allowed: camera, lidar, imu, speed, steering, pan, tilt, battery"
     )]
 ) -> list:
     """Read the robot's current sensor and actuator state.
@@ -141,6 +141,20 @@ def tool(
                 )
             else:
                 text_lines.append("lidar: unavailable")
+
+        elif it == "imu":
+            imu_data = topic.get('/imu')
+            if imu_data:
+                o = imu_data.get('orientation', {})
+                av = imu_data.get('angular_velocity', {})
+                la = imu_data.get('linear_acceleration', {})
+                text_lines.append(
+                    f"imu orientation: x={o.get('x',0):.4f} y={o.get('y',0):.4f} z={o.get('z',0):.4f} w={o.get('w',0):.4f}\n"
+                    f"imu angular_velocity: x={av.get('x',0):.4f} y={av.get('y',0):.4f} z={av.get('z',0):.4f}\n"
+                    f"imu linear_acceleration: x={la.get('x',0):.2f} y={la.get('y',0):.2f} z={la.get('z',0):.2f}"
+                )
+            else:
+                text_lines.append("imu: unavailable")
 
         elif it == "speed":
             v = _speed_mps()
@@ -181,7 +195,7 @@ def tool(
 
     contents: list = []
     if text_lines:
-        contents.append({"type": "text", "text": "\n".join(text_lines)})
+        contents.append(text("\n".join(text_lines)))
     if image_content is not None:
         contents.append(image_content)
     return contents

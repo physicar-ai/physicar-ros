@@ -336,6 +336,7 @@
         <div class="panel-title">Motion</div>
         <div class="panel-row"><span class="panel-label">Speed</span><span class="panel-value" id="p-speed">0.0 m/s</span></div>
         <div class="panel-row"><span class="panel-label">Steering</span><span class="panel-value" id="p-steering">0&deg;</span></div>
+        <div class="panel-row"><span class="panel-label">Accel</span><span class="panel-value" id="p-accel">-- m/s²</span></div>
         <div class="panel-row"><span class="panel-label">Pan / Tilt</span><span class="panel-value" id="p-pantilt">0&deg; / 0&deg;</span></div>
       </div>
       <div class="panel-section">
@@ -625,6 +626,23 @@
 </div>
 
 <script src="/static/vendor/qrcode.min.js"></script>
+<script src="/static/vendor/marked.min.js"></script>
+<script>
+if (typeof marked !== 'undefined') {
+  marked.use({
+    breaks: true, gfm: true,
+    renderer: {
+      link({ href, title, text }) {
+        const t = title ? ' title="' + title + '"' : '';
+        return '<a href="' + href + '"' + t + ' target="_blank" rel="noopener" style="color:var(--accent)">' + text + '</a>';
+      },
+      image({ href, title, text }) {
+        return '<img class="part-image" src="' + href + '" alt="' + (text||'') + '" onclick="window.open(this.src,\'_blank\')" style="max-width:240px;max-height:180px;border-radius:6px;cursor:pointer">';
+      }
+    }
+  });
+}
+</script>
 <script src="/static/js/app.js"></script>
 <script src="/static/js/wifi.js"></script>
 <script src="/static/js/bluetooth.js"></script>
@@ -632,7 +650,8 @@
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/deepracer.js"></script>
 <script src="/static/js/control.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.min.js"></script>
+<script src="/static/vendor/ace/ace.min.js"></script>
+<script>if (typeof ace !== 'undefined') ace.config.set('basePath', '/static/vendor/ace');</script>
 <script src="/static/js/agent.js"></script>
 <script>
 /* ===== Init ===== */

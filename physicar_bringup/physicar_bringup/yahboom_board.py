@@ -243,10 +243,14 @@ class YahboomBoard:
                 # Get attitude (roll, pitch, yaw) in degrees
                 attitude = self._bot.get_imu_attitude_data()
 
+                # Get magnetometer data (mx, my, mz) in µT
+                mag = self._bot.get_magnetometer_data()
+
                 self.imu_data = {
                     'accel': accel if accel else (0.0, 0.0, 0.0),
                     'gyro': gyro if gyro else (0.0, 0.0, 0.0),
-                    'attitude': attitude if attitude else (0.0, 0.0, 0.0)
+                    'attitude': attitude if attitude else (0.0, 0.0, 0.0),
+                    'mag': mag if mag else (0.0, 0.0, 0.0)
                 }
 
                 return self.imu_data
