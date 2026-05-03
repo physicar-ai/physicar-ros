@@ -65,18 +65,19 @@ camera:  # node name = 'camera'
     # format: "MJPEG"  # Hardware JPEG - not supported by this camera
     # 15 fps = 66666 microseconds
     FrameDurationLimits: [66666, 66666]
-    AwbEnable: false
-    ColourGains: [0.9, 1.0]
-    AeEnable: false
-    ExposureTime: 10000
-    AnalogueGain: 1.5
-    NoiseReductionMode: 1
-    Contrast: 0.75
-    Brightness: 0.05
+    # --- Colour / exposure tuning disabled to fall back to libcamera defaults ---
+    # AwbEnable: false
+    # ColourGains: [0.9, 1.0]
+    # AeEnable: false
+    # ExposureTime: 10000
+    # AnalogueGain: 1.5
+    # NoiseReductionMode: 1
+    # Contrast: 0.75
+    # Brightness: 0.05
     # The OV5647 default CCM is intended for environments with an IR-cut filter →
     # causes colour distortion on an IR camera.
     # Override with the identity matrix to disable libcamera's CCM.
-    ColourCorrectionMatrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    # ColourCorrectionMatrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     # Distortion correction (640x480 capture → undistort+resize → publish 480x360 image_raw)
     # Calibration values (referenced to 640x480 = measurements at 480x360 × 4/3)
     undistort.fx: 387.89
