@@ -1,0 +1,53 @@
+# PhysiCar Docker Container — profiles: sim (Codespaces) / device (RPi5)
+#
+# Usage:
+#   docker compose --profile sim    up -d   # Codespaces / SIM mode
+#   docker compose --profile device up -d   # Real device (RPi5)
+#
+# Both profiles share container_name=physicar; only one runs at a time.
+
+services:
+  sim:
+    container_name: physicar
+    image: physicar/sim:1
+    profiles: ["sim"]
+    restart: unless-stopped
+    network_mode: host
+    ipc: host
+    pid: host
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    volumes:
+      - /opt/physicar:/opt/physicar
+      - ./:/root/ros2_ws/src/physicar-ros
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      TZ: ${TZ:-UTC}
+      DISPLAY: ":1"
+      CODESPACE_NAME: ${CODESPACE_NAME:-}
+    command: bash -c 'bash /root/ros2_ws/src/physicar-ros/entrypoint.sh || sleep infinity'
+
+  device:
+    container_name: physicar
+    image: physicar/device:1
+    profiles: ["device"]
+    restart: unless-stopped
+    network_mode: host
+    ipc: host
+    pid: host
+    privileged: true
+    userns_mode: host
+    volumes:
+      - /opt/physicar:/opt/physicar
+      - ./:/root/ros2_ws/src/physicar-ros
+      - /var/run:/var/run
+      - /dev:/dev
+      - /sys:/sys
+      - /media:/media:rslave
+      - /mnt:/mnt:rslave
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      TZ: ${TZ:-UTC}
+      DISPLAY: ":1"
+    command: bash -c 'bash /root/ros2_ws/src/physicar-ros/entrypoint.sh || sleep infinity'

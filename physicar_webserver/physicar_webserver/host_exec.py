@@ -91,7 +91,8 @@ def supervisorctl(
     which can talk to any user's supervisord socket.
     """
     return host_run(
-        ["supervisorctl", action, program], timeout=timeout, check=check
+        ["supervisorctl", "-s", "unix:///tmp/supervisor.sock", action, program],
+        timeout=timeout, check=check,
     )
 
 
