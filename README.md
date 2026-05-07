@@ -36,7 +36,11 @@ physicar-ros/
 │   ├── launch/
 │   │   ├── robot.launch.py         # Real-robot launch
 │   │   └── sim.launch.py           # Gazebo (sim) launch
-│   ├── config/driver_params.yaml   # All node parameters
+│   ├── config/
+│   │   ├── driver_params.yaml       # Hardware driver parameters
+│   │   ├── ekf_params.yaml          # EKF sensor-fusion parameters
+│   │   ├── slam_params.yaml         # SLAM Toolbox config (host-side)
+│   │   └── nav2_params.yaml         # Nav2 config (host-side)
 │   ├── physicar_bringup/
 │   │   ├── yahboom_board.py        # Serial protocol for Yahboom expansion board
 │   │   └── servo_controller.py     # Servo angle clipping / mapping
@@ -479,6 +483,69 @@ End-user URLs (forwarded as port 80):
 - `/gz/` — Gazebo 3D viewer (gzweb)
 - `/vnc/` — desktop view (Gazebo Sim window, terminals)
 - `/docs` — REST API reference
+
+---
+
+## SLAM & Navigation (host-side)
+
+SLAM and Nav2 run on the **host** (Codespaces or Raspberry Pi 5), not
+inside the container. The container provides robot-specific config files
+via environment variables set in `~/.bashrc`:
+
+| Variable | Points to |
+|---|---|
+| `$SLAM_PARAMS_FILE` | `physicar_bringup/config/slam_params.yaml` |
+| `$NAV2_PARAMS_FILE` | `physicar_bringup/config/nav2_params.yaml` |
+
+### SLAM (map building)
+
+```bash
+ros2 launch slam_toolbox online_async_launch.py \
+    slam_params_file:=$SLAM_PARAMS_FILE use_sim_time:=true
+```
+
+Drive the robot (teleop / web UI) to explore the environment, then save the map:
+
+```bash
+ros2 run nav2_map_saver map_saver_cli -f ~/maps/my_map --ros-args -p use_sim_time:=true
+```
+
+### Navigation (autonomous driving)
+
+Requires a saved map. Run localization and navigation in **separate terminals**:
+
+```bash
+# Terminal 1 — localization (map_server + AMCL)
+ros2 launch nav2_bringup localization_launch.py \
+    map:=~/maps/my_map.yaml params_file:=$NAV2_PARAMS_FILE use_sim_time:=true
+
+# Terminal 2 — navigation stack
+ros2 launch nav2_bringup navigation_launch.py \
+    params_file:=$NAV2_PARAMS_FILE use_sim_time:=true
+```
+
+Send a goal via RViz2 "Nav2 Goal" button or CLI:
+
+```bash
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+    "{pose: {header: {frame_id: 'map'}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+> **Note:** `navigation_launch.py` is patched at install time to disable
+> `docking_server` and `route_server` (not needed for PhysiCar).
+> On real hardware, omit `use_sim_time:=true` (it defaults to `false`).
+
+### Key parameters (tuned for PhysiCar)
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| Controller frequency | 5 Hz | CPU-friendly for Codespaces / RPi 5 |
+| MPPI batch size | 500 | Lightweight; sufficient for indoor |
+| MPPI model_dt | 0.2 s | Matches controller period |
+| Deadband velocity | 0.3 m/s | ESC dead zone (motor won't spin below this) |
+| Min turning radius | 0.4 m | Ackermann geometry (wheelbase 0.18 m) |
+| Footprint | 0.30 × 0.22 m | Body + wheel clearance |
+| LiDAR range | 0.15 – 12.0 m | RPLiDAR C1 specs |
 
 ---
 

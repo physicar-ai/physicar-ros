@@ -36,7 +36,11 @@ physicar-ros/
 │   ├── launch/
 │   │   ├── robot.launch.py         # 실제 로봇 런치
 │   │   └── sim.launch.py           # Gazebo (sim) 런치
-│   ├── config/driver_params.yaml   # 모든 노드 파라미터
+│   ├── config/
+│   │   ├── driver_params.yaml       # 하드웨어 드라이버 파라미터
+│   │   ├── ekf_params.yaml          # EKF 센서 융합 파라미터
+│   │   ├── slam_params.yaml         # SLAM Toolbox 설정 (호스트용)
+│   │   └── nav2_params.yaml         # Nav2 설정 (호스트용)
 │   ├── physicar_bringup/
 │   │   ├── yahboom_board.py        # Yahboom 확장 보드 시리얼 프로토콜
 │   │   └── servo_controller.py     # 서보 각도 클리핑/매핑
@@ -472,6 +476,69 @@ ros2 topic list
 - `/gz/` — Gazebo 3D 뷰어 (gzweb)
 - `/vnc/` — 데스크톱 뷰 (Gazebo Sim 창, 터미널)
 - `/docs` — REST API 문서
+
+---
+
+## SLAM & 네비게이션 (호스트 측 실행)
+
+SLAM 과 Nav2 는 컨테이너 내부가 아닌 **호스트** (Codespaces 또는 라즈베리파이 5) 에서
+실행합니다. 컨테이너는 로봇 전용 설정 파일만 제공하며, `~/.bashrc` 에
+환경변수로 설정되어 있습니다:
+
+| 환경변수 | 경로 |
+|---|---|
+| `$SLAM_PARAMS_FILE` | `physicar_bringup/config/slam_params.yaml` |
+| `$NAV2_PARAMS_FILE` | `physicar_bringup/config/nav2_params.yaml` |
+
+### SLAM (맵 생성)
+
+```bash
+ros2 launch slam_toolbox online_async_launch.py \
+    slam_params_file:=$SLAM_PARAMS_FILE use_sim_time:=true
+```
+
+로봇을 조종 (텔레오프 / 웹 UI) 하여 환경을 탐색한 뒤 맵을 저장합니다:
+
+```bash
+ros2 run nav2_map_saver map_saver_cli -f ~/maps/my_map --ros-args -p use_sim_time:=true
+```
+
+### 네비게이션 (자율주행)
+
+저장된 맵이 필요합니다. localization 과 navigation 을 **별도 터미널**에서 실행합니다:
+
+```bash
+# 터미널 1 — 위치 추정 (map_server + AMCL)
+ros2 launch nav2_bringup localization_launch.py \
+    map:=~/maps/my_map.yaml params_file:=$NAV2_PARAMS_FILE use_sim_time:=true
+
+# 터미널 2 — 네비게이션 스택
+ros2 launch nav2_bringup navigation_launch.py \
+    params_file:=$NAV2_PARAMS_FILE use_sim_time:=true
+```
+
+RViz2 의 "Nav2 Goal" 버튼 또는 CLI 로 목표점을 전송합니다:
+
+```bash
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+    "{pose: {header: {frame_id: 'map'}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+> **참고:** `navigation_launch.py` 는 설치 시 `docking_server` 와
+> `route_server` 가 비활성화되도록 패치됩니다 (PhysiCar 에서는 불필요).
+> 실물 키트에서는 `use_sim_time:=true` 를 생략하세요 (기본값이 `false`).
+
+### 주요 파라미터 (PhysiCar 최적화)
+
+| 파라미터 | 값 | 이유 |
+|---|---|---|
+| 컨트롤러 주파수 | 5 Hz | Codespaces / RPi 5 CPU 부담 절감 |
+| MPPI 배치 크기 | 500 | 경량; 실내 환경에 충분 |
+| MPPI model_dt | 0.2 s | 컨트롤러 주기와 일치 |
+| 데드밴드 속도 | 0.3 m/s | ESC 데드존 (모터 최저 구동 속도) |
+| 최소 회전 반경 | 0.4 m | 아커만 기하학 (휠베이스 0.18 m) |
+| 풋프린트 | 0.30 × 0.22 m | 차체 + 바퀴 여유 |
+| LiDAR 범위 | 0.15 – 12.0 m | RPLiDAR C1 사양 |
 
 ---
 

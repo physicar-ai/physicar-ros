@@ -65,7 +65,7 @@ class CmdVelAdapterNode(Node):
         self.declare_parameter('wheelbase', 0.18)
         self.declare_parameter('max_steering', 25.0)  # degrees
         self.declare_parameter('max_speed', 3.0)      # m/s
-        self.declare_parameter('min_speed', 0.2)       # m/s (ESC dead zone)
+        self.declare_parameter('min_speed', 0.3)       # m/s (ESC dead zone)
 
         self.wheelbase = self.get_parameter('wheelbase').value
         self.max_steering_rad = math.radians(

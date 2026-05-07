@@ -40,13 +40,16 @@ REAL_WATCH_TOPICS = [
     ("/imu",                         Imu,              5.0, "physicar_driver_node"),
 ]
 
-# SIM mode: only watch rf2o and EKF — everything else comes from Gazebo bridge
-# (callback-based, self-recovers after world switch).
+# SIM mode: watch rf2o, EKF, and Gazebo bridge topics.
 # rf2o is the primary target: its Rate::sleep() blocks on sim time backward
 # jumps after a world switch, stalling /odom/laser and cascading to EKF.
+# /scan comes from ros_gz_bridge — if gz sim restarts, the bridge may lose
+# its gz-transport connection and stop forwarding. Killing it triggers
+# respawn (respawn=True in sim.launch.py), reconnecting to the new gz sim.
 SIM_WATCH_TOPICS = [
-    ("/odom/laser", Odometry,  5.0, "rf2o_laser_odometry_node"),
-    ("/odom",       Odometry, 15.0, "ekf_filter_node"),
+    ("/scan",       LaserScan, 10.0, "ros_gz_bridge"),
+    ("/odom/laser", Odometry,   5.0, "rf2o_laser_odometry_node"),
+    ("/odom",       Odometry,  15.0, "ekf_filter_node"),
 ]
 
 
