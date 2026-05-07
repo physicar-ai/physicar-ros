@@ -16,6 +16,7 @@ fi
 source /opt/ros/jazzy/setup.bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROS2_WS="${ROS2_WS:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+UPDATE_SIGNAL="/tmp/.physicar-update-ready"
 
 # --- Build with Recovery ---
 clean_build() {
@@ -24,46 +25,70 @@ clean_build() {
     cd "$ROS2_WS" && colcon build --symlink-install 2>&1
 }
 
-# Set COLCON_IGNORE markers based on environment
-if [ "$SIM" = "true" ]; then
-    touch "$ROS2_WS/src/physicar-ros/camera_ros/COLCON_IGNORE" 2>/dev/null
-    touch "$ROS2_WS/src/physicar-ros/rplidar_ros/COLCON_IGNORE" 2>/dev/null
-else
-    rm -f "$ROS2_WS/src/physicar-ros/camera_ros/COLCON_IGNORE" 2>/dev/null
-    rm -f "$ROS2_WS/src/physicar-ros/rplidar_ros/COLCON_IGNORE" 2>/dev/null
-fi
-
-echo "[entrypoint] Building..."
-cd "$ROS2_WS" && colcon build --symlink-install 2>&1
-BUILD_EXIT=$?
-
-if [ $BUILD_EXIT -eq 0 ]; then
-    echo "[entrypoint] Build succeeded."
-else
-    echo "[entrypoint] Build failed (exit $BUILD_EXIT). Retrying with clean build..."
-    clean_build
-    BUILD_EXIT=$?
-    if [ $BUILD_EXIT -eq 0 ]; then
-        echo "[entrypoint] Clean build succeeded."
+do_build() {
+    # Set COLCON_IGNORE markers based on environment
+    if [ "$SIM" = "true" ]; then
+        touch "$ROS2_WS/src/physicar-ros/camera_ros/COLCON_IGNORE" 2>/dev/null
+        touch "$ROS2_WS/src/physicar-ros/rplidar_ros/COLCON_IGNORE" 2>/dev/null
     else
-        echo "[entrypoint] Clean build also failed (exit $BUILD_EXIT). Check logs."
+        rm -f "$ROS2_WS/src/physicar-ros/camera_ros/COLCON_IGNORE" 2>/dev/null
+        rm -f "$ROS2_WS/src/physicar-ros/rplidar_ros/COLCON_IGNORE" 2>/dev/null
     fi
-fi
 
-source "$ROS2_WS/install/setup.bash"
+    echo "[entrypoint] Building..."
+    cd "$ROS2_WS" && colcon build --symlink-install 2>&1
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
+        echo "[entrypoint] Build succeeded."
+    else
+        echo "[entrypoint] Build failed (exit $exit_code). Retrying with clean build..."
+        clean_build
+        exit_code=$?
+        if [ $exit_code -eq 0 ]; then
+            echo "[entrypoint] Clean build succeeded."
+        else
+            echo "[entrypoint] Clean build also failed (exit $exit_code). Check logs."
+        fi
+    fi
+
+    source "$ROS2_WS/install/setup.bash"
+    return $exit_code
+}
 
 # DDS: UDP-only on loopback for host-container communication
-# - SHM disabled (works across UID boundaries: container root ↔ host physicar)
-# - 127.0.0.1 only (no WiFi leak, multiple kits on same network won't conflict)
 export FASTRTPS_DEFAULT_PROFILES_FILE="$SCRIPT_DIR/fastdds-lo.xml"
 export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
 
-# Launch: SIM=true → Gazebo simulation, otherwise → real robot
-if [ "$SIM" = "true" ]; then
-    ros2 launch physicar_bringup sim.launch.py || true
-else
-    ros2 launch physicar_bringup robot.launch.py || true
+# Start background updater (non-DEV mode only)
+if [ "$DEV" != "true" ] && [ -f "$SCRIPT_DIR/updater.sh" ]; then
+    echo "[entrypoint] Starting background updater..."
+    bash "$SCRIPT_DIR/updater.sh" &
 fi
 
-# Keep container alive if launch exits (for debugging)
-exec sleep infinity
+# ── Build & Launch loop ─────────────────────────────────
+rm -f "$UPDATE_SIGNAL"
+
+while true; do
+    do_build
+
+    echo "[entrypoint] Launching..."
+    if [ "$SIM" = "true" ]; then
+        ros2 launch physicar_bringup sim.launch.py &
+    else
+        ros2 launch physicar_bringup robot.launch.py &
+    fi
+    LAUNCH_PID=$!
+    wait $LAUNCH_PID 2>/dev/null
+
+    # Check if this was an update-triggered restart
+    if [ -f "$UPDATE_SIGNAL" ]; then
+        rm -f "$UPDATE_SIGNAL"
+        echo "[entrypoint] Update detected → rebuilding..."
+        continue
+    fi
+
+    # Launch exited without update signal — keep container alive for debugging
+    echo "[entrypoint] Launch exited. Container staying alive for debugging."
+    exec sleep infinity
+done
