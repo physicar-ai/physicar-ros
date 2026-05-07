@@ -18,6 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROS2_WS="${ROS2_WS:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 UPDATE_SIGNAL="/tmp/.physicar-update-ready"
 
+# Allow git operations on bind-mounted repo (host uid ≠ container uid)
+git config --global --add safe.directory "$SCRIPT_DIR" 2>/dev/null || true
+
 # --- Build with Recovery ---
 clean_build() {
     echo "[entrypoint] Running clean build..."
