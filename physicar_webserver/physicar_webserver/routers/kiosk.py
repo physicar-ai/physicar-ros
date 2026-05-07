@@ -82,12 +82,6 @@ def _load_html(filename: str) -> str:
     return html
 
 
-@router.get("/studio", response_class=HTMLResponse)
-async def studio():
-    """Studio - Multi-monitor split view (iframe composition)."""
-    return _load_html("studio.html")
-
-
 @router.get("/kiosk", response_class=HTMLResponse)
 async def kiosk():
     """

@@ -28,11 +28,12 @@ import os
 import socket
 from pathlib import Path
 
+import json as _json
+import urllib.request
+import urllib.error
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-
-from ..host_exec import HostExecError, service_control
 
 router = APIRouter(prefix="/settings/myapp", tags=["myapp"])
 
@@ -40,8 +41,8 @@ router = APIRouter(prefix="/settings/myapp", tags=["myapp"])
 CONFIG_DIR = Path("/opt/physicar/myapp")
 SCRIPT_FILE = CONFIG_DIR / "run.sh"
 LOG_FILE = CONFIG_DIR / "log"
-SYSTEMD_UNIT = "physicar-myapp.service"
-SUPERVISOR_PROGRAM = "myapp"
+
+HOST_API = "http://127.0.0.1:8001"
 
 MYAPP_PORT = 5000
 PORT_PROBE_TIMEOUT = 0.2
@@ -94,14 +95,20 @@ def _is_running() -> bool:
 
 
 def _systemctl(action: str) -> None:
+    body = _json.dumps({"action": action}).encode()
+    req = urllib.request.Request(
+        f"{HOST_API}/myapp/service",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
     try:
-        service_control(
-            action,
-            systemd_unit=SYSTEMD_UNIT,
-            supervisor_program=SUPERVISOR_PROGRAM,
-        )
-    except HostExecError as e:
-        raise HTTPException(500, str(e)) from e
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read())
+        if not data.get("ok"):
+            raise HTTPException(500, data.get("error", "unknown error"))
+    except urllib.error.URLError as e:
+        raise HTTPException(502, f"host_api unreachable: {e}") from e
 
 
 class MyAppConfig(BaseModel):

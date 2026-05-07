@@ -73,10 +73,11 @@ const PlatformAuth = {
     }
   },
 
-  showSigninModal() {
-    if (document.querySelector('.signin-modal-overlay')) return;
+  showSigninModal(section) {
+    PlatformAuth._openSection = section || null;
+    document.querySelector('.physicar-modal-overlay')?.remove();
     const overlay = document.createElement('div');
-    overlay.className = 'signin-modal-overlay';
+    overlay.className = 'physicar-modal-overlay';
     // Use mousedown+up tracking (via data-close-on-backdrop) so a text-drag
     // that ends outside the modal does NOT close it. Plain onclick was buggy
     // because clicking a label/text and dragging would fire on the overlay.
@@ -98,29 +99,282 @@ const PlatformAuth = {
       return;
     }
 
-    overlay.innerHTML = `<div class="signin-modal"><h3>PHYSICAR AI Sign In</h3>
-      <div class="signin-field"><label>Email</label><input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email"></div>
-      <div class="signin-field"><label>Password</label><input type="password" id="signin-password" placeholder="Password" autocomplete="current-password"></div>
-      <div class="signin-error" id="signin-error"></div>
-      <div class="signin-actions"><button class="btn-cancel" onclick="PlatformAuth._closeSigninModal()">Cancel</button><button class="btn-signin" id="signin-submit">Sign In</button></div>
-      <div class="signin-info">Sign up at <a href="https://physicar.ai" target="_blank" style="color:var(--accent)">physicar.ai</a></div></div>`;
+    overlay.innerHTML = `<div class="signin-modal">
+      <div class="auth-close" onclick="PlatformAuth._closeSigninModal()">&times;</div>
+      <div class="auth-branding"><img src="/static/img/physicar-ai-logo.png" alt="Physicar AI" class="auth-logo"><p class="auth-branding-desc" id="auth-branding-desc">Sign in to your Physicar AI account</p></div>
+
+      <!-- Login section -->
+      <div id="auth-login-section">
+        <form id="login-form">
+          <div class="auth-form-group" data-field="email"><label for="signin-email">Email</label><input type="email" id="signin-email" required maxlength="254" autocomplete="email" /></div>
+          <div class="auth-form-group" data-field="password"><label for="signin-password">Password</label><input type="password" id="signin-password" required maxlength="128" autocomplete="current-password" /></div>
+          <div class="auth-form-message" id="login-msg"></div>
+          <div class="auth-resend-notice" id="resend-notice" style="display:none"><p>Please verify your email to sign in.</p><a href="javascript:void(0)" id="resend-link">Resend verification email</a></div>
+          <button type="submit" class="auth-submit-btn">Sign in</button>
+        </form>
+        <div class="auth-links"><a href="javascript:void(0)" class="auth-link-forgot">Forgot password?</a><a href="javascript:void(0)" class="auth-link-signup">Don't have an account? Sign up</a></div>
+      </div>
+
+      <!-- Signup section -->
+      <div id="auth-signup-section" style="display:none">
+        <form id="register-form">
+          <div class="auth-form-group" data-field="email"><label for="signup-email">Email</label><input type="email" id="signup-email" required maxlength="254" autocomplete="email" /></div>
+          <div class="auth-form-group" data-field="password"><label for="signup-password">Password</label><input type="password" id="signup-password" required minlength="8" maxlength="128" autocomplete="new-password" /><span class="auth-hint">At least 8 characters</span></div>
+          <div class="auth-form-group" data-field="password_confirm"><label for="signup-password2">Confirm Password</label><input type="password" id="signup-password2" required maxlength="128" autocomplete="new-password" /></div>
+          <div class="auth-form-group" data-field="name"><label for="signup-name">Full Name</label><input type="text" id="signup-name" required maxlength="100" autocomplete="name" /></div>
+          <div class="auth-form-group" data-field="birth_date"><label for="signup-dob">Date of Birth</label><input type="date" id="signup-dob" required /></div>
+          <div class="auth-consent-section" data-field="consent">
+            <label class="auth-consent-all"><input type="checkbox" id="consent-all" /><span>I agree to all of the following.</span></label>
+            <div class="auth-consent-items">
+              <label class="auth-consent-item"><input type="checkbox" class="consent-item-check" /><span><a href="https://physicar.ai/legal/consent/collection/" target="_blank">Collection and Use of Personal Information (Required)</a></span></label>
+              <label class="auth-consent-item"><input type="checkbox" class="consent-item-check" /><span><a href="https://physicar.ai/legal/consent/third-party/" target="_blank">Third-Party Sharing of Personal Information (Required)</a></span></label>
+              <label class="auth-consent-item"><input type="checkbox" class="consent-item-check" /><span><a href="https://physicar.ai/legal/consent/cross-border/" target="_blank">Cross-Border Transfer of Personal Information (Required)</a></span></label>
+            </div>
+          </div>
+          <div id="turnstile-container" class="auth-turnstile"></div>
+          <div class="auth-form-message" id="register-msg"></div>
+          <button type="submit" class="auth-submit-btn" disabled>Sign up</button>
+          <p class="auth-legal-notice">By clicking "Sign up", you agree to our <a href="https://physicar.ai/legal/terms/" target="_blank">Terms of Use</a> and acknowledge that you have read our <a href="https://physicar.ai/legal/privacy/" target="_blank">Privacy Policy</a>.</p>
+        </form>
+        <div class="auth-links"><a href="javascript:void(0)" class="auth-link-signin">Already have an account? Sign in</a></div>
+      </div>
+
+      <!-- Forgot password section -->
+      <div id="auth-forgot-section" style="display:none">
+        <p class="auth-page-desc">Enter your email and we'll send you a password reset link.</p>
+        <form id="forgot-form">
+          <div class="auth-form-group" data-field="email"><label for="forgot-email">Email</label><input type="email" id="forgot-email" required maxlength="254" autocomplete="email" /></div>
+          <div class="auth-form-message" id="forgot-msg"></div>
+          <button type="submit" class="auth-submit-btn">Send reset link</button>
+        </form>
+        <div class="auth-links"><a href="javascript:void(0)" class="auth-link-signin">Back to sign in</a></div>
+      </div>
+    </div>`;
     document.body.appendChild(overlay);
-    const emailEl = overlay.querySelector('#signin-email'), passEl = overlay.querySelector('#signin-password');
-    const submitBtn = overlay.querySelector('#signin-submit'), errorEl = overlay.querySelector('#signin-error');
-    const doSignin = async () => {
-      const email = emailEl.value.trim(), pass = passEl.value;
-      if (!email || !pass) { errorEl.textContent = 'Enter email and password'; errorEl.style.display = 'block'; return; }
-      submitBtn.disabled = true; submitBtn.textContent = 'Signing in...';
-      try { await PlatformAuth.signin(email, pass); overlay.remove(); if (typeof AGENT !== 'undefined') AGENT.onAuthChange(); }
-      catch (e) { errorEl.textContent = e.message; errorEl.style.display = 'block'; submitBtn.disabled = false; submitBtn.textContent = 'Sign In'; }
+
+    // --- Helper functions (mirrors deepracer auth.js) ---
+    const esc = (s) => { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+    const API = PlatformAuth.API_URL;
+
+    function getErrorMessage(data) {
+      if (!data || !data.code) return data?.error || 'Network error occurred.';
+      if (data.code === 'EMAIL_EXISTS_SIMILAR' && data.registered_email)
+        return 'A similar email (' + data.registered_email + ') is already registered.';
+      let m = data.error || 'An error occurred.';
+      if (data.ray) m += ' (ref: ' + data.ray + ')';
+      return m;
+    }
+
+    function mapErrorToField(code) {
+      return { INVALID_EMAIL: 'email', EMAIL_NOT_ALLOWED: 'email', EMAIL_EXISTS: 'email', EMAIL_EXISTS_SIMILAR: 'email',
+        PASSWORD_TOO_SHORT: 'password', PASSWORD_COMPROMISED: 'password', INVALID_NAME: 'name',
+        INVALID_BIRTH_DATE: 'birth_date', TURNSTILE_REQUIRED: 'turnstile', TURNSTILE_FAILED: 'turnstile' }[code] || null;
+    }
+
+    function showFormMsg(formId, msg, isError) {
+      const form = overlay.querySelector('#' + formId);
+      if (!form) return;
+      let el = form.querySelector('.auth-form-message');
+      if (el) { el.textContent = msg; el.className = 'auth-form-message ' + (isError !== false ? 'error' : 'success'); el.style.display = 'block'; }
+    }
+    function clearFormMsg(formId) {
+      const el = overlay.querySelector('#' + formId + ' .auth-form-message');
+      if (el) el.style.display = 'none';
+    }
+    function setLoading(formId, loading) {
+      const btn = overlay.querySelector('#' + formId + ' button[type="submit"]');
+      if (!btn) return;
+      if (!btn.dataset.origText) btn.dataset.origText = btn.textContent;
+      btn.disabled = loading; btn.textContent = loading ? 'Loading...' : btn.dataset.origText;
+    }
+    function showFieldError(formId, fieldName, msg) {
+      const group = overlay.querySelector('#' + formId + ' [data-field="' + fieldName + '"]');
+      if (!group) return;
+      group.classList.add('auth-field-error');
+      let existing = group.querySelector('.auth-field-error-msg');
+      if (existing) existing.remove();
+      const el = document.createElement('div'); el.className = 'auth-field-error-msg'; el.textContent = msg;
+      group.appendChild(el);
+    }
+    function clearFieldErrors(formId) {
+      overlay.querySelectorAll('#' + formId + ' .auth-field-error').forEach(el => el.classList.remove('auth-field-error'));
+      overlay.querySelectorAll('#' + formId + ' .auth-field-error-msg').forEach(el => el.remove());
+    }
+
+    // --- Section switching ---
+    function showSection(name) {
+      ['auth-login-section', 'auth-signup-section', 'auth-forgot-section'].forEach(id => {
+        const el = overlay.querySelector('#' + id);
+        if (el) el.style.display = id === 'auth-' + name + '-section' ? '' : 'none';
+      });
+      const desc = overlay.querySelector('#auth-branding-desc');
+      if (desc) desc.textContent = name === 'signup' ? 'Create your Physicar AI account'
+        : name === 'forgot' ? 'Reset your password' : 'Sign in to your Physicar AI account';
+      if (name === 'signup') setupSignupPage();
+    }
+    overlay.querySelectorAll('.auth-link-signup').forEach(a => { a.onclick = () => showSection('signup'); });
+    overlay.querySelectorAll('.auth-link-signin').forEach(a => { a.onclick = () => showSection('login'); });
+    overlay.querySelectorAll('.auth-link-forgot').forEach(a => { a.onclick = () => showSection('forgot'); });
+
+    // --- Auto-clear errors on input ---
+    overlay.querySelectorAll('input').forEach(input => {
+      input.addEventListener('input', () => {
+        const group = input.closest('[data-field]');
+        if (group && group.classList.contains('auth-field-error')) {
+          group.classList.remove('auth-field-error');
+          const msg = group.querySelector('.auth-field-error-msg');
+          if (msg) msg.remove();
+        }
+        const form = input.closest('form');
+        if (form) { const fmsg = form.querySelector('.auth-form-message'); if (fmsg) fmsg.style.display = 'none'; }
+      });
+      // Strip whitespace from email
+      if (input.type === 'email') input.addEventListener('input', () => {
+        const t = input.value.replace(/\s/g, ''); if (t !== input.value) input.value = t;
+      });
+    });
+
+    // --- Login handler ---
+    let pendingResendEmail = null;
+    overlay.querySelector('#login-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = overlay.querySelector('#signin-email').value.trim();
+      const pass = overlay.querySelector('#signin-password').value;
+      clearFormMsg('login-form'); clearFieldErrors('login-form');
+      setLoading('login-form', true);
+      try {
+        const res = await fetch(API + '/auth/signin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pass }) });
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.code === 'EMAIL_NOT_VERIFIED') { pendingResendEmail = email; overlay.querySelector('#resend-notice').style.display = 'block'; }
+          showFormMsg('login-form', getErrorMessage(data)); return;
+        }
+        overlay.querySelector('#resend-notice').style.display = 'none';
+        localStorage.setItem('physicar_session', data.token);
+        overlay.remove();
+        await PlatformAuth.verify();
+        if (typeof AGENT !== 'undefined') AGENT.onAuthChange();
+      } catch (err) { showFormMsg('login-form', 'Network error occurred.'); }
+      finally { setLoading('login-form', false); }
     };
-    submitBtn.onclick = doSignin;
-    passEl.onkeydown = (e) => { if (e.key === 'Enter') doSignin(); };
-    emailEl.focus();
+
+    // Resend verification
+    overlay.querySelector('#resend-link').onclick = async () => {
+      if (!pendingResendEmail) return;
+      try {
+        await fetch(API + '/auth/resend-verification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingResendEmail }) });
+        showFormMsg('login-form', 'Verification email sent. Please check your inbox.', false);
+        overlay.querySelector('#resend-notice').style.display = 'none';
+      } catch (err) { showFormMsg('login-form', 'Failed to send email. Please try again.'); }
+    };
+
+    // --- Signup page setup ---
+    let turnstileWidgetId = null;
+    function setupSignupPage() {
+      // DOB default (18 years ago)
+      const dobEl = overlay.querySelector('#signup-dob');
+      if (dobEl && !dobEl.value) {
+        dobEl.max = new Date().toISOString().split('T')[0];
+        const d = new Date(); d.setFullYear(d.getFullYear() - 18);
+        dobEl.value = d.toISOString().split('T')[0];
+      }
+      // Consent-all logic
+      const allCheck = overlay.querySelector('#consent-all');
+      const items = overlay.querySelectorAll('.consent-item-check');
+      const submitBtn = overlay.querySelector('#register-form button[type="submit"]');
+      const inputs = overlay.querySelectorAll('#register-form input[required]');
+      function updateSubmitState() {
+        const allFilled = Array.from(inputs).every(i => i.value.trim() !== '');
+        const allChecked = items.length === 0 || Array.from(items).every(c => c.checked);
+        submitBtn.disabled = !(allFilled && allChecked);
+      }
+      if (allCheck && !allCheck._bound) {
+        allCheck._bound = true;
+        allCheck.addEventListener('change', () => { items.forEach(i => { i.checked = allCheck.checked; }); updateSubmitState(); });
+        items.forEach(i => { i.addEventListener('change', () => { allCheck.checked = Array.from(items).every(c => c.checked); updateSubmitState(); }); });
+      }
+      inputs.forEach(i => { i.addEventListener('input', updateSubmitState); i.addEventListener('change', updateSubmitState); });
+      items.forEach(i => { i.addEventListener('change', updateSubmitState); });
+      updateSubmitState();
+
+      // Turnstile
+      const tc = overlay.querySelector('#turnstile-container');
+      if (tc && window.PHYSICAR_TURNSTILE_SITE_KEY && window.turnstile) {
+        if (turnstileWidgetId !== null) try { window.turnstile.remove(turnstileWidgetId); } catch(e) {}
+        turnstileWidgetId = window.turnstile.render(tc, {
+          sitekey: window.PHYSICAR_TURNSTILE_SITE_KEY,
+          callback: (token) => { tc.dataset.token = token; },
+          'expired-callback': () => { tc.dataset.token = ''; },
+          theme: 'dark'
+        });
+      } else if (tc && window.PHYSICAR_TURNSTILE_SITE_KEY && !window.turnstile) {
+        // Load Turnstile script dynamically
+        if (!document.querySelector('script[src*="challenges.cloudflare.com"]')) {
+          const s = document.createElement('script');
+          s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+          s.async = true; s.defer = true;
+          s.onload = () => { setTimeout(() => setupSignupPage(), 100); };
+          document.head.appendChild(s);
+        }
+      }
+    }
+
+    // --- Register handler ---
+    overlay.querySelector('#register-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = overlay.querySelector('#signup-email').value.trim();
+      const pw = overlay.querySelector('#signup-password').value;
+      const pw2 = overlay.querySelector('#signup-password2').value;
+      const name = overlay.querySelector('#signup-name').value.trim();
+      const dob = overlay.querySelector('#signup-dob').value;
+      clearFormMsg('register-form'); clearFieldErrors('register-form');
+      if (!name) { showFieldError('register-form', 'name', 'Name is required.'); return; }
+      if (!dob) { showFieldError('register-form', 'birth_date', 'Date of birth is required.'); return; }
+      if (pw.length < 8) { showFieldError('register-form', 'password', 'Password must be at least 8 characters.'); return; }
+      if (pw !== pw2) { showFieldError('register-form', 'password_confirm', 'Passwords do not match.'); return; }
+      const consentItems = overlay.querySelectorAll('.consent-item-check');
+      if (consentItems.length > 0 && !Array.from(consentItems).every(c => c.checked)) { showFieldError('register-form', 'consent', 'You must agree to all required items.'); return; }
+      setLoading('register-form', true);
+      try {
+        const tc = overlay.querySelector('#turnstile-container');
+        const turnstileToken = tc ? tc.dataset.token : undefined;
+        const res = await fetch(API + '/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pw, name, birth_date: dob, turnstile_token: turnstileToken }) });
+        const data = await res.json();
+        if (!res.ok) {
+          const field = data.code ? mapErrorToField(data.code) : null;
+          if (field) showFieldError('register-form', field, getErrorMessage(data));
+          else showFormMsg('register-form', getErrorMessage(data));
+          if (window.turnstile && turnstileWidgetId !== null) window.turnstile.reset(turnstileWidgetId);
+          return;
+        }
+        showFormMsg('register-form', 'Verification email sent! Please check your inbox.', false);
+        setTimeout(() => showSection('login'), 3000);
+      } catch (err) { showFormMsg('register-form', 'Network error occurred.'); }
+      finally { setLoading('register-form', false); }
+    };
+
+    // --- Forgot password handler ---
+    overlay.querySelector('#forgot-form').onsubmit = async (e) => {
+      e.preventDefault();
+      clearFormMsg('forgot-form');
+      setLoading('forgot-form', true);
+      try {
+        const email = overlay.querySelector('#forgot-email').value.trim();
+        await fetch(API + '/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+        showFormMsg('forgot-form', 'If an account exists with that email, a reset link has been sent.', false);
+      } catch (err) { showFormMsg('forgot-form', 'Network error occurred.'); }
+      finally { setLoading('forgot-form', false); }
+    };
+
+    // --- Show requested section ---
+    if (PlatformAuth._openSection) { showSection(PlatformAuth._openSection); PlatformAuth._openSection = null; }
+
+    overlay.querySelector('#signin-email')?.focus();
   },
 
   _closeSigninModal() {
-    document.querySelector('.signin-modal-overlay')?.remove();
+    document.querySelector('.physicar-modal-overlay')?.remove();
   },
 
   // Fetch /api/profile and merge classroom + credit fields onto this.user.
@@ -183,6 +437,7 @@ const PlatformAuth = {
           <div class="menu-divider"></div>
           <div class="menu-credits">${creditsBlock}</div>
           <div class="menu-divider"></div>
+          <button class="menu-item" onclick="PlatformAuth.showProfile()">Profile</button>
           <button class="menu-item" onclick="PlatformAuth.logout()">Sign Out</button>
         </div>`;
     } else {
@@ -206,6 +461,133 @@ const PlatformAuth = {
       const close = (e) => { if (!m.contains(e.target) && !m.previousElementSibling?.contains(e.target)) { m.classList.remove('open'); document.removeEventListener('click', close); } };
       setTimeout(() => document.addEventListener('click', close), 0);
     }
+  },
+
+  async showProfile() {
+    // Close dropdown + existing profile modal
+    $('nav-user-menu')?.classList.remove('open');
+    document.querySelector('.physicar-modal-overlay')?.remove();
+    if (!this.user) return this.showSigninModal();
+    const overlay = document.createElement('div');
+    overlay.className = 'physicar-modal-overlay';
+    overlay.innerHTML = `<div class="profile-modal"><div class="profile-close" onclick="PlatformAuth._closeProfile()">&times;</div>
+      <h3 style="margin:0 0 1rem; text-align:center; color:var(--fg)">My Profile</h3>
+      <div class="pp" id="pp-container"><div class="pp-loading">Loading...</div></div></div>`;
+    overlay.onclick = (e) => { if (e.target === overlay) PlatformAuth._closeProfile(); };
+    document.body.appendChild(overlay);
+
+    const esc = (s) => { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+    const tk = localStorage.getItem('physicar_session');
+    if (!tk) return;
+    try {
+      const r = await fetch(this.API_URL + '/api/profile', { headers: { 'Authorization': 'Bearer ' + tk } });
+      if (!r.ok) throw 0;
+      const d = await r.json();
+      const p = d.profile || {};
+      const C = document.getElementById('pp-container');
+      if (!C) return;
+
+      const crHtml = d.classroom_name ? esc(d.classroom_name) : '<span class="pp-muted">None</span>';
+      const creditsLabel = p.classroom_id ? 'Credits (Classroom)' : 'Credits';
+      const creditsHtml = p.classroom_id
+        ? '<span style="font-size:.7rem;color:var(--fg3)">Used</span> $' + (p.classroom_sponsor_used || 0).toFixed(2)
+          + ' <span class="pp-muted">/</span> '
+          + '<span style="font-size:.7rem;color:var(--fg3)">Limit</span> $' + (p.classroom_sponsor_limit || 0).toFixed(2)
+        : '$' + (p.credit_balance || 0).toFixed(2);
+
+      const ghValHtml = p.github_login
+        ? '<a href="https://github.com/' + esc(p.github_login) + '" target="_blank" rel="noopener" class="pp-gh-user">'
+          + '<img src="https://avatars.githubusercontent.com/u/' + p.github_id + '?s=40" class="pp-gh-avatar" alt="">' + esc(p.github_login) + '</a>'
+        : '<span class="pp-muted">Not connected</span>';
+      const ghBtnHtml = p.github_login
+        ? '<button class="pp-btn-danger" onclick="PlatformAuth._ghDisconnect()">Disconnect</button>'
+        : '<button class="pp-btn-link" onclick="PlatformAuth._ghConnect()">Connect →</button>';
+
+      C.innerHTML =
+        '<div class="pp-field"><div class="pp-left"><div class="pp-label">Joined Classroom</div><div class="pp-val">' + crHtml + '</div></div></div>'
+        + '<div class="pp-field"><div class="pp-left"><div class="pp-label">Email</div><div class="pp-val">' + esc(p.email) + '</div></div></div>'
+        + '<div class="pp-field"><div class="pp-left"><div class="pp-label">Name</div><div class="pp-val">' + esc(p.name) + '</div></div></div>'
+        + '<div class="pp-field"><div class="pp-left"><div class="pp-label">Date of Birth</div><div class="pp-val">' + esc(p.birth_date) + '</div></div></div>'
+        + '<div class="pp-field"><div class="pp-left"><div class="pp-label">Display Name</div><div class="pp-val">' + esc(p.display_name || '') + '</div></div></div>'
+        + '<div class="pp-field"><div class="pp-left"><div class="pp-label">' + creditsLabel + '</div><div class="pp-val">' + creditsHtml + '</div></div></div>'
+        + '<div class="pp-field"><div class="pp-left"><div class="pp-label">Pay for GitHub Codespaces with Credits</div><div class="pp-val" id="gh-val">' + ghValHtml + '</div></div><div class="pp-right" id="gh-btn">' + ghBtnHtml + '</div></div>'
+        + '<div id="pp-gh-msg"></div>';
+    } catch (e) {
+      const C = document.getElementById('pp-container');
+      if (C) C.innerHTML = '<div class="pp-loading" style="color:#f44">Failed to load profile</div>';
+    }
+  },
+
+  _closeProfile() {
+    document.querySelector('.physicar-modal-overlay')?.remove();
+  },
+
+  _ghConnect() {
+    const tk = localStorage.getItem('physicar_session');
+    if (!tk) return;
+    const btn = document.querySelector('#gh-btn .pp-btn-link');
+    const ghUrl = PlatformAuth.API_URL + '/auth/github?token=' + encodeURIComponent(tk);
+    const ret = window.location.origin + window.location.pathname;
+
+    // Detect VS Code Simple Browser: cross-origin top frame → can't access top.location
+    const needsCodeCli = (() => {
+      try { window.top.location.href; return false; } // same-origin or top-level → regular browser
+      catch(e) { return true; } // cross-origin → VS Code Simple Browser
+    })();
+
+    if (needsCodeCli) {
+      // VS Code Simple Browser — open via server-side $BROWSER (code CLI)
+      if (btn) { btn.textContent = 'Opening...'; btn.disabled = true; btn.style.opacity = '0.6'; }
+      fetch('/api/host/open-external?url=' + encodeURIComponent(ghUrl))
+        .then(r => { if (!r.ok) throw 0; return r.json(); })
+        .then(d => {
+          if (d.ok && btn) {
+            btn.textContent = 'Done? Click to refresh';
+            btn.style.border = '1px solid #4caf50'; btn.style.color = '#4caf50';
+            btn.style.opacity = '1'; btn.disabled = false;
+            btn.onclick = () => PlatformAuth.showProfile();
+          }
+        })
+        .catch(() => { if (btn) { btn.textContent = 'Connect →'; btn.disabled = false; btn.style.opacity = '1'; } });
+    } else {
+      // Regular browser (top-level or same-origin iframe like /studio) — new tab or navigate
+      const popup = window.open(ghUrl + '&return_to=' + encodeURIComponent(ret), '_blank');
+      if (popup) {
+        if (btn) {
+          btn.textContent = 'Done? Click to refresh';
+          btn.style.border = '1px solid #4caf50'; btn.style.color = '#4caf50';
+          btn.onclick = () => PlatformAuth.showProfile();
+        }
+      } else {
+        location.href = ghUrl + '&return_to=' + encodeURIComponent(ret);
+      }
+    }
+  },
+
+  _ghDisconnect() {
+    document.getElementById('gh-btn').innerHTML =
+      '<span style="font-size:.75rem;color:var(--fg3)">Sure?</span> '
+      + '<button class="pp-sm pp-btn-danger" onclick="PlatformAuth._ghDoDisconnect()">Disconnect</button> '
+      + '<button class="pp-sm pp-cancel" onclick="PlatformAuth._ghCancelDisconnect()">Cancel</button>';
+  },
+
+  _ghCancelDisconnect() {
+    document.getElementById('gh-btn').innerHTML =
+      '<button class="pp-btn-danger" onclick="PlatformAuth._ghDisconnect()">Disconnect</button>';
+  },
+
+  async _ghDoDisconnect() {
+    const tk = localStorage.getItem('physicar_session');
+    try {
+      const r = await fetch(PlatformAuth.API_URL + '/api/github/account', { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + tk, 'Content-Type': 'application/json' } });
+      if (!r.ok) { const d = await r.json(); PlatformAuth._ghMsg(d.error || 'Network error', false); PlatformAuth._ghCancelDisconnect(); return; }
+      PlatformAuth.showProfile(); // reload profile
+    } catch (e) { PlatformAuth._ghMsg('Network error', false); PlatformAuth._ghCancelDisconnect(); }
+  },
+
+  _ghMsg(text, ok) {
+    const e = document.getElementById('pp-gh-msg');
+    if (e) e.innerHTML = '<div class="pp-msg ' + (ok ? 'ok' : 'err') + '">' + text + '</div>';
   }
 };
 
