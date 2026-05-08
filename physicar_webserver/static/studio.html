@@ -28,16 +28,26 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
 .modal-overlay.show{display:flex}
 .modal{background:#1e1e2e;border:1px solid #444;border-radius:8px;padding:20px;min-width:340px;max-width:420px;color:#ddd;font-family:system-ui,sans-serif}
 .modal h3{margin:0 0 14px;font-size:15px;color:#fff}
-.modal .machine-list{display:flex;flex-direction:column;gap:8px}
-.modal .machine-opt{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #333;border-radius:6px;cursor:pointer;transition:border-color .15s}
+.modal .machine-list{display:flex;flex-direction:column;gap:6px}
+.modal .machine-opt{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #333;border-radius:6px;cursor:pointer;transition:border-color .15s;font-size:13px;color:#aaa}
 .modal .machine-opt:hover{border-color:#666}
-.modal .machine-opt.current{border-color:#1a73e8;background:rgba(26,115,232,.1)}
-.modal .machine-opt .specs{font-size:13px;color:#aaa}
+.modal .machine-opt.selected{border-color:#1a73e8;background:rgba(26,115,232,.1)}
+.modal .machine-opt input[type=radio]{accent-color:#1a73e8}
 .modal .machine-opt .specs b{color:#fff}
-.modal .machine-opt .badge{font-size:11px;color:#1a73e8;font-weight:600}
-.modal .close-btn{margin-top:14px;text-align:right}
-.modal .close-btn button{background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
-.modal .close-btn button:hover{background:#444}
+.modal .machine-opt .tag{font-size:11px;font-weight:600;padding:1px 6px;border-radius:3px;margin-left:6px}
+.modal .machine-opt .tag.current{color:#1a73e8;background:rgba(26,115,232,.15)}
+.modal .machine-opt .tag.insufficient{color:#e85050;background:rgba(232,80,80,.15)}
+.modal .machine-opt.disabled{opacity:.5;cursor:not-allowed}
+.modal .modal-warn{margin-top:10px;padding:8px 12px;background:rgba(255,180,0,.08);border:1px solid #554400;border-radius:6px;font-size:12px;color:#eea}
+.modal .modal-err{margin-top:10px;padding:8px 12px;background:rgba(255,60,60,.08);border:1px solid #550000;border-radius:6px;font-size:12px;color:#f88}
+.modal .modal-footer{margin-top:14px;display:flex;gap:8px;justify-content:flex-end}
+.modal .btn-cancel{background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
+.modal .btn-cancel:hover{background:#444}
+.modal .btn-primary{background:#1a73e8;color:#fff;border:none;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
+.modal .btn-primary:hover{background:#1558b0}
+.modal .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.modal .btn-danger{background:#d33;color:#fff;border:none;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
+.modal .btn-danger:hover{background:#b22}
 .toolbar label{color:#fff;font-size:13px}
 .toolbar select{
   background:#111;color:#eee;border:1px solid #444;border-radius:3px;
@@ -105,12 +115,7 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
 
 <!-- Machine Type Modal -->
 <div class="modal-overlay" id="machine-modal">
-  <div class="modal">
-    <h3>Codespace Settings</h3>
-    <div id="billing-section"></div>
-    <div class="machine-list" id="machine-list"></div>
-    <div class="close-btn"><button onclick="document.getElementById('machine-modal').classList.remove('show')">Close</button></div>
-  </div>
+  <div class="modal" id="machine-modal-body"></div>
 </div>
 
 <script>
@@ -354,13 +359,15 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
   updateInfo();
 
   /* ── Machine Type (Codespaces only) ── */
-  const machineEl   = document.getElementById('machine-info');
-  const machineCpu  = document.getElementById('machine-cpu');
-  const machineMem  = document.getElementById('machine-mem');
+  const machineEl    = document.getElementById('machine-info');
+  const machineCpu   = document.getElementById('machine-cpu');
+  const machineMem   = document.getElementById('machine-mem');
   const machineModal = document.getElementById('machine-modal');
-  const machineList  = document.getElementById('machine-list');
+  const modalBody    = document.getElementById('machine-modal-body');
 
   let machineData = null;
+
+  function closeModal(){ machineModal.classList.remove('show'); }
 
   async function loadMachines(){
     try {
@@ -375,40 +382,82 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
 
   machineEl.addEventListener('click', () => {
     if(!machineData) return;
-    // Billing section
-    const billingEl = document.getElementById('billing-section');
-    if(machineData.billable_owner){
-      billingEl.innerHTML = '<div style="margin-bottom:12px;font-size:13px;color:#aaa">' +
-        '<div style="font-weight:600;color:#888;margin-bottom:4px">Billing</div>' +
-        'Codespace usage is paid for by <b style="color:#fff">' + machineData.billable_owner + '</b>.' +
-        '</div><hr style="border:none;border-top:1px solid #333;margin:0 0 12px">';
-    } else {
-      billingEl.innerHTML = '';
-    }
-    machineList.innerHTML = '<div style="font-size:13px;font-weight:600;color:#888;margin-bottom:8px">Machine Type</div>';
-    machineData.machines.forEach(m => {
-      const div = document.createElement('div');
-      div.className = 'machine-opt' + (m.name === machineData.current ? ' current' : '');
-      div.innerHTML = '<div class="specs"><b>' + m.cpus + ' CPUs</b> · ' +
-        (m.memory_gb || m.storage_gb) + ' GB' +
-        (m.display_name ? ' <span style="color:#666">(' + m.display_name + ')</span>' : '') +
-        '</div>' +
-        (m.name === machineData.current ? '<span class="badge">Current</span>' : '');
-      if(m.name !== machineData.current){
-        div.addEventListener('click', () => changeMachine(m.name));
-      }
-      machineList.appendChild(div);
-    });
-    machineModal.classList.add('show');
+    showSettingsModal();
   });
 
   machineModal.addEventListener('click', (e) => {
-    if(e.target === machineModal) machineModal.classList.remove('show');
+    if(e.target === machineModal) closeModal();
   });
 
-  async function changeMachine(name){
-    if(!confirm('Change to ' + name + '? The Codespace will restart.')) return;
-    machineModal.classList.remove('show');
+  /* Step 1: Settings modal — radio list + Change button */
+  function showSettingsModal(){
+    let html = '<h3>Codespace Settings</h3>';
+
+    if(machineData.billable_owner){
+      html += '<div style="margin-bottom:12px;font-size:13px;color:#aaa">' +
+        '<div style="font-weight:600;color:#888;margin-bottom:4px">Billing</div>' +
+        'Codespace usage is paid for by <b style="color:#fff">' + machineData.billable_owner + '</b>.' +
+        '</div><hr style="border:none;border-top:1px solid #333;margin:0 0 12px">';
+    }
+
+    html += '<div style="font-size:13px;font-weight:600;color:#888;margin-bottom:8px">Machine Type</div>';
+    html += '<div class="machine-list">';
+    machineData.machines.forEach((m, i) => {
+      const isCurrent = m.name === machineData.current;
+      const checked = isCurrent ? 'checked' : '';
+      const cls = isCurrent ? 'machine-opt selected' : 'machine-opt';
+      const label = '<b>' + m.cpus + ' cores</b>, ' + Math.round(m.storage_gb) + ' GB';
+      const tag = isCurrent ? '<span class="tag current">current</span>' : '';
+      html += '<label class="' + cls + '">' +
+        '<input type="radio" name="machine" value="' + m.name + '" ' + checked + '> ' +
+        '<span class="specs">' + label + tag + '</span></label>';
+    });
+    html += '</div>';
+    html += '<div class="modal-warn">⚠ Codespace will restart after change</div>';
+    html += '<div class="modal-footer">' +
+      '<button class="btn-cancel" id="m-cancel">Cancel</button>' +
+      '<button class="btn-primary" id="m-change">Change</button></div>';
+
+    modalBody.innerHTML = html;
+    machineModal.classList.add('show');
+
+    // Highlight selected radio
+    modalBody.querySelectorAll('.machine-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        modalBody.querySelectorAll('.machine-opt').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        opt.querySelector('input').checked = true;
+      });
+    });
+
+    document.getElementById('m-cancel').addEventListener('click', closeModal);
+    document.getElementById('m-change').addEventListener('click', () => {
+      const sel = modalBody.querySelector('input[name="machine"]:checked');
+      if(!sel || sel.value === machineData.current) return;
+      showConfirmModal(sel.value);
+    });
+  }
+
+  /* Step 2: Confirmation modal */
+  function showConfirmModal(name){
+    modalBody.innerHTML = '<h3>Are you sure?</h3>' +
+      '<p style="font-size:13px;color:#aaa;margin:10px 0">The Codespace will restart and you will be disconnected.<br><br>' +
+      '<b style="color:#fff">Any running simulation will be stopped.</b></p>' +
+      '<div class="modal-footer">' +
+      '<button class="btn-cancel" id="c-cancel">Cancel</button>' +
+      '<button class="btn-danger" id="c-confirm">Yes, change it</button></div>';
+
+    document.getElementById('c-cancel').addEventListener('click', () => showSettingsModal());
+    document.getElementById('c-confirm').addEventListener('click', () => doChangeMachine(name));
+  }
+
+  /* Step 3: Execute change */
+  async function doChangeMachine(name){
+    modalBody.innerHTML = '<h3>Changing machine…</h3>' +
+      '<p style="font-size:13px;color:#aaa;margin:10px 0">This may take a moment</p>' +
+      '<div style="text-align:center;margin:16px 0"><div style="width:32px;height:32px;border:3px solid #333;border-top-color:#1a73e8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto"></div></div>' +
+      '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+
     try {
       const r = await fetch('/api/host/machine', {
         method: 'POST',
@@ -417,11 +466,18 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
       });
       const data = await r.json();
       if(data.success){
-        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#888;font-family:system-ui"><div style="text-align:center"><div style="width:42px;height:42px;border:4px solid #2a2a33;border-top-color:#666;border-radius:50%;animation:s 1s linear infinite;margin:0 auto"></div><p style="margin-top:16px">Restarting Codespace…</p></div></div><style>@keyframes s{to{transform:rotate(360deg)}}</style>';
+        modalBody.innerHTML = '<h3>Machine Changed</h3>' +
+          '<p style="font-size:13px;color:#aaa;margin:10px 0">Codespace is restarting…<br><br>Please wait and refresh the page in a few seconds.</p>' +
+          '<div class="modal-footer"><button class="btn-primary" onclick="location.reload()">OK</button></div>';
       } else {
-        alert('Error: ' + (data.error || 'Unknown'));
+        throw new Error(data.error || 'Unknown error');
       }
-    } catch(e){ alert('Failed: ' + e.message); }
+    } catch(e){
+      modalBody.innerHTML = '<h3>Error</h3>' +
+        '<div class="modal-err">' + e.message + '</div>' +
+        '<div class="modal-footer"><button class="btn-cancel" id="e-close">Close</button></div>';
+      document.getElementById('e-close').addEventListener('click', closeModal);
+    }
   }
 
   loadMachines();
