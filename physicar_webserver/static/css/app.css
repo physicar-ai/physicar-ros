@@ -63,6 +63,12 @@ nav {
 .battery-fill.medium { background: var(--orange); }
 .battery-fill.low { background: var(--red); }
 
+/* Restart button */
+.panel-restart { text-align: center; padding: 0.5rem !important; }
+.btn-restart { background: transparent; color: var(--text2); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.35rem 1.2rem; font-size: 0.8rem; cursor: pointer; transition: background 0.15s, color 0.15s; width: 100%; }
+.btn-restart:hover { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-restart:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Camera */
 .panel-camera { width: 100%; aspect-ratio: 4/3; background: var(--bg); object-fit: cover; display: block; }
 .panel-section.panel-section-flush { padding-left: 0; padding-right: 0; }

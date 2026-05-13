@@ -6,7 +6,6 @@ const toRad = (d) => d * Math.PI / 180;
 /* ===== Global Sensor Data (for Agent) ===== */
 let _currentState = {};
 let _currentLidar = null;
-let _latestCameraJpeg = null;
 
 /* ===== Generic Confirm Modal (returns Promise<boolean>) ===== */
 function confirmModal(message, opts) {
@@ -352,80 +351,68 @@ function _drawLidarOnCanvas(c, lidar) {
 
 function startCameraStream() {
   const w = $('cam-res')?.value || 480;
-  console.log('[CAM] Starting binary capture stream, width=' + w);
-  _startCameraCapture(w);
+  console.log('[CAM] Starting MJPEG stream, width=' + w);
+  _startMjpeg(w);
 }
 
-let _camCaptureAbort = null;
-async function _startCameraCapture(width) {
-  if (_camCaptureAbort) _camCaptureAbort.abort();
-  _camCaptureAbort = new AbortController();
+let _camRetryTimer = null;
+
+function _startMjpeg(width) {
+  if (_camRetryTimer) { clearTimeout(_camRetryTimer); _camRetryTimer = null; }
   const img = $('p-camera');
-  try {
-    const res = await fetch('/state/camera?stream=true&width=' + width, { signal: _camCaptureAbort.signal });
-    const reader = res.body.getReader();
-    let buf = new Uint8Array(0);
-    let firstFrame = true;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const tmp = new Uint8Array(buf.length + value.length);
-      tmp.set(buf); tmp.set(value, buf.length); buf = tmp;
-      let searchFrom = 0;
-      while (true) {
-        let soi = -1;
-        for (let i = searchFrom; i < buf.length - 1; i++) {
-          if (buf[i] === 0xFF && buf[i+1] === 0xD8) { soi = i; break; }
-        }
-        if (soi < 0) break;
-        let eoi = -1;
-        for (let i = soi + 2; i < buf.length - 1; i++) {
-          if (buf[i] === 0xFF && buf[i+1] === 0xD9) { eoi = i + 2; break; }
-        }
-        if (eoi < 0) break;
-        const jpeg = buf.slice(soi, eoi);
-        _latestCameraJpeg = jpeg;
-        if (img) {
-          const blob = new Blob([jpeg], { type: 'image/jpeg' });
-          const url = URL.createObjectURL(blob);
-          if (img._prevUrl) URL.revokeObjectURL(img._prevUrl);
-          img._prevUrl = url;
-          img.src = url;
-        }
-        if (firstFrame) { console.log('[CAM] First frame received'); firstFrame = false; }
-        buf = buf.slice(eoi);
-        searchFrom = 0;
-      }
-    }
-    // Stream ended normally (server closed connection) — reconnect
-    console.warn('[CAM] Stream ended, reconnecting...');
-    setTimeout(() => _startCameraCapture(width), 2000);
-  } catch (e) {
-    if (e.name !== 'AbortError') {
-      console.warn('[CAM] Stream error:', e.message);
-      setTimeout(() => _startCameraCapture(width), 3000);
-    }
-  }
+  if (!img) return;
+
+  // Stop any existing stream — clear src + add cache-bust to force new connection
+  img.src = '';
+
+  const url = '/state/camera?stream=true&width=' + width + '&t=' + Date.now();
+
+  img.onerror = function() {
+    console.warn('[CAM] Stream error, retrying in 3s...');
+    img.src = '';
+    _camRetryTimer = setTimeout(() => _startMjpeg(width), 3000);
+  };
+
+  img.src = url;
 }
+
 function changeCameraRes() {
   localStorage.setItem('cam-res', $('cam-res').value);
   startCameraStream();
 }
 
+/* ===== Container Restart ===== */
+async function restartContainer() {
+  const ok = await confirmModal('Restart the PhysiCar container?\nThis will rebuild and relaunch ROS.', { danger: true, confirmText: 'Restart' });
+  if (!ok) return;
+  const btn = $('btn-restart');
+  if (btn) { btn.disabled = true; btn.textContent = 'Restarting…'; }
+  try {
+    const res = await fetch('/api/host/container/restart', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Failed');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#x21bb; Restart'; }
+    alert('Restart failed: ' + e.message);
+    return;
+  }
+  // Hand off to the single connection watcher — it handles overlay, camera, button
+  DeviceWatcher.forceDown();
+}
+
 /* ===== Device Connection Watcher =====
- * Polls /health (public, no auth) for backend availability AND /info
- * (auth-required) to detect that our session cookie was invalidated by
- * a reboot — every boot rotates the BOOT_TOKEN in nginx, so cookies
- * issued before the last boot stop being accepted.  When that happens
- * /health stays 200 but /info redirects to /login, and we force a full
- * page reload so nginx sends the user through the login flow again.
+ * Single source of truth for backend connectivity.
+ * Polls /health every 2s (accelerated while down, normal 5s when up).
+ * Shows overlay, kills/restarts camera, resets restart button.
  */
-(() => {
-  const PERIOD = 5000;          // poll every 5s
-  const FAIL_THRESHOLD = 2;     // 2 consecutive failures => show overlay
-  const TIMEOUT = 4000;         // per-request timeout
+const DeviceWatcher = (() => {
+  const PERIOD_UP = 5000;
+  const PERIOD_DOWN = 2000;
+  const FAIL_THRESHOLD = 2;
+  const TIMEOUT = 4000;
   let fails = 0;
   let overlay = null;
+  let timer = null;
 
   function ensureOverlay() {
     if (overlay) return overlay;
@@ -436,19 +423,32 @@ function changeCameraRes() {
     return overlay;
   }
 
-  function show() {
+  function showOverlay() {
     ensureOverlay().classList.add('show');
+    // Kill stale camera stream so last frame doesn't linger
+    const cam = $('p-camera');
+    if (cam) cam.src = '';
+    if (_camRetryTimer) { clearTimeout(_camRetryTimer); _camRetryTimer = null; }
+    // Accelerate polling while down
+    schedule(PERIOD_DOWN);
   }
 
-  function hide() {
+  function hideOverlay() {
     if (overlay) overlay.classList.remove('show');
+    // Restore everything
+    startCameraStream();
+    const btn = $('btn-restart');
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#x21bb; Restart'; }
+    // Back to normal polling
+    schedule(PERIOD_UP);
+  }
+
+  function schedule(ms) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(ping, ms);
   }
 
   async function checkAuth() {
-    // /info is behind nginx auth.  If the cookie is no longer valid,
-    // nginx returns 302 Location: /login.  fetch() with redirect:'manual'
-    // surfaces that as response.type === 'opaqueredirect' (status 0),
-    // which lets us distinguish auth failure from a normal 200/SSE/etc.
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), TIMEOUT);
@@ -459,16 +459,11 @@ function changeCameraRes() {
       });
       clearTimeout(t);
       if (res.type === 'opaqueredirect' || res.status === 401 || res.status === 403) {
-        // Session was invalidated (most likely by a reboot).  Reload to
-        // let nginx redirect us to /login.
         location.reload();
         return false;
       }
       return true;
     } catch {
-      // Network error: leave the overlay up; the next /health tick will
-      // re-evaluate.  Do NOT reload — that would just bounce a transient
-      // disconnect into a hard refresh.
       return false;
     }
   }
@@ -479,26 +474,32 @@ function changeCameraRes() {
     try {
       const res = await fetch('/health', { signal: ctrl.signal, cache: 'no-store' });
       if (!res.ok) throw new Error('status ' + res.status);
-      // Backend is up.  If we had been showing the overlay, verify the
-      // session is still valid — a reboot rotated BOOT_TOKEN and
-      // invalidated our cookie even though /health (public) is happy.
       if (fails > 0) {
         const ok = await checkAuth();
-        if (!ok) return;  // checkAuth() either reloaded or kept overlay up
-        hide();
+        if (!ok) { schedule(PERIOD_DOWN); return; }
+        hideOverlay();
+      } else {
+        schedule(PERIOD_UP);
       }
       fails = 0;
     } catch (e) {
       fails++;
-      if (fails >= FAIL_THRESHOLD) show();
+      if (fails >= FAIL_THRESHOLD) showOverlay();
+      else schedule(PERIOD_DOWN);
     } finally {
       clearTimeout(t);
     }
   }
 
-  setInterval(ping, PERIOD);
-  // Initial check shortly after load (gives the page a chance to settle)
+  function forceDown() {
+    fails = FAIL_THRESHOLD;
+    showOverlay();
+  }
+
+  // Start
   setTimeout(ping, 500);
+
+  return { forceDown };
 })();
 
 /* ===== Backdrop close (mousedown+up both on overlay; prevents text-drag close) ===== */
