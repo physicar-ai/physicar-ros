@@ -23,6 +23,9 @@ CLaserOdometry2DNode::CLaserOdometry2DNode(): Node("CLaserOdometry2DNode")
 {
   RCLCPP_INFO(get_logger(), "Initializing RF2O node...");
 
+  // Share this node's logger and clock with the computation class
+  rf2o_ref.setNodeInterfaces(get_logger(), get_clock());
+
   // Read Parameters
   //----------------
   this->declare_parameter<std::string>("laser_scan_topic", "/scan");

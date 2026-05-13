@@ -70,11 +70,14 @@ using MatrixS31 = Eigen::Matrix<Scalar, 3, 1>;
 using IncrementCov = Eigen::Matrix<Scalar, 3, 3>;
 
 
-class CLaserOdometry2D: public rclcpp::Node
+class CLaserOdometry2D
 {
 public:
 
   CLaserOdometry2D();
+
+  /// Inject logger and clock from the owning Node.
+  void setNodeInterfaces(rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock);
 
   void init(const sensor_msgs::msg::LaserScan& scan,
             const geometry_msgs::msg::Pose& initial_robot_pose);
@@ -169,6 +172,13 @@ public:
   bool filterLevelSolution();
   void PoseUpdate();
   void Reset(const Pose3d& ini_pose/*, CObservation2DRangeScan scan*/);
+
+  rclcpp::Logger get_logger() const { return logger_; }
+  rclcpp::Clock::SharedPtr get_clock() const { return clock_; }
+
+private:
+  rclcpp::Logger logger_{rclcpp::get_logger("rf2o")};
+  rclcpp::Clock::SharedPtr clock_{std::make_shared<rclcpp::Clock>(RCL_ROS_TIME)};
 };
 
 } /* namespace rf2o */

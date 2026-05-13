@@ -21,10 +21,9 @@ namespace rf2o {
 
 
 /**
- * Constructor that inherits from Node
+ * Constructor — no longer inherits from Node.
 */
 CLaserOdometry2D::CLaserOdometry2D() :
-  Node("CLaserOdometry2D"),
   verbose(false),
   module_initialized(false),
   first_laser_scan(true),
@@ -37,6 +36,12 @@ CLaserOdometry2D::CLaserOdometry2D() :
   robot_oldpose_(Pose3d::Identity())
 {
   
+}
+
+void CLaserOdometry2D::setNodeInterfaces(rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock)
+{
+  logger_ = logger;
+  clock_ = clock;
 }
 
 
