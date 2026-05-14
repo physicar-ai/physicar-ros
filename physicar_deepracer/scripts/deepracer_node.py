@@ -596,13 +596,15 @@ class DeepracerNode(Node):
     
     def _image_callback(self, msg: CompressedImage):
         """Handle incoming camera image"""
-        try:
-            # Decode compressed image
-            self._latest_image = self.cv_bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
-            # Convert to rclpy.time.Time for proper time arithmetic
-            self._image_stamp = Time.from_msg(msg.header.stamp)
-        except Exception as e:
-            self.get_logger().error(f"Image decode error: {e}")
+        if self._inference_running:
+            try:
+                # Decode compressed image only when inference is active
+                self._latest_image = self.cv_bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
+            except Exception as e:
+                self.get_logger().error(f"Image decode error: {e}")
+                return
+        # Always update stamp (used for freshness check)
+        self._image_stamp = Time.from_msg(msg.header.stamp)
     
     def _scan_callback(self, msg: LaserScan):
         """Handle incoming LiDAR scan"""
