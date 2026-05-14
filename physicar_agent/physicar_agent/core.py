@@ -211,32 +211,88 @@ def _msg_to_dict(msg) -> Any:
     return str(msg)
 
 
+# Whitelist: only subscribe to topics that tools actually use.
+# Based on physicar-ros README — sensor data, control, and state topics.
+_ALLOWED_TOPICS = frozenset((
+    # Sensor / state
+    '/scan', '/scan_filtered',
+    '/imu', '/imu/mag',
+    '/odom', '/odom/laser',
+    '/camera/image_raw/compressed', '/camera/camera_info',
+    '/battery_state',
+    '/joint_states',
+    '/physicar_driver/calibration_status',
+    '/deepracer/inference',
+    # Control
+    '/speed', '/steering',
+    '/cmd_vel', '/cmd_vel_nav', '/cmd_vel_teleop', '/cmd_vel_smoothed',
+    '/camera/pan', '/camera/tilt',
+    '/audio',
+    # Teleop
+    '/teleop/speed', '/teleop/steering',
+    '/teleop/camera/pan', '/teleop/camera/tilt',
+    '/teleop/status',
+    '/joy', '/joy/set_feedback',
+    '/physicar_joy_teleop/status',
+    '/preempt_teleop',
+    # Navigation (high-level only)
+    '/map', '/plan', '/goal_pose', '/initialpose',
+    '/amcl_pose', '/particle_cloud',
+    '/global_costmap/costmap', '/local_costmap/costmap',
+    # Misc
+    '/robot_description',
+    '/servo/commands',
+    # Agent internal
+    '/agent/tool/reload',
+    '/clock',
+))
+
+def _should_skip_topic(topic: str) -> bool:
+    """Return True for topics NOT in the whitelist."""
+    return topic not in _ALLOWED_TOPICS
+
+
 class _DynamicState:
     """Dynamic topic-state container
     
     Access the latest message via state['/topic/name']
+    Lazy dict conversion — raw msg stored on callback,
+    dict computed only on first read and cached until next msg.
     """
     
     def __init__(self):
-        self._data: Dict[str, Any] = {}
-        self._raw: Dict[str, Any] = {}  # Raw original messages
+        self._raw: Dict[str, Any] = {}      # Raw original messages
+        self._cache: Dict[str, Any] = {}    # Lazy-converted dicts
+        self._dirty: Dict[str, bool] = {}   # True if raw updated since last cache
         self._lock = threading.Lock()
     
     def _update(self, topic: str, msg):
-        """Update topic state"""
+        """Update topic state (store raw only, mark dirty)"""
         with self._lock:
             self._raw[topic] = msg
-            self._data[topic] = _msg_to_dict(msg)
+            self._dirty[topic] = True
+    
+    def _get_dict(self, topic: str):
+        """Return cached dict, converting lazily if dirty. Must hold lock."""
+        if self._dirty.get(topic, False):
+            raw = self._raw.get(topic)
+            if raw is not None:
+                self._cache[topic] = _msg_to_dict(raw)
+            self._dirty[topic] = False
+        return self._cache.get(topic)
     
     def __getitem__(self, topic: str) -> Any:
         """Read topic state (dict-converted value)"""
         with self._lock:
-            return self._data.get(topic)
+            return self._get_dict(topic)
     
     def get(self, topic: str, default=None) -> Any:
         """Read topic state (with default)"""
         with self._lock:
-            return self._data.get(topic, default)
+            if topic not in self._raw:
+                return default
+            val = self._get_dict(topic)
+            return val if val is not None else default
     
     def get_raw(self, topic: str):
         """Read raw ROS2 message"""
@@ -246,20 +302,20 @@ class _DynamicState:
     def keys(self):
         """List subscribed topics"""
         with self._lock:
-            return list(self._data.keys())
+            return list(self._raw.keys())
     
     def items(self):
         """(topic, state) pairs"""
         with self._lock:
-            return list(self._data.items())
+            return [(t, self._get_dict(t)) for t in self._raw]
     
     def __contains__(self, topic: str) -> bool:
         with self._lock:
-            return topic in self._data
+            return topic in self._raw
     
     def __repr__(self):
         with self._lock:
-            topics = list(self._data.keys())
+            topics = list(self._raw.keys())
         return f"<State topics={topics}>"
 
 
@@ -364,8 +420,14 @@ class _AgentCore:
         topic_list = self._node.get_topic_names_and_types()
         
         subscribed_count = 0
+        skipped_count = 0
         for topic, types in topic_list:
             if not types:
+                continue
+            
+            # Skip internal ROS2 topics
+            if _should_skip_topic(topic):
+                skipped_count += 1
                 continue
             
             # Use the first declared type
@@ -383,7 +445,7 @@ class _AgentCore:
             self._create_subscription(topic, msg_class, qos)
             subscribed_count += 1
         
-        self._node.get_logger().info(f"Discovered and subscribed to {subscribed_count} topics")
+        self._node.get_logger().info(f"Discovered and subscribed to {subscribed_count} topics (skipped {skipped_count} internal)")
         
         # Wait for initial messages
         for _ in range(20):
@@ -521,6 +583,10 @@ class _AgentCore:
                 continue
             
             if not types:
+                continue
+            
+            # Skip internal ROS2 topics
+            if _should_skip_topic(topic):
                 continue
             
             msg_type_str = types[0]
@@ -743,17 +809,9 @@ class _AgentCore:
     
     def get_subscribed_topics(self) -> list:
         """List of (name, type) tuples for subscribed topics"""
-        result = []
-        for topic_name in self._subscriptions.keys():
-            # Look up topic type
-            topic_list = self._node.get_topic_names_and_types()
-            for name, types in topic_list:
-                if name == topic_name and types:
-                    result.append((name, types[0]))
-                    break
-            else:
-                result.append((topic_name, 'unknown'))
-        return result
+        topic_list = self._node.get_topic_names_and_types()
+        topic_map = {name: types[0] for name, types in topic_list if types}
+        return [(name, topic_map.get(name, 'unknown')) for name in self._subscriptions]
 
 
 # Singleton instance
