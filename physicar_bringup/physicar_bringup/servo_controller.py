@@ -21,8 +21,8 @@ Maps control commands to physical servo channels
 Servo Channel Mapping:
 - S1: Throttle/ESC (0-180°, neutral=90°)
 - S2: Steering     (0-180°, center=90°)
-- S3: Camera Tilt  (0-180°, center=90°)
-- S4: Camera Pan   (0-180°, center=90°)
+- S3: Camera Pan   (0-180°, center=90°)
+- S4: Camera Tilt  (0-180°, center=90°)
 """
 
 from dataclasses import dataclass
@@ -64,8 +64,8 @@ class ServoController:
     # Servo channel definitions
     CHANNEL_THROTTLE = 1   # S1: ESC/Throttle
     CHANNEL_STEERING = 2   # S2: Steering servo
-    CHANNEL_PAN = 4        # S4: Camera Pan
-    CHANNEL_TILT = 3       # S3: Camera Tilt
+    CHANNEL_PAN = 3        # S3: Camera Pan
+    CHANNEL_TILT = 4       # S4: Camera Tilt
 
     def __init__(self, board: Optional[YahboomBoard] = None):
         """
