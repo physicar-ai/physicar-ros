@@ -1382,15 +1382,17 @@ class PhysicarDriverNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self.imu_frame_id
 
+        # IMU chip axes remapped to vehicle body frame (X-fwd, Y-left, Z-up)
+        # SDK axes → ROS body frame: x=-sdk_y, y=-sdk_x, z=sdk_z
         accel = imu_data.get('accel', (0, 0, 0))
-        msg.linear_acceleration.x = accel[0]
-        msg.linear_acceleration.y = accel[1]
+        msg.linear_acceleration.x = -accel[1]
+        msg.linear_acceleration.y = -accel[0]
         msg.linear_acceleration.z = accel[2]
 
         gyro = imu_data.get('gyro', (0, 0, 0))
-        msg.angular_velocity.x = gyro[0]
-        msg.angular_velocity.y = gyro[1]
-        msg.angular_velocity.z = gyro[2]
+        msg.angular_velocity.x = -gyro[1]
+        msg.angular_velocity.y = -gyro[0]
+        msg.angular_velocity.z = -gyro[2]
 
         msg.orientation_covariance[0] = -1.0
 

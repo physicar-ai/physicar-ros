@@ -15,7 +15,6 @@ slam_toolbox:
     map_frame: map
     base_frame: base_footprint
     scan_topic: /scan
-    use_sim_time: true
 
     # -- Solver --
     solver_plugin: solver_plugins::CeresSolver
