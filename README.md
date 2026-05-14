@@ -31,7 +31,13 @@ and gamepad teleop are identical to the real robot.
 
 ```
 physicar-ros/
+├── docker-compose.yml            # Docker Compose (sim/device profiles)
 ├── entrypoint.sh                 # Container entrypoint (build → launch)
+├── fastdds-lo.xml                # Loopback-only Fast DDS profile
+├── updater.sh                    # Auto-updater (git tag based)
+├── host/                         # Host-side scripts
+│   ├── host_api.py                 # Container restart etc. host API
+│   └── login.html                  # nginx auth login page
 ├── physicar_bringup/             # System launch + drivers + utilities
 │   ├── launch/
 │   │   ├── robot.launch.py         # Real-robot launch
@@ -86,16 +92,21 @@ physicar-ros/
    (their drivers depend on real hardware).
 4. `colcon build --symlink-install` (with one clean-build retry on failure).
 5. Source `install/setup.bash`.
-6. **DDS isolation** — `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` plus the
-   loopback-only Fast DDS XML at `/opt/physicar/fastdds-lo.xml`. SHM is
+6. **DDS isolation** — `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` plus
+   `fastdds-lo.xml` (repo root) for loopback-only Fast DDS. SHM is
    disabled (UDP only) so the container's root nodes don't trip on UID
    boundaries with the host `physicar` user, and so other PhysiCars on
    the same WiFi can't see our topics.
-7. Launch:
+7. **Auto-updater** — unless DEV mode, starts `updater.sh` in the
+   background. Periodically `git fetch --tags`; on new tag, checks out
+   and kills the launch to trigger a rebuild.
+8. **Build + launch loop**:
    - `SIM=true` → `ros2 launch physicar_bringup sim.launch.py`
    - else → `ros2 launch physicar_bringup robot.launch.py`
-8. `exec sleep infinity` keeps the container alive after a launch crash so
-   logs remain inspectable.
+
+   On update signal, rebuilds and relaunches. If the launch exits
+   without a signal, `sleep infinity` keeps the container alive for
+   log inspection.
 
 Every ROS node has `respawn=True, respawn_delay≈2s`. Killing a node
 (`pkill -f node_name`) is the supported way to pick up new YAML / Python.
@@ -114,7 +125,8 @@ Subset enabled when `SIM` is unset.
 | t=0  | `rplidar_node` (RPLidar C1) | `/scan` |
 | t=0  | `scan_filter_node` | `/scan` → `/scan_filtered` (drops NaN / out-of-range) |
 | t=0  | `camera_node` (camera_ros) | libcamera capture + undistort + resize → `/camera/image_raw` and `.../compressed` |
-| t=0  | `rf2o_laser_odometry_node` | `/scan_filtered` → `/odom` + TF |
+| t=0  | `rf2o_laser_odometry_node` | `/scan_filtered` → `/odom/laser` (raw) |
+| t=0  | `ekf_filter_node` | Fuses rf2o + IMU → `/odom` + TF |
 | t=0  | `audio_node` | Subscribes `/audio` (mixes channels, MP3/PCM/WAV/OGG) |
 | t=0  | `deepracer_node` | Always on; idle until a model is loaded |
 | t=0  | `joy_node` (SDL2) | Reads `/dev/input/jsX`; `SDL_JOYSTICK_HIDAPI=0` to keep xpadneo BLE pads working |
@@ -149,9 +161,13 @@ Nodes that run:
   - **Gz → ROS 2:** `/imu`, `/scan`, `/joint_states`, `/camera/image_raw`, `/clock`
   - **ROS 2 → Gz:** `/cmd_vel`, `/camera/pan`, `/camera/tilt`
   - `GZ_PARTITION=physicar` so it only sees our world.
-- `rf2o_laser_odometry` — identical to the real robot. Publishes `/odom`
-  and the `odom→base_footprint` TF from `/scan_filtered`. Gazebo's internal
-  pose TF is **not** bridged — sim relies on rf2o for full real-car parity.
+- `rf2o_laser_odometry` — identical to the real robot. `/scan_filtered` → `/odom/laser`.
+- `ekf_filter_node` — fuses rf2o (`/odom/laser`) + IMU (`/imu`) →
+  `/odom` + `odom→base_footprint` TF. Gazebo's internal pose TF is
+  **not** bridged — sim uses the same odometry pipeline as real hardware.
+- `topic_watchdog_node` — monitors `/odom/laser`. If rf2o stalls after a
+  Gazebo world switch (sim time backward jump), sends SIGTERM → respawn
+  restarts it.
 - `image_transport republish raw → compressed` — provides `/camera/image_raw/compressed`.
 
 Host-side requirements (handled by `physicar-sim` / Codespaces):
@@ -193,7 +209,7 @@ the same agent tools and HTTP routes work in both.
 | Topic | Type | Notes |
 |---|---|---|
 | `/scan`, `/scan_filtered` | `sensor_msgs/LaserScan` | RPLidar C1 / Gazebo lidar |
-| `/odom` | `nav_msgs/Odometry` | rf2o on real robot, Gazebo plugin in sim |
+| `/odom` | `nav_msgs/Odometry` | rf2o + EKF (IMU fusion); same pipeline on real and sim |
 | `/imu` | `sensor_msgs/Imu` | MPU on Yahboom board / Gazebo IMU |
 | `/camera/image_raw`, `/camera/image_raw/compressed` | `Image` / `CompressedImage` | 480×360 by default |
 | `/battery_state` | `sensor_msgs/BatteryState` | 1 Hz; sim publishes constant 8.4 V / 100% |
@@ -421,9 +437,8 @@ tells you which one is currently active.
 | Path | Used for |
 |---|---|
 | `/opt/physicar/.env` | `SIM=true`, `DEV=true`, ... |
-| `/opt/physicar/password` | Web auth password (defaults to `physicar` in DEV / SIM) |
+| `/opt/physicar/password` | Web auth password (falls back to serial hash if absent) |
 | `/opt/physicar/calibration.json` | Calibration overrides (latched) |
-| `/opt/physicar/fastdds-lo.xml` | Loopback-only Fast DDS profile |
 | `/opt/physicar/agent/{tools,venv,deps.json}` | Agent tools sandbox |
 | `/opt/physicar/deepracer/{models,config.json}` | DeepRacer models + inference config |
 | `/opt/physicar/myapp/{run.sh,log}` | Student web app + log |
@@ -551,7 +566,7 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 
 ## License
 
-Copyright 2025 **AICASTLE Inc.** (주식회사 에이아이캐심).
+Copyright 2026 **AICASTLE Inc.** (주식회사 에이아이캐슬).
 “PhysiCar” is a trademark of AICASTLE Inc.
 
 Unless noted otherwise (see the table below for vendored submodules), all

@@ -31,7 +31,13 @@
 
 ```
 physicar-ros/
+├── docker-compose.yml            # Docker Compose (sim/device 프로필)
 ├── entrypoint.sh                 # 컨테이너 엔트리포인트 (build → launch)
+├── fastdds-lo.xml                # loopback 전용 Fast DDS 프로파일
+├── updater.sh                    # 자동 업데이트 (git tag 기반)
+├── host/                         # 호스트 측 스크립트
+│   ├── host_api.py                 # 컨테이너 재시작 등 호스트 API
+│   └── login.html                  # nginx 인증 로그인 페이지
 ├── physicar_bringup/             # 시스템 런치 + 드라이버 + 유틸리티
 │   ├── launch/
 │   │   ├── robot.launch.py         # 실제 로봇 런치
@@ -87,14 +93,19 @@ physicar-ros/
 4. `colcon build --symlink-install` (실패 시 1회 clean build 재시도).
 5. `install/setup.bash` 소스.
 6. **DDS 격리** — `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` 와
-   `/opt/physicar/fastdds-lo.xml` 의 loopback 전용 Fast DDS 프로파일 사용.
+   `fastdds-lo.xml` (저장소 루트)의 loopback 전용 Fast DDS 프로파일 사용.
    SHM은 비활성화(UDP만 사용)되어 컨테이너의 root 노드와 호스트
    `physicar` 유저 간 UID 경계 문제를 회피하고, 같은 WiFi에 있는 다른
    PhysiCar 들이 우리 토픽을 보지 못하도록 합니다.
-7. 런치 분기:
+7. **자동 업데이트** — DEV 모드가 아니면 `updater.sh` 를 백그라운드로 실행.
+   주기적으로 `git fetch --tags` 하여 새 태그 발견 시 checkout 후
+   런치를 종료하여 재빌드를 트리거.
+8. **빌드+런치 루프**:
    - `SIM=true` → `ros2 launch physicar_bringup sim.launch.py`
    - 그 외 → `ros2 launch physicar_bringup robot.launch.py`
-8. 런치가 죽어도 `exec sleep infinity` 로 컨테이너를 살려 두어 로그 확인 가능.
+
+   업데이트 시그널 감지 시 재빌드+재실행. 시그널 없이 종료되면
+   `sleep infinity` 로 컨테이너를 살려 두어 로그 확인 가능.
 
 모든 ROS 노드는 `respawn=True, respawn_delay≈2s` 로 등록되어 있습니다.
 새 YAML/Python 을 반영하려면 `pkill -f <node_name>` 으로 죽이면 됩니다(자동 재시작).
@@ -113,7 +124,8 @@ physicar-ros/
 | t=0  | `rplidar_node` (RPLidar C1) | `/scan` |
 | t=0  | `scan_filter_node` | `/scan` → `/scan_filtered` (NaN/범위 외 값 제거) |
 | t=0  | `camera_node` (camera_ros) | libcamera 캡처 + 왜곡 보정 + 리사이즈 → `/camera/image_raw`, `.../compressed` |
-| t=0  | `rf2o_laser_odometry_node` | `/scan_filtered` → `/odom` + TF |
+| t=0  | `rf2o_laser_odometry_node` | `/scan_filtered` → `/odom/laser` (raw) |
+| t=0  | `ekf_filter_node` | rf2o + IMU 융합 → `/odom` + TF |
 | t=0  | `audio_node` | `/audio` 구독 (채널 믹싱, MP3/PCM/WAV/OGG) |
 | t=0  | `deepracer_node` | 항상 실행; 모델 로드 전까지는 idle |
 | t=0  | `joy_node` (SDL2) | `/dev/input/jsX` 읽기; xpadneo BLE 패드 호환을 위해 `SDL_JOYSTICK_HIDAPI=0` |
@@ -145,9 +157,15 @@ nginx, 핫스팟 등 외부 프로세스는 이 패키지 밖에서 관리됩니
 - `scan_filter_node`, `deepracer_node`, `joy_node`, `joy_teleop_node`,
   `agent_node`, `webserver_node` — 실 로봇과 완전히 동일.
 - `ros_gz_bridge` (`parameter_bridge`) — 다음 토픽을 브리지:
-  - **Gz → ROS 2:** `/imu`, `/scan`, `/odom`, `/joint_states`, `/camera/image_raw`, `/clock`
+  - **Gz → ROS 2:** `/imu`, `/scan`, `/joint_states`, `/camera/image_raw`, `/clock`
   - **ROS 2 → Gz:** `/cmd_vel`, `/camera/pan`, `/camera/tilt`
   - `GZ_PARTITION=physicar` 로 PhysiCar 월드만 인식.
+- `rf2o_laser_odometry` — 실 로봇과 동일. `/scan_filtered` → `/odom/laser` 퍼블리시.
+- `ekf_filter_node` — rf2o (`/odom/laser`) + IMU (`/imu`) 융합 →
+  `/odom` + `odom→base_footprint` TF. Gazebo 내부 포즈는 브리지하지
+  **않아** 실차와 동일한 오도메트리 파이프라인 사용.
+- `topic_watchdog_node` — `/odom/laser` 모니터링. Gazebo 월드 전환 시
+  sim time 역행으로 rf2o 가 멈추면 SIGTERM → respawn 재시작.
 - `image_transport republish raw → compressed` — `/camera/image_raw/compressed` 제공.
 
 호스트 측 요구사항 (`physicar-sim` / Codespaces 가 처리):
@@ -189,7 +207,7 @@ nginx, 핫스팟 등 외부 프로세스는 이 패키지 밖에서 관리됩니
 | 토픽 | 타입 | 비고 |
 |---|---|---|
 | `/scan`, `/scan_filtered` | `sensor_msgs/LaserScan` | RPLidar C1 / Gazebo 라이다 |
-| `/odom` | `nav_msgs/Odometry` | 실 로봇은 rf2o, sim 은 Gazebo 플러그인 |
+| `/odom` | `nav_msgs/Odometry` | rf2o + EKF(IMU 융합); 실 로봇·sim 모두 동일 파이프라인 |
 | `/imu` | `sensor_msgs/Imu` | Yahboom 보드 MPU / Gazebo IMU |
 | `/camera/image_raw`, `/camera/image_raw/compressed` | `Image` / `CompressedImage` | 기본 480×360 |
 | `/battery_state` | `sensor_msgs/BatteryState` | 1 Hz; sim 은 8.4 V / 100% 고정 |
@@ -416,9 +434,8 @@ YAML 값 위에 머지됩니다. 현재 활성 소스는 `CalibrationStatus.sour
 | 경로 | 용도 |
 |---|---|
 | `/opt/physicar/.env` | `SIM=true`, `DEV=true` 등 |
-| `/opt/physicar/password` | 웹 인증 비밀번호 (DEV / SIM 기본값 `physicar`) |
+| `/opt/physicar/password` | 웹 인증 비밀번호 (없으면 serial hash 사용) |
 | `/opt/physicar/calibration.json` | 캘리브레이션 오버라이드 (latched) |
-| `/opt/physicar/fastdds-lo.xml` | loopback 전용 Fast DDS 프로파일 |
 | `/opt/physicar/agent/{tools,venv,deps.json}` | 에이전트 도구 샌드박스 |
 | `/opt/physicar/deepracer/{models,config.json}` | DeepRacer 모델 + 추론 설정 |
 | `/opt/physicar/myapp/{run.sh,log}` | 학생 웹 앱 + 로그 |
@@ -544,8 +561,8 @@ ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
 
 ## 라이선스
 
-Copyright 2025 **주식회사 에이아이캐심 (AICASTLE Inc.)**.
-“PhysiCar” 는 주식회사 에이아이캐심의 상표입니다.
+Copyright 2026 **주식회사 에이아이캐슬 (AICASTLE Inc.)**.
+"PhysiCar" 는 주식회사 에이아이캐슬의 상표입니다.
 
 아래 표의 서브모듈들을 제외한 이 저장소의 모든 코드는 **Apache License 2.0**으로
 배포됩니다 — [LICENSE](LICENSE), [NOTICE](NOTICE) 참조.
