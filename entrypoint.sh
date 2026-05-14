@@ -59,6 +59,9 @@ do_build() {
     return $exit_code
 }
 
+# Install/upgrade physicar pip package before build
+pip3 install --upgrade physicar 2>/dev/null || true
+
 # DDS: UDP-only on loopback for host-container communication
 export FASTRTPS_DEFAULT_PROFILES_FILE="$SCRIPT_DIR/fastdds-lo.xml"
 export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
