@@ -504,9 +504,14 @@ async def ap_info():
         return {"ssid": "", "password": "", "ip": "", "url": "", "active": False}
 
     try:
-        ap_ssid = socket.gethostname()
+        # Read actual hotspot SSID from NetworkManager (works even inside Docker)
+        result = subprocess.run(
+            ["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", "physicar-hotspot"],
+            capture_output=True, text=True, timeout=5
+        )
+        ap_ssid = result.stdout.strip() or socket.gethostname()
     except Exception:
-        ap_ssid = "physicar"
+        ap_ssid = socket.gethostname()
 
     ap_password = get_password()
     ap_ip = "10.42.0.1"
