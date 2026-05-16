@@ -170,9 +170,9 @@ class PhysicarDriverNode(Node):
     ESC_P = 4.0        # constant term
     
     # Feedback-control constants
-    FEEDBACK_TOLERANCE = 0.05   # target-speed tolerance (m/s)
     FEEDBACK_TIMEOUT = 0.5      # speed-measurement timeout (s)
-    FEEDBACK_MAX_ADJUST = 1     # max degree adjustment (±1)
+    FEEDBACK_MAX_ADJUST = 2     # max degree adjustment (±2)
+    FEEDBACK_LOOKAHEAD = 0.3    # predict speed this far ahead (seconds)
     
     # Emergency Stop constants
     EMERGENCY_SCAN_TIMEOUT = 0.05     # scan timeout (s)
@@ -257,8 +257,12 @@ class PhysicarDriverNode(Node):
         # Feedback-control state
         self._actual_speed = 0.0           # actual speed measured from rf2o (m/s)
         self._actual_speed_time = 0.0      # time of last speed measurement
-        self._current_degree_adjust = 0    # current degree adjustment (-5 ~ +5)
+        self._current_degree_adjust = 0.0   # current degree adjustment (float, 0.5 steps)
         self._target_speed = 0.0           # current target speed
+        self._last_adjust_time = 0.0       # time of last degree change (unused, kept for brake)
+        self._prev_actual_speed = 0.0      # previous actual speed for acceleration
+        self._prev_odom_time = 0.0         # previous odom timestamp
+        self._dither_toggle = False         # alternates for 0.5-step dithering
         
         # ESC state tracking
         self._last_esc_angle = self.SERVO_CENTER  # last ESC angle sent
@@ -340,10 +344,12 @@ class PhysicarDriverNode(Node):
             )
         
         # Subscribe to rf2o odometry (for feedback control)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, qos_sensor)
+        # EKF publishes RELIABLE, so must match (BEST_EFFORT cannot receive RELIABLE)
+        self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
         
         # Subscribe to LiDAR (for Emergency Stop)
-        self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_sensor)
+        # rplidar publishes RELIABLE, so must match
+        self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
 
         # Services - use custom interfaces if available, otherwise fallback
         if HAS_CUSTOM_INTERFACES:
@@ -498,69 +504,48 @@ class PhysicarDriverNode(Node):
         return False
 
     def odom_callback(self, msg: Odometry):
-        """Store actual speed from rf2o odometry and run feedback control.
-        
-        On every odom message, compare against target speed and adjust degree.
-        """
+        """Store actual speed from rf2o odometry (feedback disabled)."""
         self._actual_speed = msg.twist.twist.linear.x
         self._actual_speed_time = time.time()
-        
-        # Skip adjustment when stopped
-        if self._target_speed == 0:
-            return
-        
-        # Skip adjustment when Emergency is active
-        if self._emergency_active:
-            return
-        
-        # Compute feedback adjustment
-        actual = abs(self._actual_speed)
-        target = abs(self._target_speed)
-        error = target - actual
-        
-        # Skip adjustment when error is within tolerance
-        if abs(error) < self.FEEDBACK_TOLERANCE:
-            return
-        
-        # Slower than target → increase degree; faster → decrease degree
-        prev_adjust = self._current_degree_adjust
-        if error > 0:
-            self._current_degree_adjust = min(
-                self._current_degree_adjust + 1, 
-                self.FEEDBACK_MAX_ADJUST
-            )
-        else:
-            self._current_degree_adjust = max(
-                self._current_degree_adjust - 1, 
-                -self.FEEDBACK_MAX_ADJUST
-            )
-        
-        # Resend ESC if the adjustment changed
-        if self._current_degree_adjust != prev_adjust:
-            esc_angle = self._compute_esc_angle_with_adjust()
-            self.board.set_servo(1, esc_angle)
-            self.get_logger().info(
-                f'Feedback: target={target:.2f}, actual={actual:.2f}, '
-                f'adjust={self._current_degree_adjust}, ESC={esc_angle:.1f}°'
-            )
     
     def _compute_esc_angle_with_adjust(self) -> float:
         """Compute ESC angle from the current target speed and adjustment."""
         if self._target_speed == 0:
             return self.SERVO_CENTER
         
-        V = self.current_voltage
+        V = 7.4  # fixed voltage — disable voltage compensation
         abs_speed = abs(self._target_speed)
         
         # Power-law model
         target_degree = (self.ESC_A / V) * ((abs_speed - self.ESC_K) ** self.ESC_Q + self.ESC_P)
-        base_degree = round(target_degree)
-        degree = base_degree + self._current_degree_adjust
+        raw = target_degree + self._current_degree_adjust
+        # +0.5 bias: forward if reverse_direction, reverse if normal
+        if (self.calibration.reverse_direction and self._last_esc_direction > 0) or \
+           (not self.calibration.reverse_direction and self._last_esc_direction < 0):
+            raw += 0.5
+        degree = self._dither_degree(raw)
         
         if self._last_esc_direction > 0:
             return self.SERVO_CENTER + degree
         else:
             return self.SERVO_CENTER - degree
+    
+    def _dither_degree(self, raw_degree: float) -> int:
+        """Round to nearest 0.5, then dither X.5 by alternating floor/ceil.
+        
+        Integer values pass through unchanged.
+        Half values (e.g. 9.5) alternate 9,10,9,10 on successive calls.
+        """
+        half = round(raw_degree * 2) / 2.0  # snap to 0.5 grid
+        frac = half - int(half)
+        if abs(frac - 0.5) < 0.01:  # it's X.5
+            self._dither_toggle = not self._dither_toggle
+            if self._dither_toggle:
+                return int(half + 0.5)  # ceil
+            else:
+                return int(half - 0.5)  # floor
+        else:
+            return round(raw_degree)
 
     def _wheel_to_servo_angle(self, wheel_angle_deg: float) -> float:
         """Convert wheel angle to servo angle (sine model).
@@ -716,6 +701,12 @@ class PhysicarDriverNode(Node):
             max_speed = self.calibration.max_speed
             speed_mps = max(-max_speed, min(max_speed, speed_mps))
             
+            # Minimum effective speed: clamp small non-zero to 0.3 m/s
+            if 0 < speed_mps < 0.3:
+                speed_mps = 0.3
+            elif -0.3 < speed_mps < 0:
+                speed_mps = -0.3
+            
             # Save target_speed (for restore when Emergency clears)
             self._target_speed = speed_mps
             
@@ -734,10 +725,11 @@ class PhysicarDriverNode(Node):
             if abs(speed_mps) < 0.01:
                 # Stop command → ESC neutral
                 self.board.set_servo(1, self.SERVO_CENTER)
+                self._dither_toggle = False  # reset so next start always uses ceil
                 self.get_logger().debug(f'ESC STOP: 90° (actual={self._actual_speed:.2f} m/s)')
-                # If actually moving, engage active brake
-                if abs(self._actual_speed) > self._brake_speed_threshold:
-                    self._start_active_brake(self._actual_speed)
+                # Active brake disabled — reverse pulses confuse ESC during rapid on/off
+                # if abs(self._actual_speed) > self._brake_speed_threshold:
+                #     self._start_active_brake(self._actual_speed)
             else:
                 esc_angle = self._velocity_to_esc_angle(speed_mps)
                 self._last_esc_angle = esc_angle
@@ -909,9 +901,7 @@ class PhysicarDriverNode(Node):
         self._braking = False
         self._brake_direction = 0
         # Keep _target_speed (used to restore when Emergency clears)
-        self._current_degree_adjust = 0
-        
-        # Stop ESC
+        self._current_degree_adjust = 0.0
         self.board.set_servo(1, self.SERVO_CENTER)
         self.get_logger().info('Active brake complete')
 
@@ -1259,7 +1249,8 @@ class PhysicarDriverNode(Node):
         """
         if target_speed == 0:
             self._last_esc_direction = 0
-            self._current_degree_adjust = 0  # reset adjustment when stopped
+            self._current_degree_adjust = 0.0  # reset adjustment when stopped
+            self._dither_toggle = False         # reset dither so first command is always ceil
             return self.SERVO_CENTER  # stopped
         
         V = self.current_voltage
@@ -1275,10 +1266,16 @@ class PhysicarDriverNode(Node):
             self._last_esc_direction = -1 if is_forward else 1
         
         # Power-law model: degree = (A / V) * ((speed - K)^Q + P)
+        V = 7.4  # fixed voltage — disable voltage compensation
         target_degree = (self.ESC_A / V) * ((abs_speed - self.ESC_K) ** self.ESC_Q + self.ESC_P)
         
-        # Round to integer degree (initial value; feedback adjustment runs in odom_callback)
-        degree = round(target_degree)
+        # Dither to nearest 0.5 step (alternates floor/ceil for X.5)
+        raw = target_degree + self._current_degree_adjust
+        # +0.5 bias: forward if reverse_direction, reverse if normal
+        if (self.calibration.reverse_direction and self._last_esc_direction > 0) or \
+           (not self.calibration.reverse_direction and self._last_esc_direction < 0):
+            raw += 0.5
+        degree = self._dither_degree(raw)
         
         # Final angle calculation
         if self._last_esc_direction > 0:
