@@ -10,6 +10,7 @@ services:
   sim:
     container_name: physicar
     image: physicar/sim:1
+    hostname: ${HOSTNAME}
     profiles: ["sim"]
     restart: unless-stopped
     network_mode: host
@@ -31,6 +32,7 @@ services:
   device:
     container_name: physicar
     image: physicar/device:1
+    hostname: ${HOSTNAME}
     profiles: ["device"]
     restart: unless-stopped
     network_mode: host
