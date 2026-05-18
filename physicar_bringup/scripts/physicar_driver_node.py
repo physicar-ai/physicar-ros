@@ -72,7 +72,7 @@ from physicar_bringup.servo_controller import ServoController
 class CalibrationData:
     """Calibration data structure for all servos."""
     # Max values
-    max_steering: float = 25.0    # ± degrees (wheel angle)
+    max_steering: float = 26.0    # ± degrees (wheel angle)
     max_speed: float = 3.0        # ± m/s
     max_pan: float = 45.0         # ± degrees
     max_tilt: float = 45.0        # ± degrees
@@ -140,7 +140,7 @@ class CalibrationData:
             em = None
 
         return cls(
-            max_steering=_f('max_steering', 25.0, 0.1, 90.0),
+            max_steering=_f('max_steering', 26.0, 0.1, 90.0),
             max_speed=_f('max_speed', 3.0, 0.1, 10.0),
             max_pan=_f('max_pan', 45.0, 0.1, 90.0),
             max_tilt=_f('max_tilt', 45.0, 0.1, 90.0),
@@ -195,7 +195,7 @@ class PhysicarDriverNode(Node):
         self.declare_parameter('tilt_center', 0.0)
 
         # Max limits
-        self.declare_parameter('max_steering', 25.0)  # degrees (wheel angle)
+        self.declare_parameter('max_steering', 26.0)  # degrees (wheel angle)
         self.declare_parameter('max_speed', 3.0)      # m/s
         self.declare_parameter('max_pan', 45.0)       # degrees
         self.declare_parameter('max_tilt', 45.0)      # degrees
@@ -1062,7 +1062,7 @@ class PhysicarDriverNode(Node):
         Range limits:
             max_pan: 0 ~ 45°
             max_tilt: 0 ~ 30°
-            max_steering: 0 ~ 25°
+            max_steering: 0 ~ 26°
             max_speed: 0 ~ 3.0 m/s
             pan_center, tilt_center, steering_center: -15 ~ 15°
         """
@@ -1072,7 +1072,7 @@ class PhysicarDriverNode(Node):
         LIMITS = {
             'max_pan': (1.0, 60.0),
             'max_tilt': (1.0, 45.0),
-            'max_steering': (1.0, 25.0),
+            'max_steering': (1.0, 26.0),
             'max_speed': (0.1, 3.0),
             'pan_center': (-15.0, 15.0),
             'tilt_center': (-15.0, 15.0),

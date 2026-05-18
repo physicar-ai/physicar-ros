@@ -18,7 +18,7 @@ physicar_driver:
     # Servo angle limits (degrees)
     max_pan: 45.0               # ±45° (45°~135°)
     max_tilt: 45.0              # ±45° (45°~135°)
-    max_steering: 25.0          # ±25° actual maximum wheel steering angle (servo angle derived via sine model)
+    max_steering: 26.0          # ±26° actual maximum wheel steering angle (servo angle derived via sine model)
     max_speed: 3.0              # ±3.0 m/s max speed limit
 
     # Center offsets (degrees from 90°)
@@ -39,7 +39,7 @@ physicar_driver:
     wheel_radius: 0.0375        # meters (37.5mm wheel, 7.5cm diameter)
     wheelbase: 0.18             # meters (front-to-rear axle distance, measured)
     track_width: 0.16           # meters (left-right wheel centre distance, measured)
-    steering_ratio: 2.0         # k = Rs/Rk (servo-horn / knuckle-arm radius ratio, for sine model)
+    steering_ratio: 1.47         # k = Rs/Rk (servo-horn / knuckle-arm radius ratio, for sine model)
     # Note: sine model: servo_angle = arcsin(sin(wheel_angle) / k)
 
 # RPLidar C1 Configuration

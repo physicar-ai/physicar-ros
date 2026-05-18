@@ -158,7 +158,7 @@ class YahboomBoard:
 
         with self._lock:
             try:
-                self._bot.set_pwm_servo(channel, int(angle))
+                self._bot.set_pwm_servo(channel, round(angle))
                 # Flush serial buffer immediately
                 if hasattr(self._bot, 'ser') and self._bot.ser:
                     self._bot.ser.flush()

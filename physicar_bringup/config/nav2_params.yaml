@@ -1,5 +1,5 @@
 # PhysiCar Navigation2 Configuration
-# Tuned for Ackermann-steering robot (wheelbase 0.18m, max steer ±25°)
+# Tuned for Ackermann-steering robot (wheelbase 0.18m, max steer ±26°)
 #
 # Usage (host terminal):
 #   # 1. Localization (uses saved map)
