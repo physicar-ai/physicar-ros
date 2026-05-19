@@ -298,7 +298,7 @@ async def pair(req: BtMacRequest):
         # Make sure adapter is on and start a 6s discovery in the foreground.
         _bctl("power on", timeout=5)
         try:
-            _on_host(
+            _run(
                 ["bluetoothctl", "--timeout", "6", "scan", "on"],
                 timeout=10,
             )
