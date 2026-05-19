@@ -86,12 +86,17 @@ safe_update() {
         return 1
     fi
 
-    # Already at this exact commit?
+    # Already at this exact commit, or HEAD is ahead of the latest tag?
     local current_rev target_rev
     current_rev=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)
     target_rev=$(git -C "$REPO_DIR" rev-parse "$latest^{}" 2>/dev/null)
     if [[ "$current_rev" == "$target_rev" ]]; then
         return 1  # up to date
+    fi
+
+    # If HEAD is a descendant of the target tag, we're AHEAD — don't roll back
+    if git -C "$REPO_DIR" merge-base --is-ancestor "$target_rev" "$current_rev" 2>/dev/null; then
+        return 1  # HEAD is ahead of latest tag
     fi
 
     # Force checkout: overwrite tracked files, keep untracked/.gitignore'd
