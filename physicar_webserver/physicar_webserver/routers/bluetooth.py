@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Bluetooth router - host BlueZ control via bluetoothctl.
+Bluetooth router — BlueZ control via bluetoothctl.
 
-All commands run on the host PID/network namespace (nsenter -t 1) because the
-container has no bluez daemon of its own.  Endpoints are mounted at
-/network/bluetooth/* to live alongside the existing network surface.
+Endpoints are mounted at /network/bluetooth/* to live alongside the
+existing network surface.
 """
 
 import asyncio
@@ -71,16 +70,15 @@ def _validate_mac(mac: str) -> str:
     return mac.upper()
 
 
-def _on_host(cmd: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess:
-    """Run `cmd` inside the host namespaces (PID 1)."""
-    full = ["nsenter", "-t", "1", "-m", "-u", "-n", "--"] + cmd
-    return subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+def _run(cmd: list[str], timeout: float = 10.0) -> subprocess.CompletedProcess:
+    """Run `cmd` and capture output."""
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
 def _bctl(args: str, timeout: float = 10.0) -> str:
     """Run a bluetoothctl command line and return stdout (best-effort)."""
     try:
-        proc = _on_host(["bluetoothctl"] + args.split(), timeout=timeout)
+        proc = _run(["bluetoothctl"] + args.split(), timeout=timeout)
         return (proc.stdout or "") + (proc.stderr or "")
     except subprocess.TimeoutExpired:
         return ""
@@ -91,9 +89,8 @@ def _bctl(args: str, timeout: float = 10.0) -> str:
 def _bctl_script(commands: list[str], timeout: float = 30.0) -> str:
     """Run multiple bluetoothctl commands sequentially and join their output.
 
-    The host runs `bt-agent --capability=NoInputNoOutput` as a separate daemon
-    (started by physicar.sh), so we don't need to register an agent inside
-    bluetoothctl — passkey/confirm prompts are auto-accepted by bt-agent.
+    bt-agent runs as a separate daemon (started by physicar.sh), so
+    passkey/confirm prompts are auto-accepted.
     """
     parts: list[str] = []
     for cmd in commands:
@@ -103,7 +100,7 @@ def _bctl_script(commands: list[str], timeout: float = 30.0) -> str:
 
 def _has_bluetoothctl() -> bool:
     try:
-        proc = _on_host(["which", "bluetoothctl"], timeout=3)
+        proc = _run(["which", "bluetoothctl"], timeout=3)
         return proc.returncode == 0 and bool(proc.stdout.strip())
     except Exception:
         return False
@@ -261,7 +258,7 @@ def _scan_blocking(seconds: int) -> list:
     seconds = max(1, min(int(seconds), 20))
     _bctl("power on", timeout=5)
     try:
-        _on_host(
+        _run(
             ["bluetoothctl", "--timeout", str(seconds), "scan", "on"],
             timeout=seconds + 5,
         )

@@ -2,8 +2,8 @@
 """
 Auth router — only exposes the device-password change endpoint.
 
-All session/login/token authentication is handled by the host nginx
-(see physicar-setup/host-device/files/etc/nginx/sites-available/physicar).
+All session/login/token authentication is handled by nginx
+(see deploy/device/etc/nginx/).
 """
 
 import os
@@ -28,7 +28,7 @@ async def change_password(req: ChangePasswordRequest):
     Change the device password (rewrites /home/physicar/physicar_ws/userdata/password and reboots).
 
     The user is already authenticated by nginx to reach this endpoint, so we
-    don't ask for the current password. After a reboot the host's physicar.sh
+    don't ask for the current password. After a reboot physicar.sh
     regenerates nginx auth maps from the new file, so SSH/AP/web all converge.
 
     Validation: 8-63 chars, ASCII printable, no whitespace.

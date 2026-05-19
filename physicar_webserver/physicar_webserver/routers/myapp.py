@@ -15,12 +15,12 @@
 # limitations under the License.
 
 """
-MyApp Router — student-facing host webapp (:5000) slot management.
+MyApp Router — student-facing webapp (:5000) slot management.
 
-The host's ``physicar-myapp.service`` runs ``/home/physicar/physicar_ws/userdata/myapp/run.sh``.
-This router writes run.sh / log under the co-mounted
-``/home/physicar/physicar_ws/userdata/myapp/`` and uses ``host_exec.systemctl`` to control the
-host systemd unit (start / stop / restart).
+``physicar-myapp.service`` runs ``/home/physicar/physicar_ws/userdata/myapp/run.sh``.
+This router writes run.sh / log under
+``/home/physicar/physicar_ws/userdata/myapp/`` and uses ``sudo systemctl`` to control the
+systemd unit (start / stop / restart).
 """
 
 import asyncio

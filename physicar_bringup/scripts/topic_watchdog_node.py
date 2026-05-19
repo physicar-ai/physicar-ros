@@ -26,13 +26,13 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import CompressedImage, LaserScan, BatteryState, Imu
+from sensor_msgs.msg import CameraInfo, LaserScan, BatteryState, Imu
 from nav_msgs.msg import Odometry
 
 
 # topic, msg_type, timeout(s), kill_pattern (pgrep -f)
 REAL_WATCH_TOPICS = [
-    ("/camera/image_raw/compressed", CompressedImage, 5.0, "camera_ros/lib/camera_ros/camera_node"),
+    ("/camera/camera_info", CameraInfo, 5.0, "camera_ros/lib/camera_ros/camera_node"),
     ("/scan",                        LaserScan,        3.0, "rplidar_node"),
     ("/scan_filtered",               LaserScan,        3.0, "scan_filter_node"),
     ("/odom",                        Odometry,         3.0, "ekf_filter_node"),
@@ -92,7 +92,7 @@ class TopicWatchdog(Node):
         )
 
         for topic, msg_type, _timeout, _pattern in self._topics:
-            qos = qos_be if msg_type in (CompressedImage, LaserScan, Imu) else qos_rel
+            qos = qos_be if msg_type in (LaserScan, Imu) else qos_rel
             self.last_msg_time[topic] = self.start_time
             self.subs.append(self.create_subscription(
                 msg_type, topic,

@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Authentication is handled by the host nginx (see physicar-setup).
+# Authentication is handled by nginx (see deploy/).
 # FastAPI listens on 127.0.0.1:8000 and trusts every request that reaches it.
 from physicar_webserver.routers import health, kiosk, info, auth, deepracer
 from physicar_webserver.routers import state, agent, calibration, control, network, bluetooth, uistate, joy, teleop, myapp

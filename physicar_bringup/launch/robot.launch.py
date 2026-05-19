@@ -219,7 +219,7 @@ def generate_launch_description():
     )
 
     # Joystick driver (SDL2-based, normalises Xbox/PS/Switch controllers)
-    # Reads /dev/input/jsX from host via --privileged.
+    # Reads /dev/input/jsX directly.
     # SDL_JOYSTICK_HIDAPI=0: disable SDL's HIDAPI backend so SDL falls back
     # to the kernel evdev/joystick interface.  The HIDAPI backend mis-parses
     # xpadneo's BLE Xbox controller HID reports (only battery events get

@@ -18,8 +18,7 @@
 PhysiCar Simulation Launch File
 
 Gazebo simulation mode — hardware drivers are NOT launched.
-Gazebo runs on the HOST, this container runs with --network host so
-ros_gz_bridge (in container) can talk to Gazebo via gz-transport.
+Gazebo runs as a separate process; ros_gz_bridge connects via gz-transport.
 
 Compared to robot.launch.py, the following are EXCLUDED:
   - physicar_driver (serial/Yahboom board)
@@ -199,9 +198,9 @@ def generate_launch_description():
         ]
     )
 
-    # ── Gazebo Bridge (container ↔ Gazebo on host via --network host) ──
+    # ── Gazebo Bridge (Gazebo ↔ ROS2) ──
     # ros_gz_bridge: Gazebo topics ↔ ROS2 topics
-    # GZ_PARTITION must match between Gazebo (host) and bridge (container)
+    # GZ_PARTITION must match between Gazebo and bridge
     gz_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',

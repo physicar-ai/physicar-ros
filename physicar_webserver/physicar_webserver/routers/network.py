@@ -375,16 +375,10 @@ async def internet_status():
 # When the on-disk cert is a valid LE cert, /run/physicar/le-cert-valid is
 # touched.  When it's missing/expired/self-signed, that flag is removed and
 # le.{crt,key} are reverted to the self-signed seed.
-#
-# Inside the container we cannot see /etc/nginx/ssl/ directly (not mounted),
-# but /var/run is bind-mounted from the host's /var/run (== /run on systemd
-# distros), so the watcher's flag and PID files are reachable via /var/run.
-# For cert metadata (expires_at, issuer) we shell into the host mount
-# namespace via nsenter — same trick the wifi_connect handler uses.
 
-_LE_VALID_FLAG = "/var/run/physicar/le-cert-valid"
-_CERT_REFRESH_PID_FILE = "/var/run/physicar/cert-fetcher.pid"
-_HOST_LE_CRT_PATH = "/etc/nginx/ssl/le.crt"  # path on host
+_LE_VALID_FLAG = "/run/physicar/le-cert-valid"
+_CERT_REFRESH_PID_FILE = "/run/physicar/cert-fetcher.pid"
+_LE_CRT_PATH = "/etc/nginx/ssl/le.crt"
 
 
 def _read_cert_metadata() -> dict:
@@ -394,7 +388,7 @@ def _read_cert_metadata() -> dict:
     out: dict = {"present": False}
     try:
         r = subprocess.run(
-            ["openssl", "x509", "-in", _HOST_LE_CRT_PATH, "-noout",
+            ["openssl", "x509", "-in", _LE_CRT_PATH, "-noout",
              "-enddate", "-issuer", "-subject"],
             capture_output=True, text=True, timeout=3,
         )
@@ -503,7 +497,7 @@ async def ap_info():
         return {"ssid": "", "password": "", "ip": "", "url": "", "active": False}
 
     try:
-        # Read actual hotspot SSID from NetworkManager (works even inside Docker)
+        # Read actual hotspot SSID from NetworkManager
         result = subprocess.run(
             ["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", "physicar-hotspot"],
             capture_output=True, text=True, timeout=5
@@ -821,7 +815,7 @@ from fastapi.responses import StreamingResponse as _StreamingResponse
 async def _build_snapshot() -> dict:
     """Aggregate everything the network panel renders into one payload.
 
-    The endpoint handlers below do blocking subprocess calls (nsenter, nmcli,
+    The endpoint handlers below do blocking subprocess calls (nmcli,
     iw, socket.connect). Running them directly inside the event loop starves
     every other request — any deepracer/calibration call concurrent with the
     5 s poll cycle hits its 2 s service timeout. So we drive each handler

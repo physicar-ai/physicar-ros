@@ -2,13 +2,13 @@
 """
 PhysiCar device password helpers.
 
-Authentication itself is handled by the host nginx (see
-physicar-setup/host-device/files/etc/nginx/sites-available/physicar).
+Authentication itself is handled by nginx (see
+deploy/device/etc/nginx/).
 This module only exposes utilities for code that needs to know the
 device password value (e.g. WiFi hotspot SSID setup, the
 POST /auth/password endpoint that rewrites the password file).
 
-Password resolution priority (matches host physicar.sh):
+Password resolution priority (matches physicar.sh):
   1. /home/physicar/physicar_ws/userdata/password file (8-63 ASCII printable)
   2. SHA-256(serial)[8:16]
   3. fallback → "physicar"
