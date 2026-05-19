@@ -17,7 +17,7 @@ web API — the launch file determines the mode.
 
 | Mode | How it starts | Hardware | Where it runs |
 |---|---|---|---|
-| **Real robot** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom board + RPLidar + Pi Camera | Host-native (no container) |
+| **Real robot** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom board + RPLidar + Pi Camera | Raspberry Pi 5 (native) |
 | **Simulation** | `sim.launch.py` | none | Codespaces / desktop + Gazebo Harmonic |
 
 ---
@@ -490,9 +490,8 @@ Workflow when using
    `xvfb` + `openbox` + `x11vnc` + `novnc` (browser desktop), `nginx`
    (port 80), `gz_websocket` (gzweb on :9002), `sim_api` (:9003), the
    student `myapp` watcher, and `physicar`.
-3. **`physicar` program** runs `entrypoint.sh` with `SIM=true`, which
-   triggers `sim.launch.py` and the `ros_gz_bridge` connects to the
-   host's Gazebo instance.
+3. **`physicar` program** runs `sim.launch.py` with `SIM=true`, and
+   the `ros_gz_bridge` connects to the Gazebo instance.
 
 End-user URLs (forwarded as port 80):
 

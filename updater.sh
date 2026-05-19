@@ -124,7 +124,7 @@ while true; do
         touch "$SIGNAL_FILE"
         log "signaling rebuild..."
 
-        # Kill the ros2 launch process (entrypoint loop will restart)
+        # Kill the ros2 launch process (physicar.sh loop will restart)
         pkill -f 'ros2 launch physicar_bringup' 2>/dev/null || true
     fi
 

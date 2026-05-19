@@ -538,7 +538,7 @@ async def wifi_connect(request: WifiConnectRequest):
     if _is_sim():
         raise HTTPException(status_code=501, detail="WiFi control not available in simulation mode")
 
-    def run_on_host(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
+    def run_cmd(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     is_enterprise = bool(request.identity)
@@ -547,7 +547,7 @@ async def wifi_connect(request: WifiConnectRequest):
     try:
         if is_enterprise:
             con_name = f"wifi-{request.ssid[:20]}"
-            run_on_host(["nmcli", "connection", "delete", con_name], timeout=10)
+            run_cmd(["nmcli", "connection", "delete", con_name], timeout=10)
             cmd = [
                 "nmcli", "connection", "add",
                 "type", "wifi",
@@ -561,14 +561,14 @@ async def wifi_connect(request: WifiConnectRequest):
                 "802-1x.identity", request.identity,
                 "802-1x.password", request.password or "",
             ]
-            result = run_on_host(cmd, timeout=30)
+            result = run_cmd(cmd, timeout=30)
             if result.returncode == 0:
-                result = run_on_host(["nmcli", "connection", "up", con_name], timeout=30)
+                result = run_cmd(["nmcli", "connection", "up", con_name], timeout=30)
                 if result.returncode == 0:
                     _bump_network()
                     return {"success": True, "message": f"Connected to {request.ssid}"}
                 error_msg = result.stderr.strip()
-                run_on_host(["nmcli", "connection", "delete", con_name], timeout=10)
+                run_cmd(["nmcli", "connection", "delete", con_name], timeout=10)
                 if any(x in error_msg.lower() for x in ["password", "auth", "secrets"]):
                     raise HTTPException(status_code=401, detail="Wrong username or password")
                 raise HTTPException(status_code=400, detail=error_msg or "Connection failed")
@@ -585,7 +585,7 @@ async def wifi_connect(request: WifiConnectRequest):
             cmd = ["nmcli", "dev", "wifi", "connect", request.ssid, "ifname", "wlan0"]
             if request.password:
                 cmd.extend(["password", request.password])
-            result = run_on_host(cmd, timeout=30)
+            result = run_cmd(cmd, timeout=30)
             if result.returncode == 0:
                 _bump_network()
                 return {"success": True, "message": f"Connected to {request.ssid}"}
@@ -644,19 +644,19 @@ async def wifi_connect(request: WifiConnectRequest):
 '''
         config_path = "/etc/netplan/60-wifi-kiosk.yaml"
         write_cmd = ["bash", "-c", f"cat > {config_path} << 'NETPLAN_EOF'\n{netplan_config}NETPLAN_EOF"]
-        result = run_on_host(write_cmd)
+        result = run_cmd(write_cmd)
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to write config: {result.stderr}")
-        run_on_host(["chmod", "600", config_path])
-        result = run_on_host(["netplan", "apply"], timeout=30)
+        run_cmd(["chmod", "600", config_path])
+        result = run_cmd(["netplan", "apply"], timeout=30)
         if result.returncode != 0:
-            run_on_host(["rm", "-f", config_path])
+            run_cmd(["rm", "-f", config_path])
             error_msg = result.stderr.strip()
             if "password" in error_msg.lower() or "invalid" in error_msg.lower():
                 raise HTTPException(status_code=401, detail="Invalid password format")
             raise HTTPException(status_code=400, detail=f"Netplan apply failed: {error_msg}")
         time.sleep(5)
-        check_result = run_on_host(["iw", "dev", "wlan0", "link"])
+        check_result = run_cmd(["iw", "dev", "wlan0", "link"])
         if request.ssid in check_result.stdout:
             _bump_network()
             return {"success": True, "message": f"Connected to {request.ssid}"}
@@ -690,7 +690,7 @@ class SavedConnection(BaseModel):
     active: bool    # currently active
 
 
-def _run_on_host(cmd: list[str], timeout: int = 10) -> subprocess.CompletedProcess:
+def _run_cmd(cmd: list[str], timeout: int = 10) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
@@ -701,7 +701,7 @@ async def wifi_saved_list():
         return []
     try:
         # Get list of all wifi connections
-        result = _run_on_host(
+        result = _run_cmd(
             ["nmcli", "-t", "-f", "NAME,TYPE,AUTOCONNECT,ACTIVE", "connection", "show"],
             timeout=10,
         )
@@ -725,7 +725,7 @@ async def wifi_saved_list():
         # Resolve SSID via connection details (may contain non-ASCII)
         ssid = name
         try:
-            det = _run_on_host(
+            det = _run_cmd(
                 ["nmcli", "-t", "-g", "802-11-wireless.ssid", "connection", "show", name],
                 timeout=5,
             )
@@ -748,7 +748,7 @@ async def wifi_saved_delete(name: str):
     if _is_sim():
         raise HTTPException(status_code=501, detail="WiFi control not available in simulation mode")
     try:
-        result = _run_on_host(["nmcli", "connection", "delete", name], timeout=10)
+        result = _run_cmd(["nmcli", "connection", "delete", name], timeout=10)
         if result.returncode != 0:
             err = (result.stderr or result.stdout).strip()
             if "unknown connection" in err.lower() or "not found" in err.lower():
@@ -777,7 +777,7 @@ async def wifi_activate(request: WifiActivateRequest):
     if _is_sim():
         raise HTTPException(status_code=501, detail="WiFi control not available in simulation mode")
     try:
-        result = _run_on_host(
+        result = _run_cmd(
             ["nmcli", "connection", "up", request.name, "ifname", "wlan0"],
             timeout=30,
         )

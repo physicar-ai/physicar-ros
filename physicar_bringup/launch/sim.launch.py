@@ -288,7 +288,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # Gazebo bridge (Gz ↔ ROS2 topics) — container has --network host
+        # Gazebo bridge (Gz ↔ ROS2 topics)
         gz_bridge,
         image_republish,
         # ROS nodes only — no hardware, no system processes

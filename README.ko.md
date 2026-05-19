@@ -17,7 +17,7 @@ Gazebo Harmonic 시뮬레이션 (GitHub Codespaces / 데스크톱) 에서도
 
 | 모드 | 시작 방법 | 하드웨어 | 실행 위치 |
 |---|---|---|---|
-| **실제 로봇** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom 보드 + RPLidar + Pi 카메라 | 호스트 네이티브 (컨테이너 없음) |
+| **실제 로봇** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom 보드 + RPLidar + Pi 카메라 | Raspberry Pi 5 (네이티브) |
 | **시뮬레이션** | `sim.launch.py` | 없음 | Codespaces / 데스크톱 + Gazebo Harmonic |
 
 ---
@@ -487,8 +487,8 @@ sudo systemctl status physicar
    감독 대상에는 `xvfb` + `openbox` + `x11vnc` + `novnc` (브라우저 데스크톱),
    `nginx` (port 80), `gz_websocket` (gzweb on :9002), `sim_api` (:9003),
    학생용 `myapp` 워처, `physicar` 가 포함됨.
-3. **`physicar` 프로그램** 이 `entrypoint.sh` 를 `SIM=true` 로 실행 →
-   `sim.launch.py` 가 트리거되고, `ros_gz_bridge` 가 호스트 Gazebo 에 연결.
+3. **`physicar` 프로그램** 이 `SIM=true` 로 `sim.launch.py` 를 실행 →
+   `ros_gz_bridge` 가 Gazebo 에 연결.
 
 최종 사용자 URL (포트 80 으로 포워딩):
 
