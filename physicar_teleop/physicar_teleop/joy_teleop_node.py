@@ -183,7 +183,6 @@ class JoyTeleopNode(Node):
         self._drive_engaged: bool = False     # LB held
         self._camera_engaged: bool = False    # RB held
         self._estop_latched: bool = False
-        self._prev_estop: bool = False
         self._prev_center: bool = False
         self._pan: float = 0.0
         self._tilt: float = 0.0
@@ -472,13 +471,12 @@ class JoyTeleopNode(Node):
         self._last_joy = msg
         self._last_joy_time = self.get_clock().now()
 
-        # Edge-trigger ESTOP toggle (press once to latch, press again to clear)
+        # Hold-to-activate ESTOP: active only while button is held.
         estop_now = self._btn(msg, int(self._mapping['estop_button']))
-        if estop_now and not self._prev_estop:
-            self._estop_latched = not self._estop_latched
+        if estop_now != self._estop_latched:
+            self._estop_latched = estop_now
             state = 'ON' if self._estop_latched else 'OFF'
             self.get_logger().warning(f'Teleop ESTOP {state}')
-        self._prev_estop = estop_now
 
         # Edge-trigger camera recenter (only meaningful when camera_engaged is
         # held — otherwise we'd fight another camera publisher).
