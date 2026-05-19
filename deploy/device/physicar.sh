@@ -484,7 +484,8 @@ fi
         sleep 0.5
       done
 
-      DISPLAY=:0 chromium-browser \
+      sudo DISPLAY=:0 chromium-browser \
+        --no-sandbox \
         --disable-gpu \
         --disable-software-rasterizer \
         --disable-dev-shm-usage \
