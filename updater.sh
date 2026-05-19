@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# updater.sh — Periodic background updater for physicar-ros (runs inside container)
+# updater.sh — Periodic background updater for physicar-ros
 #
-# Launched by entrypoint.sh in background. Checks for new version tags.
-# On update: force-checkout → signal entrypoint to rebuild+relaunch.
+# Launched by physicar.sh in background. Checks for new version tags.
+# On update: force-checkout → signal physicar.sh to rebuild+relaunch.
+#
+# Version matching: auto-detects the current major version from the
+# checked-out tag (e.g. v1.4.2 → v1.*) and updates to the latest tag
+# within that major version.
 #
 # Safety guarantees:
 #   - gc.auto=0: prevents git gc (interrupted gc = repo corruption risk)
@@ -15,9 +19,27 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$SCRIPT_DIR"
-TAG_PATTERN="${PHYSICAR_TAG_PATTERN:-v1.*}"
 INTERVAL="${PHYSICAR_UPDATE_INTERVAL:-300}"  # default: 5 minutes
 SIGNAL_FILE="/tmp/.physicar-update-ready"
+
+log() { echo "[updater] $(date '+%H:%M:%S') $*"; }
+
+# Detect major version from current tag (e.g. v1.4.2 → v1.*)
+detect_tag_pattern() {
+    local tag major
+    tag=$(git -C "$REPO_DIR" describe --tags --abbrev=0 HEAD 2>/dev/null)
+    if [[ -n "$tag" ]]; then
+        major=$(echo "$tag" | grep -oP '^v\d+' 2>/dev/null)
+        if [[ -n "$major" ]]; then
+            echo "${major}.*"
+            return 0
+        fi
+    fi
+    echo "v*"
+    return 1
+}
+
+TAG_PATTERN="$(detect_tag_pattern)"
 
 log() { echo "[updater] $(date '+%H:%M:%S') $*"; }
 
@@ -93,9 +115,9 @@ sleep 120
 
 while true; do
     if safe_update; then
-        # Signal entrypoint to rebuild + relaunch
+        # Signal physicar.sh to rebuild + relaunch
         touch "$SIGNAL_FILE"
-        log "signaling entrypoint to rebuild..."
+        log "signaling rebuild..."
 
         # Kill the ros2 launch process (entrypoint loop will restart)
         pkill -f 'ros2 launch physicar_bringup' 2>/dev/null || true

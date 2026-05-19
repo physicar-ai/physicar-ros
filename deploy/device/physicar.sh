@@ -68,25 +68,45 @@ if [ -z "$PASSWORD" ]; then
   PASSWORD="${SERIAL_HASH:8:8}"
 fi
 
-echo "physicar:${PASSWORD}" | sudo chpasswd
+# Only update password if changed
+_CURRENT_PW_HASH=$(sudo getent shadow physicar 2>/dev/null | cut -d: -f2)
+_PW_MATCH=$(_H="$_CURRENT_PW_HASH" _P="$PASSWORD" python3 -c "
+import crypt, os
+current = os.environ.get('_H', '')
+pw = os.environ.get('_P', '')
+print('yes' if current and crypt.crypt(pw, current) == current else 'no')
+" 2>/dev/null || echo "no")
+if [ "$_PW_MATCH" != "yes" ]; then
+  echo "physicar:${PASSWORD}" | sudo chpasswd
+fi
 
-sudo hostnamectl set-hostname "$DEVICE_HOSTNAME"
-sudo sed -i '/127.0.1.1/d' /etc/hosts
-echo "127.0.1.1	$DEVICE_HOSTNAME" | sudo tee -a /etc/hosts > /dev/null
+# Only update hostname if changed
+_CURRENT_HOSTNAME=$(hostname)
+if [ "$_CURRENT_HOSTNAME" != "$DEVICE_HOSTNAME" ]; then
+  sudo hostnamectl set-hostname "$DEVICE_HOSTNAME"
+  sudo sed -i '/127.0.1.1/d' /etc/hosts
+  echo "127.0.1.1	$DEVICE_HOSTNAME" | sudo tee -a /etc/hosts > /dev/null
+fi
 
 # Restrict avahi/mDNS to ap0 only
+AVAHI_CHANGED=0
 sudo mkdir -p /etc/avahi
 if [ -f /etc/avahi/avahi-daemon.conf ]; then
-  sudo sed -i \
-    -e 's/^#*allow-interfaces=.*/allow-interfaces=ap0/' \
-    -e 's/^#*deny-interfaces=.*/deny-interfaces=wlan0,eth0/' \
-    /etc/avahi/avahi-daemon.conf
-  grep -q '^allow-interfaces=' /etc/avahi/avahi-daemon.conf || \
-    sudo sed -i '/^\[server\]/a allow-interfaces=ap0' /etc/avahi/avahi-daemon.conf
-  grep -q '^deny-interfaces=' /etc/avahi/avahi-daemon.conf || \
-    sudo sed -i '/^\[server\]/a deny-interfaces=wlan0,eth0' /etc/avahi/avahi-daemon.conf
+  if ! grep -q '^allow-interfaces=ap0' /etc/avahi/avahi-daemon.conf; then
+    sudo sed -i \
+      -e 's/^#*allow-interfaces=.*/allow-interfaces=ap0/' \
+      -e 's/^#*deny-interfaces=.*/deny-interfaces=wlan0,eth0/' \
+      /etc/avahi/avahi-daemon.conf
+    grep -q '^allow-interfaces=' /etc/avahi/avahi-daemon.conf || \
+      sudo sed -i '/^\[server\]/a allow-interfaces=ap0' /etc/avahi/avahi-daemon.conf
+    grep -q '^deny-interfaces=' /etc/avahi/avahi-daemon.conf || \
+      sudo sed -i '/^\[server\]/a deny-interfaces=wlan0,eth0' /etc/avahi/avahi-daemon.conf
+    AVAHI_CHANGED=1
+  fi
 fi
-sudo systemctl restart avahi-daemon &>/dev/null || true
+if [ "$_CURRENT_HOSTNAME" != "$DEVICE_HOSTNAME" ] || [ "$AVAHI_CHANGED" = "1" ]; then
+  sudo systemctl restart avahi-daemon &>/dev/null || true
+fi
 
 # ────────────────── WiFi Hotspot (AP+STA) ──────────────────
 
@@ -107,23 +127,38 @@ sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
   echo "server=8.8.4.4"
 } | sudo tee /etc/NetworkManager/dnsmasq-shared.d/physicar.conf > /dev/null
 
-sudo nmcli connection delete physicar-hotspot &>/dev/null || true
-sleep 1
+# Only recreate hotspot if SSID or password changed
+_HOTSPOT_SSID=$(sudo nmcli -t -f 802-11-wireless.ssid connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
+_HOTSPOT_PSK=$(sudo nmcli -s -t -f 802-11-wireless-security.psk connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
 
-if iw dev ap0 info &>/dev/null; then
-  sudo nmcli connection add \
-    type wifi ifname ap0 con-name physicar-hotspot \
-    autoconnect no ssid "$DEVICE_HOSTNAME" \
-    wifi.mode ap wifi.band bg \
-    wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD" \
-    wifi-sec.wps-method 0x1 \
-    ipv4.method shared ipv4.addresses 10.42.0.1/24 \
-    &>/dev/null
-  sudo nmcli connection up physicar-hotspot &>/dev/null && \
-    echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
-    echo "[physicar] WARNING: Hotspot failed to start" >&2
+if [ "$_HOTSPOT_SSID" = "$DEVICE_HOSTNAME" ] && [ "$_HOTSPOT_PSK" = "$PASSWORD" ]; then
+  # Same config — just ensure it's up
+  if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
+    sudo nmcli connection up physicar-hotspot &>/dev/null && \
+      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
+      echo "[physicar] WARNING: Hotspot failed to start" >&2
+  else
+    echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
+  fi
 else
-  echo "[physicar] WARNING: Could not create AP interface" >&2
+  # Config changed or not exists — recreate
+  sudo nmcli connection delete physicar-hotspot &>/dev/null || true
+  sleep 1
+  if iw dev ap0 info &>/dev/null; then
+    sudo nmcli connection add \
+      type wifi ifname ap0 con-name physicar-hotspot \
+      autoconnect no ssid "$DEVICE_HOSTNAME" \
+      wifi.mode ap wifi.band bg \
+      wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD" \
+      wifi-sec.wps-method 0x1 \
+      ipv4.method shared ipv4.addresses 10.42.0.1/24 \
+      &>/dev/null
+    sudo nmcli connection up physicar-hotspot &>/dev/null && \
+      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
+      echo "[physicar] WARNING: Hotspot failed to start" >&2
+  else
+    echo "[physicar] WARNING: Could not create AP interface" >&2
+  fi
 fi
 
 # ────────────────── X11 Display ──────────────────
@@ -154,15 +189,25 @@ fi
 
 # ────────────────── Virtual Display + VNC ──────────────────
 
-Xvfb :1 -screen 0 800x600x24 &>/dev/null &
-sleep 1
-DISPLAY=:1 openbox &>/dev/null &
-DISPLAY=:1 tint2 &>/dev/null &
+if ! pgrep -x Xvfb > /dev/null 2>&1; then
+  Xvfb :1 -screen 0 800x600x24 &>/dev/null &
+  sleep 1
+fi
+if ! pgrep -x openbox > /dev/null 2>&1; then
+  DISPLAY=:1 openbox &>/dev/null &
+fi
+if ! pgrep -x tint2 > /dev/null 2>&1; then
+  DISPLAY=:1 tint2 &>/dev/null &
+fi
 
 sudo xhost +SI:localuser:physicar &>/dev/null || true
 
-x11vnc -display :1 -forever -shared -nopw -rfbport 5901 -bg -o /dev/null
-/usr/share/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 6080 &>/dev/null &
+if ! pgrep -x x11vnc > /dev/null 2>&1; then
+  x11vnc -display :1 -forever -shared -nopw -rfbport 5901 -bg -o /dev/null
+fi
+if ! pgrep -f novnc_proxy > /dev/null 2>&1; then
+  /usr/share/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 6080 &>/dev/null &
+fi
 
 # Bluetooth auto-pair agent
 if command -v bt-agent >/dev/null 2>&1 && ! pgrep -x bt-agent >/dev/null; then
@@ -171,7 +216,15 @@ fi
 
 # ────────────────── Nginx Auth Maps ──────────────────
 
-BOOT_TOKEN=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
+# Preserve BOOT_TOKEN across restarts (only regenerate on reboot)
+# /run/ is tmpfs — cleared on reboot, so token file absence = fresh boot
+BOOT_TOKEN_FILE="/run/physicar/boot_token"
+if [ -f "$BOOT_TOKEN_FILE" ]; then
+  BOOT_TOKEN=$(cat "$BOOT_TOKEN_FILE")
+else
+  BOOT_TOKEN=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
+  echo "$BOOT_TOKEN" > "$BOOT_TOKEN_FILE"
+fi
 echo "$BOOT_TOKEN" | sudo tee /etc/nginx/html/boot_token > /dev/null
 sudo chmod 644 /etc/nginx/html/boot_token
 
@@ -321,13 +374,15 @@ cat > "$CODE_USER_DIR/settings.json" <<'CODE_SETTINGS'
 CODE_SETTINGS
 fi
 
-/usr/local/bin/code-server \
-  --bind-addr 127.0.0.1:8080 \
-  --auth none \
-  --disable-telemetry \
-  --disable-update-check \
-  --proxy-domain preview.physicar.ai \
-  "$PHYSICAR_WS" &>/dev/null &
+if ! ss -tlnp 2>/dev/null | grep -q ':8080 '; then
+  /usr/local/bin/code-server \
+    --bind-addr 127.0.0.1:8080 \
+    --auth none \
+    --disable-telemetry \
+    --disable-update-check \
+    --proxy-domain preview.physicar.ai \
+    "$PHYSICAR_WS" &>/dev/null &
+fi
 
 # Pre-install extensions on first boot
 EXT_MARKER="$HOME/.local/share/code-server/.physicar-ext-installed"
@@ -429,8 +484,7 @@ fi
         sleep 0.5
       done
 
-      sudo DISPLAY=:0 chromium-browser \
-        --no-sandbox \
+      DISPLAY=:0 chromium-browser \
         --disable-gpu \
         --disable-software-rasterizer \
         --disable-dev-shm-usage \

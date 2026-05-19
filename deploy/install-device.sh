@@ -124,62 +124,11 @@ fi
 ln -sf vnc_lite.html /usr/share/novnc/index.html
 
 # Deploy openbox / tint2 config
-mkdir -p /etc/xdg/openbox /root/.config/tint2
+mkdir -p /etc/xdg/openbox /home/physicar/.config/tint2
 
 ln -sf "$DEPLOY_DIR/etc/xdg/openbox/rc.xml" /etc/xdg/openbox/rc.xml
-
-cat > /root/.config/tint2/tint2rc <<'__TINT2__'
-# Background 1
-#-------------------------------------
-rounded = 0
-border_width = 0
-background_color = #2d2d2d 90
-
-# Background 2
-#-------------------------------------
-rounded = 3
-border_width = 0
-background_color = #0078d4 100
-
-# Panel
-panel_items = LT
-panel_size = 100% 28
-panel_margin = 0 0
-panel_padding = 2 0 2
-panel_position = bottom center horizontal
-panel_layer = top
-panel_background_id = 1
-
-# Launcher
-launcher_padding = 2 4 4
-launcher_background_id = 0
-launcher_icon_background_id = 0
-launcher_icon_size = 22
-launcher_icon_theme = Tango
-launcher_icon_asb = 100 0 0
-launcher_tooltip = 1
-launcher_item_app = /usr/share/applications/xterm.desktop
-taskbar_mode = single_desktop
-taskbar_padding = 2 2 2
-taskbar_background_id = 0
-taskbar_name = 0
-task_text = 1
-task_icon = 0
-task_centered = 1
-task_maximum_size = 250 28
-task_padding = 6 2 6
-task_font = sans 9
-task_font_color = #dddddd 100
-task_active_font_color = #ffffff 100
-task_background_id = 0
-task_active_background_id = 2
-
-# Mouse actions
-mouse_middle = none
-mouse_right = none
-mouse_scroll_up = none
-mouse_scroll_down = none
-__TINT2__
+ln -sf "$DEPLOY_DIR/home/physicar/.config/tint2/tint2rc" /home/physicar/.config/tint2/tint2rc
+chown -R physicar:physicar /home/physicar/.config
 
 ln -sf "$DEPLOY_DIR/usr/share/applications/xterm.desktop" /usr/share/applications/xterm.desktop
 
