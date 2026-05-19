@@ -20,7 +20,7 @@ def tool(
 ) -> dict:
     """Manage DeepRacer reinforcement-learning models and autonomous driving.
 
-    Models are stored in /opt/physicar/deepracer/models/<model_name>/.
+    Models are stored in /home/physicar/physicar_ws/userdata/deepracer/models/<model_name>/.
 
     Examples:
         tool("status")

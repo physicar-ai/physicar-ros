@@ -156,7 +156,7 @@ class CalibrationData:
 
 class PhysicarDriverNode(Node):
     # Default calibration file path (can be overridden by parameter)
-    DEFAULT_CALIBRATION_FILE = '/opt/physicar/calibration.json'
+    DEFAULT_CALIBRATION_FILE = '/home/physicar/physicar_ws/userdata/calibration.json'
     
     # Servo center angle (standard for RC servos)
     SERVO_CENTER = 90.0

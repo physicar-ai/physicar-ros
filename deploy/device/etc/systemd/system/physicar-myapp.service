@@ -1,0 +1,20 @@
+[Unit]
+Description=PhysiCar MyApp Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=physicar
+Group=physicar
+WorkingDirectory=/home/physicar/physicar_ws
+Environment=PORT=5000 PYTHONUNBUFFERED=1
+StandardOutput=append:/home/physicar/physicar_ws/userdata/myapp/log
+StandardError=append:/home/physicar/physicar_ws/userdata/myapp/log
+ExecStart=/bin/bash -ic '[ -f /home/physicar/physicar_ws/userdata/myapp/run.sh ] || exit 0; exec bash /home/physicar/physicar_ws/userdata/myapp/run.sh'
+Restart=always
+RestartSec=2
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

@@ -7,23 +7,18 @@
 [한국어](README.ko.md) | English
 
 ROS 2 Jazzy stack for the **PhysiCar** Ackermann-steered RC robot.
-Runs unchanged on real hardware (Raspberry Pi 5) and inside a Gazebo
-Harmonic simulation (GitHub Codespaces / desktop). Same launch file, same
-topics, same web API — only `SIM=true` flips the mode.
+Runs natively on Raspberry Pi 5 (Ubuntu 24.04) and inside a Gazebo
+Harmonic simulation (GitHub Codespaces / desktop). Same topics, same
+web API — the launch file determines the mode.
 
 ---
 
 ## Run modes at a glance
 
-| Mode | How it starts | Hardware | Where Gazebo runs |
+| Mode | How it starts | Hardware | Where it runs |
 |---|---|---|---|
-| **Real robot** | `entrypoint.sh` (no `SIM`) → `robot.launch.py` | RPi 5 + Yahboom board + RPLidar + Pi Camera | n/a |
-| **Simulation** | `entrypoint.sh` with `SIM=true` → `sim.launch.py` | none | host (gz sim, container uses `--network host`) |
-
-In sim mode the container ships only the upper-layer ROS nodes; the world
-runs in a separate Gazebo Harmonic process on the host and is bridged in
-via `ros_gz_bridge`. The web UI, REST API, agent, DeepRacer inference
-and gamepad teleop are identical to the real robot.
+| **Real robot** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom board + RPLidar + Pi Camera | Host-native (no container) |
+| **Simulation** | `sim.launch.py` | none | Codespaces / desktop + Gazebo Harmonic |
 
 ---
 
@@ -31,13 +26,21 @@ and gamepad teleop are identical to the real robot.
 
 ```
 physicar-ros/
-├── docker-compose.yml            # Docker Compose (sim/device profiles)
-├── entrypoint.sh                 # Container entrypoint (build → launch)
-├── fastdds-lo.xml                # Loopback-only Fast DDS profile
+├── deploy/                       # Device provisioning & runtime
+│   ├── install-device.sh           # One-shot installer (run as root)
+│   ├── README.md                   # Setup instructions
+│   └── device/                     # Runtime files (symlinked to /etc/)
+│       ├── physicar.sh               # Boot orchestrator (systemd ExecStart)
+│       ├── etc/
+│       │   ├── nginx/sites-available/physicar
+│       │   ├── systemd/system/physicar.service
+│       │   ├── systemd/system/physicar-myapp.service
+│       │   ├── netplan/01-netcfg.yaml
+│       │   ├── udev/rules.d/99-physicar.rules
+│       │   └── ...                   # X11, NetworkManager, chromium, etc.
+│       └── home/physicar/bashrc-append
 ├── updater.sh                    # Auto-updater (git tag based)
-├── host/                         # Host-side scripts
-│   ├── host_api.py                 # Container restart etc. host API
-│   └── login.html                  # nginx auth login page
+├── fastdds-lo.xml                # Loopback-only Fast DDS profile
 ├── physicar_bringup/             # System launch + drivers + utilities
 │   ├── launch/
 │   │   ├── robot.launch.py         # Real-robot launch
@@ -45,8 +48,8 @@ physicar-ros/
 │   ├── config/
 │   │   ├── driver_params.yaml       # Hardware driver parameters
 │   │   ├── ekf_params.yaml          # EKF sensor-fusion parameters
-│   │   ├── slam_params.yaml         # SLAM Toolbox config (host-side)
-│   │   └── nav2_params.yaml         # Nav2 config (host-side)
+│   │   ├── slam_params.yaml         # SLAM Toolbox config
+│   │   └── nav2_params.yaml         # Nav2 config
 │   ├── physicar_bringup/
 │   │   ├── yahboom_board.py        # Serial protocol for Yahboom expansion board
 │   │   └── servo_controller.py     # Servo angle clipping / mapping
@@ -76,7 +79,7 @@ physicar-ros/
 │       ├── ros_bridge.py           # rclpy ↔ FastAPI bridge
 │       ├── state_manager.py        # Topic snapshot cache + SSE fan-out
 │       ├── routers/                # /state /control /agent /calibration ...
-│       └── static/                 # Kiosk + studio web UI
+│       └── static/                 # Kiosk + studio web UI + login page
 ├── camera_ros/                   # [submodule] libcamera-based camera driver
 ├── rplidar_ros/                  # [submodule] RPLidar SDK driver
 └── rf2o_laser_odometry/          # [submodule] Laser-only odometry
@@ -84,29 +87,25 @@ physicar-ros/
 
 ---
 
-## Boot sequence — `entrypoint.sh`
+## Boot sequence — `deploy/device/physicar.sh`
 
-1. Read `/opt/physicar/.env` (e.g. `SIM=true`, `DEV=true`).
-2. Source `/opt/ros/jazzy/setup.bash`.
-3. Toggle `COLCON_IGNORE` on `camera_ros` / `rplidar_ros` when `SIM=true`
-   (their drivers depend on real hardware).
-4. `colcon build --symlink-install` (with one clean-build retry on failure).
-5. Source `install/setup.bash`.
-6. **DDS isolation** — `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` plus
-   `fastdds-lo.xml` (repo root) for loopback-only Fast DDS. SHM is
-   disabled (UDP only) so the container's root nodes don't trip on UID
-   boundaries with the host `physicar` user, and so other PhysiCars on
-   the same WiFi can't see our topics.
-7. **Auto-updater** — unless DEV mode, starts `updater.sh` in the
+On the real robot, `physicar.service` (systemd) runs `physicar.sh` as
+the `physicar` user on every boot.
+
+1. Load `~/physicar_ws/userdata/.env` (e.g. `DEV=true`).
+2. System setup: swap, CPU governor, WiFi hotspot, hostname, Xvfb + VNC.
+3. Start nginx, code-server, Bluetooth agent.
+4. Source `/opt/ros/jazzy/setup.bash`.
+5. `colcon build --symlink-install` (with one clean-build retry on failure).
+6. Source `install/setup.bash`.
+7. **DDS isolation** — `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` so
+   other PhysiCars on the same network can't see our topics.
+8. **Auto-updater** — unless DEV mode, starts `updater.sh` in the
    background. Periodically `git fetch --tags`; on new tag, checks out
    and kills the launch to trigger a rebuild.
-8. **Build + launch loop**:
-   - `SIM=true` → `ros2 launch physicar_bringup sim.launch.py`
-   - else → `ros2 launch physicar_bringup robot.launch.py`
-
-   On update signal, rebuilds and relaunches. If the launch exits
-   without a signal, `sleep infinity` keeps the container alive for
-   log inspection.
+9. **Build + launch loop**:
+   - `ros2 launch physicar_bringup robot.launch.py`
+   - On update signal, rebuilds and relaunches.
 
 Every ROS node has `respawn=True, respawn_delay≈2s`. Killing a node
 (`pkill -f node_name`) is the supported way to pick up new YAML / Python.
@@ -115,7 +114,7 @@ Every ROS node has `respawn=True, respawn_delay≈2s`. Killing a node
 
 ## Real-robot launch (`robot.launch.py`)
 
-Subset enabled when `SIM` is unset.
+All nodes are spawned with `respawn=True`.
 
 | Stage | Component | Notes |
 |---|---|---|
@@ -137,15 +136,16 @@ Subset enabled when `SIM` is unset.
 | t≈10s| `topic_watchdog_node` | After a 30 s grace, SIGTERM nodes whose sensor topic is stale → respawn restarts them |
 
 External processes (nginx, hotspot, etc.) are managed **outside** this
-package — by the host's `physicar.sh` orchestrator on the device side and
+package — by the `physicar.sh` orchestrator on the device side and
 by `supervisord` on the Codespaces side (see *Running in Codespaces*).
 
 ---
 
 ## Simulation launch (`sim.launch.py`)
 
-Activated by `SIM=true`. Hardware drivers are skipped (`COLCON_IGNORE`
-markers also keep `camera_ros` / `rplidar_ros` from being rebuilt).
+Used in Codespaces / desktop sim environments. Hardware drivers are
+skipped (`COLCON_IGNORE` markers also keep `camera_ros` / `rplidar_ros`
+from being rebuilt).
 
 Nodes that run:
 
@@ -176,9 +176,6 @@ Host-side requirements (handled by `physicar-sim` / Codespaces):
   ([`physicar-sim`](https://github.com/physicar-ai/physicar-sim))
 - `gz launch websocket.gzlaunch` (port 9002) — gzweb 3D viewer
 - `sim_api.py` (port 9003) — track switching, world status
-
-Topic / service / message inventory is **identical** between modes —
-the same agent tools and HTTP routes work in both.
 
 ---
 
@@ -237,9 +234,9 @@ the same agent tools and HTTP routes work in both.
 ## Web server (FastAPI on `:8000`)
 
 `webserver_node.py` runs uvicorn directly. CORS, gzip, auth and SSE are
-all handled by FastAPI; nginx (when present) only does TLS termination
-and `80/443 → 8000` proxying. **Auth bypass** for `127.0.0.0/8` and
-`10.42.0.0/24` (hotspot); external IPs need a token issued via `/auth`.
+all handled by FastAPI; nginx does TLS termination and `80/443 → 8000`
+proxying. **Auth bypass** for `127.0.0.0/8` and `10.42.0.0/24`
+(hotspot); external IPs need a token issued via `/auth`.
 
 Routers (mounted in `main.py`):
 
@@ -251,7 +248,7 @@ Routers (mounted in `main.py`):
 | `/state`, `/state/{odom,battery,imu,camera,camera/{pan,tilt},lidar,audio}` | `state` | JSON snapshot or SSE (`?stream=true` / `Accept: text/event-stream`). `/state/camera/image` returns JPEG (or MJPEG with `?stream=true`, optional `?width=&height=`). `/state/lidar?step=N` decimates the scan. |
 | `/control/{speed,steering,camera/pan,camera/tilt,audio}` | `control` | Posts a single value to the matching ROS 2 topic |
 | `/agent/tool/{list,get,call,set,delete,reset}` | `agent` | Manage and invoke agent tools (Python source + PEP 723 deps) |
-| `/calibration`, `/calibration/{steering,pan,tilt,reverse,emergency}` | `calibration` | Read / write `/opt/physicar/calibration.json` |
+| `/calibration`, `/calibration/{steering,pan,tilt,reverse,emergency}` | `calibration` | Read / write `/home/physicar/physicar_ws/userdata/calibration.json` |
 | `/teleop/joy`, `/teleop/joy/mapping` | `joy` | Joystick mapping CRUD |
 | `/teleop` | `teleop` | Source-agnostic teleop status / lock |
 | `/network`, `/network/bluetooth` | `network`, `bluetooth` | WiFi / BT pairing |
@@ -259,13 +256,14 @@ Routers (mounted in `main.py`):
 | `/settings/myapp`, `/settings/myapp/{start,stop,restart,log}` | `myapp` | Host-side student web app slot on port 5000 |
 | `/deepracer` | `deepracer` | Model upload / list / select / start / stop |
 | `/kiosk`, `/studio`, `/kiosk/calibration*` | `kiosk` | Kiosk + studio HTML UI |
+| `/api/host` | `sim` | Sim machine management (Codespaces) |
 
 OpenAPI / Swagger at `/docs`, ReDoc at `/redoc`.
 
 ### MyApp slot
 
-The host's `physicar-myapp.service` (or supervisord on Codespaces) runs
-a single user-supplied Python script as the `physicar` user on port
+`physicar-myapp.service` (or supervisord on Codespaces) runs a
+single user-supplied Python script as the `physicar` user on port
 5000, watching the script's directory with inotify and restarting on
 change. nginx proxies `/myapp/` to it with caching disabled.
 
@@ -276,7 +274,7 @@ curl http://<host>/settings/myapp
 # Register a script (starts immediately)
 curl -X PUT http://<host>/settings/myapp \
      -H 'Content-Type: application/json' \
-     -d '{"path": "/opt/physicar/myapp/main.py"}'
+     -d '{"path": "/home/physicar/physicar_ws/userdata/myapp/main.py"}'
 
 # Tail logs
 curl 'http://<host>/settings/myapp/log?tail=200'
@@ -310,7 +308,7 @@ subscriptions and clients. New topics are picked up on `topic.refresh()`.
 Tool storage:
 
 ```
-/opt/physicar/agent/
+/home/physicar/physicar_ws/userdata/agent/
 ├── tools/         # one .py file per tool, must define def tool(...)
 ├── venv/          # isolated venv with system-site-packages
 └── deps.json      # PEP 723 reference counts; uninstalls when refcount→0
@@ -327,7 +325,7 @@ fails.
 `deepracer_node` always runs but is idle until a model is loaded.
 
 ```
-/opt/physicar/deepracer/
+/home/physicar/physicar_ws/userdata/deepracer/
 ├── models/<name>/{model.onnx, model_metadata.json}
 └── config.json     # {"action_selection": "greedy"|"stochastic", "speed_scale": 1.0, "pan": 0.0, "tilt": 0.0}
 ```
@@ -426,7 +424,7 @@ rf2o_laser_odometry:
     freq: 20.0
 ```
 
-Calibration overrides at runtime live in `/opt/physicar/calibration.json`
+Calibration overrides at runtime live in `/home/physicar/physicar_ws/userdata/calibration.json`
 and are merged on top of the YAML values; `CalibrationStatus.source`
 tells you which one is currently active.
 
@@ -436,13 +434,15 @@ tells you which one is currently active.
 
 | Path | Used for |
 |---|---|
-| `/opt/physicar/.env` | `SIM=true`, `DEV=true`, ... |
-| `/opt/physicar/password` | Web auth password (falls back to serial hash if absent) |
-| `/opt/physicar/calibration.json` | Calibration overrides (latched) |
-| `/opt/physicar/agent/{tools,venv,deps.json}` | Agent tools sandbox |
-| `/opt/physicar/deepracer/{models,config.json}` | DeepRacer models + inference config |
-| `/opt/physicar/myapp/{run.sh,log}` | Student web app + log |
-| `/etc/nginx/...` | TLS-terminating reverse proxy (real robot) |
+| `/home/physicar/physicar_ws/src/physicar-ros/` | Repository (source of truth) |
+| `/home/physicar/physicar_ws/userdata/.env` | `DEV=true`, ... |
+| `/home/physicar/physicar_ws/userdata/password` | Web auth password (falls back to serial hash if absent) |
+| `/home/physicar/physicar_ws/userdata/calibration.json` | Calibration overrides (latched) |
+| `/home/physicar/physicar_ws/userdata/agent/{tools,venv,deps.json}` | Agent tools sandbox |
+| `/home/physicar/physicar_ws/userdata/deepracer/{models,config.json}` | DeepRacer models + inference config |
+| `/home/physicar/physicar_ws/userdata/myapp/{run.sh,log}` | Student web app + log |
+| `/etc/nginx/sites-available/physicar` | TLS-terminating reverse proxy (symlink → deploy/device/) |
+| `/etc/systemd/system/physicar.service` | Service unit (symlink → deploy/device/) |
 
 ---
 
@@ -450,11 +450,10 @@ tells you which one is currently active.
 
 ### Real robot
 
-The Pi image bakes everything in; the `physicar` Docker container runs
-`entrypoint.sh` automatically on boot. Logs:
+The `physicar.service` runs natively on boot. Logs:
 
 ```bash
-docker logs -f physicar
+journalctl -u physicar -f
 ros2 topic list
 ```
 
@@ -466,7 +465,15 @@ Make code changes:
 | FastAPI code in DEV mode | Auto-reloaded via `os.execv` watchdog |
 | YAML parameters | `pkill -f <node>` to pick them up |
 | C++ (camera_ros, rf2o) | `colcon build --symlink-install` then kill the node |
-| `nginx.conf` | `nginx -s reload` (host) |
+| `nginx` site config | `sudo nginx -s reload` |
+
+Service management:
+
+```bash
+sudo systemctl restart physicar
+sudo systemctl stop physicar
+sudo systemctl status physicar
+```
 
 ### Running in Codespaces (sim)
 
@@ -475,21 +482,17 @@ Workflow when using
 (`physicar` branch):
 
 1. **`onCreate`** — installs ROS 2 Jazzy, Gazebo Harmonic, `ros-jazzy-ros-gz`,
-   nginx, noVNC, supervisor; pulls the `physicar/sim:1` Docker image; pulls
-   the `physicar-sim` and `physicar-ros` submodules; writes
-   `SIM=true` into `/opt/physicar/.env`.
+   nginx, noVNC, supervisor; pulls the `physicar-sim` and `physicar-ros`
+   submodules; writes `SIM=true` into
+   `/home/physicar/physicar_ws/userdata/.env`.
 2. **`postStart`** — boots `supervisord` from
    `.devcontainer/supervisord.conf`. The supervised programs include
    `xvfb` + `openbox` + `x11vnc` + `novnc` (browser desktop), `nginx`
    (port 80), `gz_websocket` (gzweb on :9002), `sim_api` (:9003), the
    student `myapp` watcher, and `physicar`.
-3. **`physicar` program** runs `physicar.sh`, which
-   `docker run -d`s the `physicar/sim:1` image with `--network host`,
-   bind-mounts `/opt/physicar` and the `physicar-ros` submodule into
-   `/root/ros2_ws/src/physicar-ros`, and executes
-   `/root/ros2_ws/src/physicar-ros/entrypoint.sh`. With `SIM=true`,
-   that triggers `sim.launch.py` and the `ros_gz_bridge` reaches the
-   host's Gazebo via the shared host network.
+3. **`physicar` program** runs `entrypoint.sh` with `SIM=true`, which
+   triggers `sim.launch.py` and the `ros_gz_bridge` connects to the
+   host's Gazebo instance.
 
 End-user URLs (forwarded as port 80):
 
@@ -501,11 +504,11 @@ End-user URLs (forwarded as port 80):
 
 ---
 
-## SLAM & Navigation (host-side)
+## SLAM & Navigation
 
-SLAM and Nav2 run on the **host** (Codespaces or Raspberry Pi 5), not
-inside the container. The container provides robot-specific config files
-via environment variables set in `~/.bashrc`:
+SLAM and Nav2 run as separate processes (not part of `robot.launch.py`
+or `sim.launch.py`). The robot-specific config files are referenced via
+environment variables set in `~/.bashrc`:
 
 | Variable | Points to |
 |---|---|

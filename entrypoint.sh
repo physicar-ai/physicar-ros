@@ -3,7 +3,7 @@
 # Load environment first (SIM, DEV flags needed before build).
 # A corrupt .env shouldn't take down the container — just skip it and
 # the user can fix the file directly.
-ENV_FILE=/opt/physicar/.env
+ENV_FILE=/home/physicar/physicar_ws/userdata/.env
 if [ -f "$ENV_FILE" ]; then
     if bash -n "$ENV_FILE" 2>/dev/null; then
         set -a; . "$ENV_FILE"; set +a
@@ -62,9 +62,8 @@ do_build() {
 # Install/upgrade physicar pip package before build
 pip3 install --upgrade physicar 2>/dev/null || true
 
-# DDS: UDP-only on loopback for host-container communication
-export FASTRTPS_DEFAULT_PROFILES_FILE="$SCRIPT_DIR/fastdds-lo.xml"
-export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+# DDS: localhost-only discovery (no cross-device interference)
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
 # Start background updater (non-DEV mode only)
 if [ "$DEV" != "true" ] && [ -f "$SCRIPT_DIR/updater.sh" ]; then

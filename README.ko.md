@@ -7,23 +7,18 @@
 한국어 | [English](README.md)
 
 **PhysiCar** Ackermann 조향 RC 로봇용 ROS 2 Jazzy 스택입니다.
-실제 하드웨어(Raspberry Pi 5)와 Gazebo Harmonic 시뮬레이션
-(GitHub Codespaces / 데스크톱)에서 코드 변경 없이 동일하게 동작합니다.
-런치 파일·토픽·웹 API가 모두 동일하며, `SIM=true` 환경 변수 하나로 모드를 전환합니다.
+Raspberry Pi 5 (Ubuntu 24.04) 에서 네이티브로 실행되며,
+Gazebo Harmonic 시뮬레이션 (GitHub Codespaces / 데스크톱) 에서도
+동일한 토픽·웹 API 로 동작합니다. 런치 파일이 모드를 결정합니다.
 
 ---
 
 ## 실행 모드 한눈에 보기
 
-| 모드 | 시작 방법 | 하드웨어 | Gazebo 위치 |
+| 모드 | 시작 방법 | 하드웨어 | 실행 위치 |
 |---|---|---|---|
-| **실제 로봇** | `entrypoint.sh` (`SIM` 미설정) → `robot.launch.py` | RPi 5 + Yahboom 보드 + RPLidar + Pi 카메라 | 해당 없음 |
-| **시뮬레이션** | `entrypoint.sh` + `SIM=true` → `sim.launch.py` | 없음 | 호스트(`gz sim`), 컨테이너는 `--network host` |
-
-시뮬레이션 모드에서는 컨테이너에 상위 레이어 ROS 노드만 들어 있고,
-월드는 호스트의 Gazebo Harmonic 프로세스에서 별도로 실행되어
-`ros_gz_bridge`로 연결됩니다. 웹 UI, REST API, 에이전트, DeepRacer 추론,
-게임패드 텔레옵은 실제 로봇과 완전히 동일합니다.
+| **실제 로봇** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom 보드 + RPLidar + Pi 카메라 | 호스트 네이티브 (컨테이너 없음) |
+| **시뮬레이션** | `sim.launch.py` | 없음 | Codespaces / 데스크톱 + Gazebo Harmonic |
 
 ---
 
@@ -31,13 +26,21 @@
 
 ```
 physicar-ros/
-├── docker-compose.yml            # Docker Compose (sim/device 프로필)
-├── entrypoint.sh                 # 컨테이너 엔트리포인트 (build → launch)
-├── fastdds-lo.xml                # loopback 전용 Fast DDS 프로파일
+├── deploy/                       # 디바이스 프로비저닝 & 런타임
+│   ├── install-device.sh           # 원샷 설치 스크립트 (root로 실행)
+│   ├── README.md                   # 설치 안내
+│   └── device/                     # 런타임 파일 (/etc/ 로 심링크됨)
+│       ├── physicar.sh               # 부팅 오케스트레이터 (systemd ExecStart)
+│       ├── etc/
+│       │   ├── nginx/sites-available/physicar
+│       │   ├── systemd/system/physicar.service
+│       │   ├── systemd/system/physicar-myapp.service
+│       │   ├── netplan/01-netcfg.yaml
+│       │   ├── udev/rules.d/99-physicar.rules
+│       │   └── ...                   # X11, NetworkManager, chromium 등
+│       └── home/physicar/bashrc-append
 ├── updater.sh                    # 자동 업데이트 (git tag 기반)
-├── host/                         # 호스트 측 스크립트
-│   ├── host_api.py                 # 컨테이너 재시작 등 호스트 API
-│   └── login.html                  # nginx 인증 로그인 페이지
+├── fastdds-lo.xml                # loopback 전용 Fast DDS 프로파일
 ├── physicar_bringup/             # 시스템 런치 + 드라이버 + 유틸리티
 │   ├── launch/
 │   │   ├── robot.launch.py         # 실제 로봇 런치
@@ -45,8 +48,8 @@ physicar-ros/
 │   ├── config/
 │   │   ├── driver_params.yaml       # 하드웨어 드라이버 파라미터
 │   │   ├── ekf_params.yaml          # EKF 센서 융합 파라미터
-│   │   ├── slam_params.yaml         # SLAM Toolbox 설정 (호스트용)
-│   │   └── nav2_params.yaml         # Nav2 설정 (호스트용)
+│   │   ├── slam_params.yaml         # SLAM Toolbox 설정
+│   │   └── nav2_params.yaml         # Nav2 설정
 │   ├── physicar_bringup/
 │   │   ├── yahboom_board.py        # Yahboom 확장 보드 시리얼 프로토콜
 │   │   └── servo_controller.py     # 서보 각도 클리핑/매핑
@@ -76,7 +79,7 @@ physicar-ros/
 │       ├── ros_bridge.py           # rclpy ↔ FastAPI 브리지
 │       ├── state_manager.py        # 토픽 스냅샷 캐시 + SSE 팬아웃
 │       ├── routers/                # /state /control /agent /calibration ...
-│       └── static/                 # Kiosk + Studio 웹 UI
+│       └── static/                 # Kiosk + Studio 웹 UI + 로그인 페이지
 ├── camera_ros/                   # [submodule] libcamera 기반 카메라 드라이버
 ├── rplidar_ros/                  # [submodule] RPLidar SDK 드라이버
 └── rf2o_laser_odometry/          # [submodule] 레이저 전용 오도메트리
@@ -84,28 +87,25 @@ physicar-ros/
 
 ---
 
-## 부팅 시퀀스 — `entrypoint.sh`
+## 부팅 시퀀스 — `deploy/device/physicar.sh`
 
-1. `/opt/physicar/.env` 로드 (예: `SIM=true`, `DEV=true`).
-2. `/opt/ros/jazzy/setup.bash` 소스.
-3. `SIM=true`이면 `camera_ros` / `rplidar_ros`에 `COLCON_IGNORE` 마커 부착
-   (실 하드웨어가 필요한 드라이버이므로 빌드 제외).
-4. `colcon build --symlink-install` (실패 시 1회 clean build 재시도).
-5. `install/setup.bash` 소스.
-6. **DDS 격리** — `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` 와
-   `fastdds-lo.xml` (저장소 루트)의 loopback 전용 Fast DDS 프로파일 사용.
-   SHM은 비활성화(UDP만 사용)되어 컨테이너의 root 노드와 호스트
-   `physicar` 유저 간 UID 경계 문제를 회피하고, 같은 WiFi에 있는 다른
-   PhysiCar 들이 우리 토픽을 보지 못하도록 합니다.
-7. **자동 업데이트** — DEV 모드가 아니면 `updater.sh` 를 백그라운드로 실행.
+실제 로봇에서 `physicar.service` (systemd) 가 매 부팅 시 `physicar` 유저로
+`physicar.sh` 를 실행합니다.
+
+1. `~/physicar_ws/userdata/.env` 로드 (예: `DEV=true`).
+2. 시스템 설정: swap, CPU 거버너, WiFi 핫스팟, 호스트명, Xvfb + VNC.
+3. nginx, code-server, Bluetooth 에이전트 시작.
+4. `/opt/ros/jazzy/setup.bash` 소스.
+5. `colcon build --symlink-install` (실패 시 1회 clean build 재시도).
+6. `install/setup.bash` 소스.
+7. **DDS 격리** — `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` 로
+   같은 네트워크의 다른 PhysiCar 들이 우리 토픽을 보지 못하도록 차단.
+8. **자동 업데이트** — DEV 모드가 아니면 `updater.sh` 를 백그라운드로 실행.
    주기적으로 `git fetch --tags` 하여 새 태그 발견 시 checkout 후
    런치를 종료하여 재빌드를 트리거.
-8. **빌드+런치 루프**:
-   - `SIM=true` → `ros2 launch physicar_bringup sim.launch.py`
-   - 그 외 → `ros2 launch physicar_bringup robot.launch.py`
-
-   업데이트 시그널 감지 시 재빌드+재실행. 시그널 없이 종료되면
-   `sleep infinity` 로 컨테이너를 살려 두어 로그 확인 가능.
+9. **빌드+런치 루프**:
+   - `ros2 launch physicar_bringup robot.launch.py`
+   - 업데이트 시그널 감지 시 재빌드+재실행.
 
 모든 ROS 노드는 `respawn=True, respawn_delay≈2s` 로 등록되어 있습니다.
 새 YAML/Python 을 반영하려면 `pkill -f <node_name>` 으로 죽이면 됩니다(자동 재시작).
@@ -114,7 +114,7 @@ physicar-ros/
 
 ## 실제 로봇 런치 (`robot.launch.py`)
 
-`SIM` 미설정 시 동작하는 노드 집합.
+모든 노드는 `respawn=True` 로 실행됩니다.
 
 | 시점 | 컴포넌트 | 비고 |
 |---|---|---|
@@ -136,15 +136,15 @@ physicar-ros/
 | t≈10s| `topic_watchdog_node` | 30 초 그레이스 후, 센서 토픽 stale 시 해당 노드에 SIGTERM → respawn 으로 재시작 |
 
 nginx, 핫스팟 등 외부 프로세스는 이 패키지 밖에서 관리됩니다 — 디바이스
-쪽에서는 호스트의 `physicar.sh` 오케스트레이터, Codespaces 쪽에서는
+쪽에서는 `physicar.sh` 오케스트레이터, Codespaces 쪽에서는
 `supervisord` 가 담당합니다(아래 *Codespaces 에서 실행* 참조).
 
 ---
 
 ## 시뮬레이션 런치 (`sim.launch.py`)
 
-`SIM=true` 시 활성화. 하드웨어 드라이버는 빌드에서 제외되고
-(`COLCON_IGNORE` 마커), 런치에도 포함되지 않습니다.
+Codespaces / 데스크톱 sim 환경에서 사용합니다. 하드웨어 드라이버는
+빌드에서 제외되고 (`COLCON_IGNORE` 마커), 런치에도 포함되지 않습니다.
 
 실행되는 노드:
 
@@ -235,8 +235,8 @@ nginx, 핫스팟 등 외부 프로세스는 이 패키지 밖에서 관리됩니
 ## 웹 서버 (FastAPI, `:8000`)
 
 `webserver_node.py` 가 uvicorn 을 직접 실행합니다. CORS, gzip, 인증, SSE
-모두 FastAPI 가 처리하며, nginx(존재할 때)는 TLS 종료 + `80/443 → 8000`
-프록시만 담당합니다. **인증 면제**: `127.0.0.0/8`, `10.42.0.0/24`(핫스팟).
+모두 FastAPI 가 처리하며, nginx 는 TLS 종료 + `80/443 → 8000`
+프록시를 담당합니다. **인증 면제**: `127.0.0.0/8`, `10.42.0.0/24`(핫스팟).
 외부 IP 는 `/auth` 에서 발급한 토큰이 필요합니다.
 
 `main.py` 에 마운트된 라우터:
@@ -249,7 +249,7 @@ nginx, 핫스팟 등 외부 프로세스는 이 패키지 밖에서 관리됩니
 | `/state`, `/state/{odom,battery,imu,camera,camera/{pan,tilt},lidar,audio}` | `state` | JSON 스냅샷 또는 SSE (`?stream=true` / `Accept: text/event-stream`). `/state/camera/image` 는 JPEG (또는 `?stream=true` 시 MJPEG, `?width=&height=` 로 리사이즈). `/state/lidar?step=N` 으로 스캔 데시메이트. |
 | `/control/{speed,steering,camera/pan,camera/tilt,audio}` | `control` | 매칭되는 ROS 2 토픽으로 단일 값 퍼블리시 |
 | `/agent/tool/{list,get,call,set,delete,reset}` | `agent` | 에이전트 도구 관리/호출 (Python 소스 + PEP 723 의존성) |
-| `/calibration`, `/calibration/{steering,pan,tilt,reverse,emergency}` | `calibration` | `/opt/physicar/calibration.json` 읽기/쓰기 |
+| `/calibration`, `/calibration/{steering,pan,tilt,reverse,emergency}` | `calibration` | `/home/physicar/physicar_ws/userdata/calibration.json` 읽기/쓰기 |
 | `/teleop/joy`, `/teleop/joy/mapping` | `joy` | 조이스틱 매핑 CRUD |
 | `/teleop` | `teleop` | 소스 무관 텔레옵 상태/락 |
 | `/network`, `/network/bluetooth` | `network`, `bluetooth` | WiFi / BT 페어링 |
@@ -257,12 +257,13 @@ nginx, 핫스팟 등 외부 프로세스는 이 패키지 밖에서 관리됩니
 | `/settings/myapp`, `/settings/myapp/{start,stop,restart,log}` | `myapp` | 호스트 측 학생용 웹 앱 슬롯 (포트 5000) |
 | `/deepracer` | `deepracer` | 모델 업로드/목록/선택/시작/중지 |
 | `/kiosk`, `/studio`, `/kiosk/calibration*` | `kiosk` | 키오스크 + 스튜디오 HTML UI |
+| `/api/host` | `sim` | Sim 머신 관리 (Codespaces) |
 
 OpenAPI/Swagger: `/docs`, ReDoc: `/redoc`.
 
 ### MyApp 슬롯
 
-호스트의 `physicar-myapp.service` (Codespaces 에서는 supervisord)가
+`physicar-myapp.service` (Codespaces 에서는 supervisord) 가
 `physicar` 유저로 단일 사용자 Python 스크립트를 포트 5000 에서 실행하며,
 스크립트 디렉토리를 inotify 로 감시하여 변경 시 자동 재시작합니다.
 nginx 가 `/myapp/` 를 캐시 비활성화로 프록시합니다.
@@ -274,7 +275,7 @@ curl http://<host>/settings/myapp
 # 스크립트 등록 (즉시 시작)
 curl -X PUT http://<host>/settings/myapp \
      -H 'Content-Type: application/json' \
-     -d '{"path": "/opt/physicar/myapp/main.py"}'
+     -d '{"path": "/home/physicar/physicar_ws/userdata/myapp/main.py"}'
 
 # 로그 확인
 curl 'http://<host>/settings/myapp/log?tail=200'
@@ -308,7 +309,7 @@ action('/navigate_to_pose', {...})  # 블로킹
 도구 저장소:
 
 ```
-/opt/physicar/agent/
+/home/physicar/physicar_ws/userdata/agent/
 ├── tools/         # 도구 1개당 .py 파일 1개, 반드시 def tool(...) 정의
 ├── venv/          # system-site-packages 가 있는 격리 venv
 └── deps.json      # PEP 723 참조 카운트; 0 이 되면 패키지 제거
@@ -324,7 +325,7 @@ action('/navigate_to_pose', {...})  # 블로킹
 `deepracer_node` 는 항상 실행되지만, 모델 로드 전까지는 idle.
 
 ```
-/opt/physicar/deepracer/
+/home/physicar/physicar_ws/userdata/deepracer/
 ├── models/<name>/{model.onnx, model_metadata.json}
 └── config.json     # {"action_selection": "greedy"|"stochastic", "speed_scale": 1.0, "pan": 0.0, "tilt": 0.0}
 ```
@@ -424,7 +425,7 @@ rf2o_laser_odometry:
     freq: 20.0
 ```
 
-런타임 캘리브레이션 오버라이드는 `/opt/physicar/calibration.json` 에 저장되어
+런타임 캘리브레이션 오버라이드는 `/home/physicar/physicar_ws/userdata/calibration.json` 에 저장되어
 YAML 값 위에 머지됩니다. 현재 활성 소스는 `CalibrationStatus.source` 로 확인.
 
 ---
@@ -433,13 +434,15 @@ YAML 값 위에 머지됩니다. 현재 활성 소스는 `CalibrationStatus.sour
 
 | 경로 | 용도 |
 |---|---|
-| `/opt/physicar/.env` | `SIM=true`, `DEV=true` 등 |
-| `/opt/physicar/password` | 웹 인증 비밀번호 (없으면 serial hash 사용) |
-| `/opt/physicar/calibration.json` | 캘리브레이션 오버라이드 (latched) |
-| `/opt/physicar/agent/{tools,venv,deps.json}` | 에이전트 도구 샌드박스 |
-| `/opt/physicar/deepracer/{models,config.json}` | DeepRacer 모델 + 추론 설정 |
-| `/opt/physicar/myapp/{run.sh,log}` | 학생 웹 앱 + 로그 |
-| `/etc/nginx/...` | TLS 종료 리버스 프록시 (실 로봇) |
+| `/home/physicar/physicar_ws/src/physicar-ros/` | 저장소 (소스 원본) |
+| `/home/physicar/physicar_ws/userdata/.env` | `DEV=true` 등 |
+| `/home/physicar/physicar_ws/userdata/password` | 웹 인증 비밀번호 (없으면 serial hash 사용) |
+| `/home/physicar/physicar_ws/userdata/calibration.json` | 캘리브레이션 오버라이드 (latched) |
+| `/home/physicar/physicar_ws/userdata/agent/{tools,venv,deps.json}` | 에이전트 도구 샌드박스 |
+| `/home/physicar/physicar_ws/userdata/deepracer/{models,config.json}` | DeepRacer 모델 + 추론 설정 |
+| `/home/physicar/physicar_ws/userdata/myapp/{run.sh,log}` | 학생 웹 앱 + 로그 |
+| `/etc/nginx/sites-available/physicar` | TLS 종료 리버스 프록시 (심링크 → deploy/device/) |
+| `/etc/systemd/system/physicar.service` | 서비스 유닛 (심링크 → deploy/device/) |
 
 ---
 
@@ -447,11 +450,10 @@ YAML 값 위에 머지됩니다. 현재 활성 소스는 `CalibrationStatus.sour
 
 ### 실제 로봇
 
-Pi 이미지에 모든 게 미리 들어 있고, 부팅 시 `physicar` Docker 컨테이너가
-`entrypoint.sh` 를 자동 실행합니다. 로그/상태:
+`physicar.service` 가 부팅 시 네이티브로 실행됩니다. 로그/상태:
 
 ```bash
-docker logs -f physicar
+journalctl -u physicar -f
 ros2 topic list
 ```
 
@@ -463,7 +465,15 @@ ros2 topic list
 | FastAPI 코드 (DEV 모드) | `os.execv` watchdog 으로 자동 재시작 |
 | YAML 파라미터 | `pkill -f <node>` |
 | C++ (camera_ros, rf2o) | `colcon build --symlink-install` 후 노드 재시작 |
-| `nginx.conf` | `nginx -s reload` (호스트) |
+| `nginx` 사이트 설정 | `sudo nginx -s reload` |
+
+서비스 관리:
+
+```bash
+sudo systemctl restart physicar
+sudo systemctl stop physicar
+sudo systemctl status physicar
+```
 
 ### Codespaces 에서 실행 (sim)
 
@@ -471,20 +481,14 @@ ros2 topic list
 의 `physicar` 브랜치 사용 시 흐름:
 
 1. **`onCreate`** — ROS 2 Jazzy, Gazebo Harmonic, `ros-jazzy-ros-gz`, nginx,
-   noVNC, supervisor 설치; `physicar/sim:1` Docker 이미지 pull;
-   `physicar-sim` / `physicar-ros` 서브모듈 pull; `/opt/physicar/.env` 에
-   `SIM=true` 기록.
+   noVNC, supervisor 설치; `physicar-sim` / `physicar-ros` 서브모듈 pull;
+   `/home/physicar/physicar_ws/userdata/.env` 에 `SIM=true` 기록.
 2. **`postStart`** — `.devcontainer/supervisord.conf` 로 `supervisord` 부팅.
    감독 대상에는 `xvfb` + `openbox` + `x11vnc` + `novnc` (브라우저 데스크톱),
    `nginx` (port 80), `gz_websocket` (gzweb on :9002), `sim_api` (:9003),
    학생용 `myapp` 워처, `physicar` 가 포함됨.
-3. **`physicar` 프로그램** 이 `physicar.sh` 를 실행 →
-   `physicar/sim:1` 이미지를 `--network host` 로 `docker run -d`,
-   `/opt/physicar` 와 `physicar-ros` 서브모듈을
-   `/root/ros2_ws/src/physicar-ros` 로 바인드 마운트한 뒤
-   `/root/ros2_ws/src/physicar-ros/entrypoint.sh` 실행. `SIM=true` 이므로
-   `sim.launch.py` 가 트리거되고, `ros_gz_bridge` 가 host network 를 통해
-   호스트 Gazebo 에 도달.
+3. **`physicar` 프로그램** 이 `entrypoint.sh` 를 `SIM=true` 로 실행 →
+   `sim.launch.py` 가 트리거되고, `ros_gz_bridge` 가 호스트 Gazebo 에 연결.
 
 최종 사용자 URL (포트 80 으로 포워딩):
 
@@ -496,10 +500,10 @@ ros2 topic list
 
 ---
 
-## SLAM & 네비게이션 (호스트 측 실행)
+## SLAM & 네비게이션
 
-SLAM 과 Nav2 는 컨테이너 내부가 아닌 **호스트** (Codespaces 또는 라즈베리파이 5) 에서
-실행합니다. 컨테이너는 로봇 전용 설정 파일만 제공하며, `~/.bashrc` 에
+SLAM 과 Nav2 는 별도 프로세스로 실행됩니다 (`robot.launch.py` 또는
+`sim.launch.py` 에 포함되지 않음). 로봇 전용 설정 파일은 `~/.bashrc` 에
 환경변수로 설정되어 있습니다:
 
 | 환경변수 | 경로 |

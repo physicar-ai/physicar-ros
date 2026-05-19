@@ -6,10 +6,10 @@ import os
 from enum import Enum
 
 # Model storage location
-MODELS_BASE_PATH = "/opt/physicar/deepracer/models"
+MODELS_BASE_PATH = "/home/physicar/physicar_ws/userdata/deepracer/models"
 
 # Config file (JSON, 1st priority)
-CONFIG_FILE_PATH = "/opt/physicar/deepracer/config.json"
+CONFIG_FILE_PATH = "/home/physicar/physicar_ws/userdata/deepracer/config.json"
 
 # Default config values
 DEFAULT_CONFIG = {

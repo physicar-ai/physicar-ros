@@ -1,10 +1,10 @@
 # PhysiCar Joy Teleop default mapping.
 #
-# These are the *defaults* used when /opt/physicar/joy_mapping.json is
+# These are the *defaults* used when /home/physicar/physicar_ws/userdata/joy_mapping.json is
 # absent.  At runtime the user can override any value via the ROS service
 # /physicar_joy_teleop/set_mapping or the REST endpoint POST /joy/mapping;
 # changes can be persisted by setting save_to_file=true, which writes
-# /opt/physicar/joy_mapping.json.  On next boot the node loads the JSON
+# /home/physicar/physicar_ws/userdata/joy_mapping.json.  On next boot the node loads the JSON
 # instead of these defaults.
 #
 # Indexes follow the SDL2 GameController standard layout that ROS2 `joy`

@@ -39,7 +39,7 @@ Runtime control:
     Service    ~/get_mapping   - dump current axis/button/limit mapping
     Service    ~/set_mapping   - update mapping (single key or bulk JSON);
                                  save_to_file=true persists to
-                                 /opt/physicar/joy_mapping.json so it survives
+                                 /home/physicar/physicar_ws/userdata/joy_mapping.json so it survives
                                  reboots and overrides the YAML defaults.
     Topic      ~/status        - latched (TRANSIENT_LOCAL) JoyTeleopStatus so
                                  late subscribers see the current locks.
@@ -65,7 +65,7 @@ from physicar_interfaces.srv import GetJoyMapping, SetJoyMapping
 from builtin_interfaces.msg import Duration as DurationMsg
 
 
-MAPPING_FILE = '/opt/physicar/joy_mapping.json'
+MAPPING_FILE = '/home/physicar/physicar_ws/userdata/joy_mapping.json'
 
 # Type registry — drives both validation and which request field to read.
 _INT_KEYS = (

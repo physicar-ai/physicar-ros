@@ -17,20 +17,20 @@
 """
 MyApp Router — student-facing host webapp (:5000) slot management.
 
-The host's ``physicar-myapp.service`` runs ``/opt/physicar/myapp/run.sh``.
+The host's ``physicar-myapp.service`` runs ``/home/physicar/physicar_ws/userdata/myapp/run.sh``.
 This router writes run.sh / log under the co-mounted
-``/opt/physicar/myapp/`` and uses ``host_exec.systemctl`` to control the
+``/home/physicar/physicar_ws/userdata/myapp/`` and uses ``host_exec.systemctl`` to control the
 host systemd unit (start / stop / restart).
 """
 
 import asyncio
 import os
+import os
 import socket
 from pathlib import Path
 
+import subprocess
 import json as _json
-import urllib.request
-import urllib.error
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -38,11 +38,12 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/settings/myapp", tags=["myapp"])
 
 
-CONFIG_DIR = Path("/opt/physicar/myapp")
+CONFIG_DIR = Path("/home/physicar/physicar_ws/userdata/myapp")
 SCRIPT_FILE = CONFIG_DIR / "run.sh"
 LOG_FILE = CONFIG_DIR / "log"
 
-HOST_API = "http://127.0.0.1:8001"
+_MYAPP_SYSTEMD_UNIT = "physicar-myapp.service"
+_MYAPP_SUPERVISOR_PROGRAM = "myapp"
 
 MYAPP_PORT = 5000
 PORT_PROBE_TIMEOUT = 0.2
@@ -95,20 +96,17 @@ def _is_running() -> bool:
 
 
 def _systemctl(action: str) -> None:
-    body = _json.dumps({"action": action}).encode()
-    req = urllib.request.Request(
-        f"{HOST_API}/myapp/service",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    if os.environ.get("CODESPACE_NAME"):
+        cmd = ["supervisorctl", "-s", "unix:///tmp/supervisor.sock",
+               action, _MYAPP_SUPERVISOR_PROGRAM]
+    else:
+        cmd = ["sudo", "systemctl", action, _MYAPP_SYSTEMD_UNIT]
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = _json.loads(resp.read())
-        if not data.get("ok"):
-            raise HTTPException(500, data.get("error", "unknown error"))
-    except urllib.error.URLError as e:
-        raise HTTPException(502, f"host_api unreachable: {e}") from e
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            raise HTTPException(500, result.stderr.strip() or "service control failed")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "service control timeout")
 
 
 class MyAppConfig(BaseModel):

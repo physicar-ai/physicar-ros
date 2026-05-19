@@ -1,9 +1,9 @@
 """
 Tool registry — tool loading, metadata extraction, dependency management
 
-Tools path: /opt/physicar/agent/tools/
-Virtualenv: /opt/physicar/agent/venv/
-Dependencies: /opt/physicar/agent/deps.json
+Tools path: /home/physicar/physicar_ws/userdata/agent/tools/
+Virtualenv: /home/physicar/physicar_ws/userdata/agent/venv/
+Dependencies: /home/physicar/physicar_ws/userdata/agent/deps.json
 
 Supports PEP 723 inline script metadata:
 # /// script
@@ -36,7 +36,7 @@ except ImportError:
     FieldInfo = None
 
 
-AGENT_PATH = Path("/opt/physicar/agent")
+AGENT_PATH = Path("/home/physicar/physicar_ws/userdata/agent")
 TOOLS_PATH = AGENT_PATH / "tools"
 VENV_PATH = AGENT_PATH / "venv"
 DEPS_FILE = AGENT_PATH / "deps.json"

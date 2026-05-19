@@ -388,14 +388,13 @@ _HOST_LE_CRT_PATH = "/etc/nginx/ssl/le.crt"  # path on host
 
 
 def _read_cert_metadata() -> dict:
-    """Run openssl in the host mount namespace to read le.crt fields."""
+    """Run openssl to read le.crt fields."""
     import datetime as _dt
 
     out: dict = {"present": False}
     try:
         r = subprocess.run(
-            ["nsenter", "-t", "1", "-m", "--",
-             "openssl", "x509", "-in", _HOST_LE_CRT_PATH, "-noout",
+            ["openssl", "x509", "-in", _HOST_LE_CRT_PATH, "-noout",
              "-enddate", "-issuer", "-subject"],
             capture_output=True, text=True, timeout=3,
         )
@@ -546,8 +545,7 @@ async def wifi_connect(request: WifiConnectRequest):
         raise HTTPException(status_code=501, detail="WiFi control not available in simulation mode")
 
     def run_on_host(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
-        full_cmd = ["nsenter", "-t", "1", "-m", "-u", "-n", "--"] + cmd
-        return subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     is_enterprise = bool(request.identity)
 
@@ -699,8 +697,7 @@ class SavedConnection(BaseModel):
 
 
 def _run_on_host(cmd: list[str], timeout: int = 10) -> subprocess.CompletedProcess:
-    full_cmd = ["nsenter", "-t", "1", "-m", "-u", "-n", "--"] + cmd
-    return subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
 @router.get("/wifi/saved", response_model=list[SavedConnection])

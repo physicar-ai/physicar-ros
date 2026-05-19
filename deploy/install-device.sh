@@ -1,0 +1,486 @@
+# Verify physicar user exists
+if ! id -u physicar &>/dev/null; then
+  echo "ERROR: 'physicar' user not found. Create it first:"
+  echo "  sudo adduser physicar && sudo usermod -aG sudo physicar"
+  exit 1
+fi
+
+echo "========== Physicar Host Setup =========="
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PHYSICAR_ROS_DIR="$(dirname "$SCRIPT_DIR")"
+PHYSICAR_WS="$(dirname "$(dirname "$PHYSICAR_ROS_DIR")")"
+DEPLOY_DIR="$SCRIPT_DIR/device"
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  1. System Configuration                                                   │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[1/7] System configuration..."
+
+# Limit journald log size (protect SD card lifespan)
+sed -i 's/^#SystemMaxUse=.*/SystemMaxUse=50M/' /etc/systemd/journald.conf
+
+# ── Deploy config files ──
+
+ln -sf "$DEPLOY_DIR/etc/security/pwquality.conf" /etc/security/pwquality.conf
+
+mkdir -p /etc/X11/xorg.conf.d
+
+ln -sf "$DEPLOY_DIR/etc/X11/Xwrapper.config" /etc/X11/Xwrapper.config
+ln -sf "$DEPLOY_DIR/etc/X11/xorg.conf.d/10-no-dpms.conf" /etc/X11/xorg.conf.d/10-no-dpms.conf
+
+ln -sf "$DEPLOY_DIR/etc/udev/rules.d/99-physicar.rules" /etc/udev/rules.d/99-physicar.rules
+
+udevadm control --reload-rules
+udevadm trigger
+
+# Disable display overscan
+if ! grep -q "disable_overscan=1" /boot/firmware/config.txt 2>/dev/null; then
+  echo "disable_overscan=1" | tee -a /boot/firmware/config.txt
+fi
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  2. Package Installation                                                   │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[2/7] Installing packages..."
+
+# ── Disable automatic updates (ensure post-release stability) ──
+systemctl stop unattended-upgrades 2>/dev/null || true
+systemctl disable unattended-upgrades 2>/dev/null || true
+systemctl disable --now apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+systemctl mask apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+
+tee /etc/apt/apt.conf.d/10physicar-no-autoupdate >/dev/null < "$DEPLOY_DIR/etc/apt/apt.conf.d/10physicar-no-autoupdate"
+[ -f /etc/apt/apt.conf.d/20auto-upgrades ] && \
+  mv /etc/apt/apt.conf.d/20auto-upgrades /etc/apt/apt.conf.d/20auto-upgrades.disabled
+
+# Block snap automatic refresh
+snap set system refresh.hold="forever" 2>/dev/null || true
+snap set system refresh.timer="fri,sat,sun3,4,5" 2>/dev/null || true
+snap refresh --hold 2>/dev/null || true
+
+# Add noble-updates repo (prevent version mismatch with pre-installed packages)
+if ! grep -q 'noble-updates' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; then
+  cat >> /etc/apt/sources.list.d/ubuntu.sources <<'__NOBLE_UPDATES__'
+
+Types: deb
+URIs: http://ports.ubuntu.com/ubuntu-ports/
+Suites: noble-updates
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+__NOBLE_UPDATES__
+fi
+
+apt-get update -y
+apt-get remove -y unattended-upgrades needrestart 2>/dev/null || true
+
+apt-get install -y \
+  openssh-server net-tools iw network-manager \
+  bluez bluez-tools \
+  dkms git \
+  ca-certificates curl jq avahi-daemon \
+  xorg xinit unclutter feh mesa-utils \
+  fonts-noto fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji \
+  nginx openssl \
+  xvfb x11vnc novnc openbox tint2 xterm \
+  i2c-tools libi2c-dev v4l-utils \
+  alsa-utils mpg123 \
+  ffmpeg \
+  gpiod python3-libgpiod libgpiod-dev \
+  python3-fastapi python3-uvicorn \
+  meson ninja-build python3-ply python3-jinja2
+
+# ── VirtualGL: forward GPU rendering to noVNC (:1) ──
+# Xvfb(:1) renders with llvmpipe (CPU), making 3D apps like rviz2 slow.
+# VirtualGL borrows the V3D GPU on Xorg(:0) and sends pixels to :1.
+# Usage: DISPLAY=:1 vglrun -d :0 rviz2
+VGL_VER="3.1.4"
+if ! dpkg -s virtualgl &>/dev/null; then
+  curl -fLo /tmp/virtualgl_${VGL_VER}_arm64.deb \
+    "https://github.com/VirtualGL/virtualgl/releases/download/${VGL_VER}/virtualgl_${VGL_VER}_arm64.deb"
+  dpkg -i /tmp/virtualgl_${VGL_VER}_arm64.deb
+  rm -f /tmp/virtualgl_${VGL_VER}_arm64.deb
+fi
+
+# Enable Bluetooth daemon (RPi5 onboard BCM chip)
+systemctl enable --now bluetooth 2>/dev/null || true
+
+# ── xpadneo: Xbox One/Series controller BLE-HID driver ──
+if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo"; then
+  apt-get install -y "linux-headers-$(uname -r)" 2>/dev/null || true
+  TMPD=$(mktemp -d)
+  git clone --depth 1 --branch v0.11-pre https://github.com/atar-axis/xpadneo.git "$TMPD/xpadneo"
+  git config --global --add safe.directory "$TMPD/xpadneo"
+  ( cd "$TMPD/xpadneo" && ./install.sh )
+  rm -rf "$TMPD"
+fi
+
+# noVNC symlink
+ln -sf vnc_lite.html /usr/share/novnc/index.html
+
+# Deploy openbox / tint2 config
+mkdir -p /etc/xdg/openbox /root/.config/tint2
+
+ln -sf "$DEPLOY_DIR/etc/xdg/openbox/rc.xml" /etc/xdg/openbox/rc.xml
+
+cat > /root/.config/tint2/tint2rc <<'__TINT2__'
+# Background 1
+#-------------------------------------
+rounded = 0
+border_width = 0
+background_color = #2d2d2d 90
+
+# Background 2
+#-------------------------------------
+rounded = 3
+border_width = 0
+background_color = #0078d4 100
+
+# Panel
+panel_items = LT
+panel_size = 100% 28
+panel_margin = 0 0
+panel_padding = 2 0 2
+panel_position = bottom center horizontal
+panel_layer = top
+panel_background_id = 1
+
+# Launcher
+launcher_padding = 2 4 4
+launcher_background_id = 0
+launcher_icon_background_id = 0
+launcher_icon_size = 22
+launcher_icon_theme = Tango
+launcher_icon_asb = 100 0 0
+launcher_tooltip = 1
+launcher_item_app = /usr/share/applications/xterm.desktop
+taskbar_mode = single_desktop
+taskbar_padding = 2 2 2
+taskbar_background_id = 0
+taskbar_name = 0
+task_text = 1
+task_icon = 0
+task_centered = 1
+task_maximum_size = 250 28
+task_padding = 6 2 6
+task_font = sans 9
+task_font_color = #dddddd 100
+task_active_font_color = #ffffff 100
+task_background_id = 0
+task_active_background_id = 2
+
+# Mouse actions
+mouse_middle = none
+mouse_right = none
+mouse_scroll_up = none
+mouse_scroll_down = none
+__TINT2__
+
+ln -sf "$DEPLOY_DIR/usr/share/applications/xterm.desktop" /usr/share/applications/xterm.desktop
+
+# ── ROS 2 Jazzy ──
+curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+  -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
+  | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+apt-get update -y
+apt-get install -y \
+  ros-jazzy-ros-base \
+  ros-jazzy-rviz2 \
+  ros-jazzy-rqt \
+  ros-jazzy-rqt-common-plugins \
+  ros-jazzy-image-transport \
+  ros-jazzy-image-transport-plugins \
+  ros-jazzy-cv-bridge \
+  ros-jazzy-teleop-twist-keyboard \
+  ros-jazzy-tf2-tools \
+  ros-jazzy-xacro \
+  python3-colcon-common-extensions \
+  python3-rosdep \
+  python3-pip \
+  python3-dev \
+  ros-jazzy-joy \
+  ros-jazzy-camera-info-manager \
+  ros-jazzy-rosbridge-server \
+  ros-jazzy-ros2-control \
+  ros-jazzy-ros2-controllers
+
+# SLAM/Nav2 packages for host-side navigation practice
+apt-get install -y --no-install-recommends \
+  ros-jazzy-slam-toolbox \
+  ros-jazzy-cartographer-ros \
+  ros-jazzy-navigation2 \
+  ros-jazzy-nav2-bringup \
+  ros-jazzy-nav2-rviz-plugins \
+  ros-jazzy-rqt-tf-tree \
+  ros-jazzy-rqt-graph
+
+source /opt/ros/jazzy/setup.bash
+rosdep init 2>/dev/null || true
+rosdep update --rosdistro jazzy 2>/dev/null || true
+
+# Patch nav2 navigation_launch.py: disable docking_server & route_server
+NAV2_LAUNCH=/opt/ros/jazzy/share/nav2_bringup/launch/navigation_launch.py
+if grep -q "'route_server'," "$NAV2_LAUNCH" 2>/dev/null; then
+  python3 -c "
+import re
+with open('$NAV2_LAUNCH') as f: c = f.read()
+for old, new in [
+    (\"        'route_server',\\n\", \"        # 'route_server',  # disabled for physicar\\n\"),
+    (\"        'docking_server',\\n\", \"        # 'docking_server',  # disabled for physicar\\n\"),
+]:
+    c = c.replace(old, new)
+for pkg, exe, plugin in [
+    ('nav2_route', 'route_server', 'nav2_route::RouteServer'),
+    ('opennav_docking', 'opennav_docking', 'opennav_docking::DockingServer'),
+]:
+    # Non-composed Node blocks
+    c = re.sub(
+        r\"(            )(Node\\(\\n\\s+package='\" + pkg + r\"'.*?remappings=remappings,\\n\\s+\\),)\",
+        lambda m: m.group(1) + '# ' + m.group(2).replace('\\n', '\\n' + m.group(1) + '# '),
+        c, count=1, flags=re.DOTALL)
+    # ComposableNode blocks
+    c = re.sub(
+        r\"(                    )(ComposableNode\\(\\n\\s+package='\" + pkg + r\"'.*?remappings=remappings,\\n\\s+\\),)\",
+        lambda m: m.group(1) + '# ' + m.group(2).replace('\\n', '\\n' + m.group(1) + '# '),
+        c, count=1, flags=re.DOTALL)
+with open('$NAV2_LAUNCH', 'w') as f: f.write(c)
+print('nav2 navigation_launch.py patched')
+"
+fi
+
+# Prevent automatic package upgrades (lock installed versions)
+apt-mark hold $(dpkg -l | grep -E '^ii  (ros-jazzy|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
+
+# python
+runuser -u physicar -- python3 -m pip config set global.break-system-packages true 2>/dev/null || true
+
+# Pin numpy<2 globally (cv_bridge C++ ABI requires numpy 1.x)
+mkdir -p /etc/pip
+echo 'numpy<2' | tee /etc/pip/constraints.txt > /dev/null
+echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' | tee -a /etc/environment > /dev/null
+export PIP_CONSTRAINT=/etc/pip/constraints.txt
+
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'physicar~=1.0' \
+  'flask~=3.1' \
+  'flask-cors~=4.0' \
+  'requests~=2.32' \
+  'ultralytics~=8.4' \
+  'numpy<2' \
+  smbus2 RPi.GPIO gpiozero adafruit-circuitpython-servokit \
+  opencv-python-headless==4.9.0.80 \
+  websockets aiohttp edge-tts av \
+  python-multipart watchdog pydantic starlette \
+  tensorflow==2.17.1 \
+  setuptools==70.0.0
+
+# ── libcamera (build from source for RPi camera support) ──
+if ! pkg-config --exists libcamera 2>/dev/null; then
+  TMPD=$(mktemp -d)
+  git clone https://github.com/raspberrypi/libcamera.git --depth 1 "$TMPD/libcamera"
+  cd "$TMPD/libcamera" && meson setup build --buildtype=release \
+    -Dpipelines=rpi/pisp,rpi/vc4 \
+    -Dipas=rpi/pisp,rpi/vc4 \
+    -Dpycamera=disabled \
+    -Dtest=false \
+    -Dcam=disabled \
+    -Dqcam=disabled \
+    -Dgstreamer=disabled \
+    -Ddocumentation=disabled
+  ninja -C build -j2
+  ninja -C build install
+  echo '/usr/local/lib/aarch64-linux-gnu' > /etc/ld.so.conf.d/libcamera.conf
+  ldconfig
+  rm -rf "$TMPD"
+  cd /
+fi
+
+# ── Chromium kiosk ──
+fc-cache -fv
+apt-get install -y chromium-browser
+snap connect chromium:desktop :desktop 2>/dev/null || true
+snap connect chromium:desktop-legacy :desktop-legacy 2>/dev/null || true
+
+mkdir -p /etc/chromium/policies/managed /var/snap/chromium/current/policies/managed
+
+ln -sf "$DEPLOY_DIR/etc/chromium/policies/managed/kiosk-policy.json" /etc/chromium/policies/managed/kiosk-policy.json
+
+cp /etc/chromium/policies/managed/kiosk-policy.json /var/snap/chromium/current/policies/managed/
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  3. Network Configuration                                                  │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[3/7] Network configuration..."
+
+# ── NetworkManager ──
+
+ln -sf "$DEPLOY_DIR/etc/NetworkManager/conf.d/10-globally-managed-devices.conf" /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+
+mkdir -p /etc/NetworkManager/dispatcher.d
+
+cat > /etc/NetworkManager/dispatcher.d/90-physicar-cert <<'__NM_CERT__'
+#!/usr/bin/env bash
+# NetworkManager dispatcher: poke the physicar.sh cert fetcher whenever a
+# network interface comes up.
+
+iface="$1"
+action="$2"
+
+case "$action" in
+    up|dhcp4-change|dhcp6-change|connectivity-change) ;;
+    *) exit 0 ;;
+esac
+[ "$iface" = "ap0" ] && exit 0
+[ "$iface" = "lo" ]  && exit 0
+
+PID_FILE="/run/physicar/cert-fetcher.pid"
+[ -r "$PID_FILE" ] || exit 0
+pid=$(cat "$PID_FILE" 2>/dev/null)
+[ -n "$pid" ] || exit 0
+kill -0 "$pid" 2>/dev/null && kill -USR1 "$pid" 2>/dev/null
+exit 0
+__NM_CERT__
+chmod 0755 /etc/NetworkManager/dispatcher.d/90-physicar-cert
+
+systemctl enable NetworkManager
+systemctl start NetworkManager
+
+# ── Switch to netplan ──
+[ -f /etc/netplan/50-cloud-init.yaml ] && cp /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.bak
+
+ln -sf "$DEPLOY_DIR/etc/netplan/01-netcfg.yaml" /etc/netplan/01-netcfg.yaml
+
+rm -f /etc/netplan/50-cloud-init.yaml 2>/dev/null || true
+netplan generate 2>/dev/null || true
+netplan apply 2>/dev/null || true
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  4. Nginx                                                                  │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[4/7] Nginx setup..."
+
+rm -f /etc/nginx/sites-enabled/default
+mkdir -p /etc/nginx/ssl /etc/nginx/conf.d /etc/nginx/html
+
+# Generate self-signed SSL certificate
+if [ ! -f /etc/nginx/ssl/physicar.crt ]; then
+  openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/physicar.key \
+    -out /etc/nginx/ssl/physicar.crt \
+    -subj "/CN=physicar.local/O=PhysiCar" \
+    -addext "subjectAltName=DNS:physicar.local,DNS:localhost,IP:127.0.0.1" 2>/dev/null
+fi
+
+if [ ! -f /etc/nginx/ssl/le.crt ]; then
+  cp /etc/nginx/ssl/physicar.crt /etc/nginx/ssl/le.crt
+  cp /etc/nginx/ssl/physicar.key /etc/nginx/ssl/le.key
+  chmod 600 /etc/nginx/ssl/le.key
+fi
+
+echo '# populated at boot' | tee /etc/nginx/conf.d/physicar_password.map >/dev/null
+echo '# populated at boot' | tee /etc/nginx/conf.d/physicar_session.map >/dev/null
+echo 'pre-boot' | tee /etc/nginx/html/boot_token >/dev/null
+
+ln -sf "$DEPLOY_DIR/etc/nginx/sites-available/physicar" /etc/nginx/sites-available/physicar
+
+ln -sf /etc/nginx/sites-available/physicar /etc/nginx/sites-enabled/physicar
+systemctl enable nginx
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  5. Firewall                                                               │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[5/7] Firewall setup..."
+
+ufw allow OpenSSH
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 5353/udp           # mDNS
+ufw allow 7400:7500/udp      # ROS 2 DDS Discovery
+ufw allow 7400:7500/tcp      # ROS 2 DDS Data
+ufw allow in on ap0          # WiFi Hotspot
+ufw route allow in on ap0 out on wlan0
+ufw --force enable
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  6. Services                                                               │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[6/7] Service setup..."
+
+systemctl enable --now avahi-daemon
+
+# code-server
+if [ ! -f /usr/local/bin/code-server ]; then
+  curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local
+fi
+# 'code' command (so terminal users can do: code file.sh)
+ln -sf /usr/local/bin/code-server /usr/local/bin/code
+
+# nginx (www-data) needs to traverse /home/physicar to serve static files
+# (studio.html, login.html, etc.). Ubuntu defaults home dirs to 750.
+# Add www-data to physicar group so nginx can traverse without opening to all users.
+usermod -aG physicar www-data
+
+# code-server branding: copy icons from physicar-ros
+CS_RES=$(find /usr/local/lib -path '*/code-server-*/lib/vscode/resources/server' -type d 2>/dev/null | head -1)
+if [ -n "$CS_RES" ]; then
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/favicon.ico" "$CS_RES/favicon.ico"
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png" "$CS_RES/code-192.png"
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_RES/code-512.png"
+fi
+
+# Install boot script (from repo)
+chmod +x "$DEPLOY_DIR/physicar.sh"
+
+# sudoers for physicar user (full NOPASSWD access)
+echo 'physicar ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/physicar
+chmod 440 /etc/sudoers.d/physicar
+
+# systemd services
+ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar.service" /etc/systemd/system/physicar.service
+ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-myapp.service" /etc/systemd/system/physicar-myapp.service
+
+mkdir -p /home/physicar/physicar_ws/userdata/myapp
+chown -R physicar:physicar /home/physicar/physicar_ws/userdata
+
+# ── Seed ~/.bashrc for physicar user ──
+sudo -u physicar bash -c 'cat "$1" >> /home/physicar/.bashrc' -- "$DEPLOY_DIR/home/physicar/bashrc-append"
+
+# echo "DEV=true" | tee /home/physicar/physicar_ws/userdata/.env
+
+systemctl daemon-reload
+systemctl enable physicar.service
+systemctl enable physicar-myapp.service
+
+# Initial ROS 2 workspace build
+sudo -u physicar bash -c 'source /opt/ros/jazzy/setup.bash && cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  7. Cleanup (remove caches, logs, install artifacts)                       │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[7/7] Cleanup..."
+
+journalctl --vacuum-size=1M 2>/dev/null || true
+rm -rf /var/log/apt/*
+rm -f /var/log/dpkg.log*
+rm -f /var/log/alternatives.log*
+: > /var/log/syslog
+: > /var/log/auth.log
+
+rm -f /root/.bash_history /home/physicar/.bash_history
+
+echo ""
+echo "=========================================="
+echo "      Physicar Host Setup Complete       "
+echo "=========================================="
+echo ""

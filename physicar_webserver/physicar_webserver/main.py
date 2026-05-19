@@ -32,6 +32,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # FastAPI listens on 127.0.0.1:8000 and trusts every request that reaches it.
 from physicar_webserver.routers import health, kiosk, info, auth, deepracer
 from physicar_webserver.routers import state, agent, calibration, control, network, bluetooth, uistate, joy, teleop, myapp
+from physicar_webserver.routers import sim as sim_router
 from physicar_webserver.ros_bridge import get_ros_bridge
 from physicar_webserver.state_manager import state_manager
 
@@ -183,6 +184,7 @@ app.include_router(network.router)     # /network
 app.include_router(bluetooth.router)   # /network/bluetooth
 app.include_router(uistate.router)     # /uistate (cross-browser tab sync)
 app.include_router(myapp.router)       # /settings/myapp (host-side :5000 student web app)
+app.include_router(sim_router.router)  # /api/host (sim: Codespaces machine mgmt + open-external)
 
 # DeepRacer
 app.include_router(deepracer.router)

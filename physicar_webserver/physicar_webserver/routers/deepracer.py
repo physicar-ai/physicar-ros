@@ -13,7 +13,7 @@ Model management (file-based):
     - /deepracer/models/{model_name} - Get/delete a specific model
 
 Model structure:
-    /opt/physicar/deepracer/models/<model_name>/
+    /home/physicar/physicar_ws/userdata/deepracer/models/<model_name>/
         ├── model_metadata.json
         └── agent/
             ├── model.pb      # TensorFlow frozen graph
@@ -38,7 +38,7 @@ from physicar_webserver.state_manager import get_state_manager
 router = APIRouter(prefix="/deepracer", tags=["deepracer"])
 
 # Constants
-MODELS_DIR = Path("/opt/physicar/deepracer/models")
+MODELS_DIR = Path("/home/physicar/physicar_ws/userdata/deepracer/models")
 IMPORT_DIR = Path("/tmp/deepracer_imports")
 REQUIRED_FILES = ["model_metadata.json", "agent/model.pb"]
 IMPORT_TIMEOUT_SEC = 600  # 10 minutes
@@ -496,7 +496,7 @@ async def set_config(request: SetConfigRequest):
 @router.get("/models", response_model=ModelListResponse)
 async def list_models():
     """
-    List all available DeepRacer models in /opt/physicar/deepracer/models/
+    List all available DeepRacer models in /home/physicar/physicar_ws/userdata/deepracer/models/
     
     Returns validation status for each model.
     """

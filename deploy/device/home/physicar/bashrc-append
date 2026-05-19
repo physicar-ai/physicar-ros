@@ -1,0 +1,11 @@
+
+# physicar
+export DISPLAY=:1
+export PHYSICAR_ROS_DIR=~/physicar_ws/src/physicar-ros
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml
+export NAV2_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/nav2_params.yaml
+source /opt/ros/jazzy/setup.bash
+source ~/physicar_ws/install/setup.bash 2>/dev/null || true
+eval "$(register-python-argcomplete ros2)"
+eval "$(register-python-argcomplete colcon)"

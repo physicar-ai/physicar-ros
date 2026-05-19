@@ -383,12 +383,12 @@ function changeCameraRes() {
 
 /* ===== Container Restart ===== */
 async function restartContainer() {
-  const ok = await confirmModal('Restart the PhysiCar container?\nThis will rebuild and relaunch ROS.', { danger: true, confirmText: 'Restart' });
+  const ok = await confirmModal('Restart PhysiCar ROS?\nThis will rebuild and relaunch all nodes.', { danger: true, confirmText: 'Restart' });
   if (!ok) return;
   const btn = $('btn-restart');
   if (btn) { btn.disabled = true; btn.textContent = 'Restarting…'; }
   try {
-    const res = await fetch('/api/host/container/restart', { method: 'POST' });
+    const res = await fetch('/api/restart', { method: 'POST' });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Failed');
   } catch (e) {

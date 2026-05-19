@@ -25,7 +25,7 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/auth/password")
 async def change_password(req: ChangePasswordRequest):
     """
-    Change the device password (rewrites /opt/physicar/password and reboots).
+    Change the device password (rewrites /home/physicar/physicar_ws/userdata/password and reboots).
 
     The user is already authenticated by nginx to reach this endpoint, so we
     don't ask for the current password. After a reboot the host's physicar.sh
@@ -45,10 +45,10 @@ async def change_password(req: ChangePasswordRequest):
         raise HTTPException(status_code=400, detail="Password contains invalid characters.")
 
     try:
-        os.makedirs("/opt/physicar", exist_ok=True)
-        with open("/opt/physicar/password", "w") as f:
+        os.makedirs("/home/physicar/physicar_ws/userdata", exist_ok=True)
+        with open("/home/physicar/physicar_ws/userdata/password", "w") as f:
             f.write(new_pw + "\n")
-        os.chmod("/opt/physicar/password", 0o600)
+        os.chmod("/home/physicar/physicar_ws/userdata/password", 0o600)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save password: {e}")
 
@@ -65,11 +65,10 @@ async def change_password(req: ChangePasswordRequest):
 
 
 def _schedule_reboot() -> tuple[bool, str]:
-    """Schedule a host reboot via nsenter. Returns (ok, message)."""
+    """Schedule a host reboot. Returns (ok, message)."""
     try:
         subprocess.Popen(
-            ["nsenter", "-t", "1", "-m", "-u", "-n", "-i", "-p", "--",
-             "sh", "-c", "(sleep 2 && reboot) >/dev/null 2>&1 &"],
+            ["sh", "-c", "(sleep 2 && sudo reboot) >/dev/null 2>&1 &"],
             start_new_session=True,
         )
         return True, "rebooting"
@@ -82,7 +81,7 @@ async def reset_password():
     """
     Reset the device password to its built-in default.
 
-    Removes /opt/physicar/password and reboots the host. After reboot
+    Removes /home/physicar/physicar_ws/userdata/password and reboots the host. After reboot
     physicar.sh recomputes the password from the serial-number hash
     (production) or falls back to "physicar" (DEV/SIM), and rewrites the
     nginx auth maps so SSH/AP/web all converge on the new value.
@@ -90,7 +89,7 @@ async def reset_password():
     from physicar_webserver.sim import reject_in_sim
     reject_in_sim("reset device password")
 
-    pw_file = "/opt/physicar/password"
+    pw_file = "/home/physicar/physicar_ws/userdata/password"
     try:
         if os.path.isfile(pw_file):
             os.remove(pw_file)

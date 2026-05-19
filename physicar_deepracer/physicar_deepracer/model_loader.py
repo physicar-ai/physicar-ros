@@ -39,7 +39,7 @@ class ModelLoader:
     Loads and validates DeepRacer models for PhysiCar
     
     Model structure:
-        /opt/physicar/deepracer/models/<model_name>/
+        /home/physicar/physicar_ws/userdata/deepracer/models/<model_name>/
             ├── agent/model.pb         # TensorFlow frozen graph
             ├── model_metadata.json    # Model configuration
             └── ...

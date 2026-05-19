@@ -1,0 +1,17 @@
+[Unit]
+Description=Physicar Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=physicar
+Group=physicar
+EnvironmentFile=-/home/physicar/physicar_ws/userdata/.env
+ExecStart=/home/physicar/physicar_ws/src/physicar-ros/deploy/device/physicar.sh
+ExecStopPost=+/bin/bash -c 'nmcli connection down physicar-hotspot 2>/dev/null; nmcli connection delete physicar-hotspot 2>/dev/null; iw dev ap0 del 2>/dev/null'
+RemainAfterExit=yes
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

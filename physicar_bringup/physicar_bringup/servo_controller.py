@@ -78,7 +78,7 @@ class ServoController:
 
         # Servo limits - initialised to a safe minimal range.
         # Actual values are set by physicar_driver_node._apply_calibration().
-        # Priority: 1) /opt/physicar/calibration.json  2) driver_params.yaml
+        # Priority: 1) /home/physicar/physicar_ws/userdata/calibration.json  2) driver_params.yaml
         self.limits = {
             self.CHANNEL_THROTTLE: ServoLimits(90, 90, 90),  # S1: initial stopped state
             self.CHANNEL_STEERING: ServoLimits(90, 90, 90),  # S2: initial centre

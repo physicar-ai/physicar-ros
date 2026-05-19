@@ -19,7 +19,7 @@ PhysiCar WebServer Node - ROS2 Node that runs FastAPI server
 
 Runs uvicorn in-process (background thread) with ROS2 node lifecycle.
 
-DEV Mode (DEV=true in /opt/physicar/.env):
+DEV Mode (DEV=true in /home/physicar/physicar_ws/userdata/.env):
     Watches source files for changes and restarts the process via os.execv().
     No subprocess, no zombie — clean self-replacement.
 """
@@ -36,8 +36,8 @@ from physicar_webserver.ros_bridge import get_ros_bridge
 
 
 def is_dev_mode() -> bool:
-    """Check if DEV mode is enabled via /opt/physicar/.env"""
-    env_file = '/opt/physicar/.env'
+    """Check if DEV mode is enabled via /home/physicar/physicar_ws/userdata/.env"""
+    env_file = '/home/physicar/physicar_ws/userdata/.env'
     if not os.path.exists(env_file):
         return False
     try:
