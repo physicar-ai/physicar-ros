@@ -354,9 +354,10 @@ echo "[physicar] Root initialization complete."
 # ────────────────── code-server ──────────────────
 
 APP_FILE="$PHYSICAR_WS/app.physicar"
-chmod 644 "$APP_FILE" 2>/dev/null || true
+sudo chattr -i "$APP_FILE" 2>/dev/null || true
 echo "https://device.physicar.ai/studio" > "$APP_FILE"
-chmod 444 "$APP_FILE" 2>/dev/null || true
+chmod 444 "$APP_FILE"
+sudo chattr +i "$APP_FILE"
 
 CODE_USER_DIR="$HOME/.local/share/code-server/User"
 mkdir -p "$CODE_USER_DIR"
@@ -449,9 +450,15 @@ python3 -m pip install --upgrade physicar 2>/dev/null || true
 
 rm -f "$UPDATE_SIGNAL"
 
-while true; do
+# Build only once on first boot (or if install/ is missing)
+if [ ! -d "$PHYSICAR_WS/install" ]; then
     do_build
+else
+    echo "[physicar] install/ exists, skipping build."
+    source "$PHYSICAR_WS/install/setup.bash"
+fi
 
+while true; do
     echo "[physicar] Launching..."
     ros2 launch physicar_bringup robot.launch.py &
     LAUNCH_PID=$!
@@ -460,6 +467,7 @@ while true; do
     if [ -f "$UPDATE_SIGNAL" ]; then
         rm -f "$UPDATE_SIGNAL"
         echo "[physicar] Update detected → rebuilding..."
+        do_build
         continue
     fi
 
