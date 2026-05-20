@@ -11,6 +11,7 @@ EnvironmentFile=-/home/physicar/physicar_ws/userdata/.env
 ExecStart=/home/physicar/physicar_ws/src/physicar-ros/deploy/device/physicar.sh
 RemainAfterExit=yes
 TimeoutStartSec=0
+TimeoutStopSec=3
 
 [Install]
 WantedBy=multi-user.target

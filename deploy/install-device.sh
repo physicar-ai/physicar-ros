@@ -412,6 +412,7 @@ systemctl enable physicar-myapp.service
 
 # Initial ROS 2 workspace build
 sudo -u physicar bash -c 'source /opt/ros/jazzy/setup.bash && cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
+rm -rf "$PHYSICAR_WS/log"
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  7. Cleanup (remove caches, logs, install artifacts)                       │

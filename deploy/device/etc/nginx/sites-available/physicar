@@ -21,6 +21,51 @@
 # a real, non-expired LE cert).  Otherwise users stay on the self-signed
 # host (browser warning, but no redirect to a broken LE block).
 
+# ─────────────────────────────────────────────────────────────────────────
+# Captive-portal spoofing — convince client OSes the network has internet.
+# dnsmasq resolves these domains to 10.42.0.1; nginx returns the responses
+# each OS expects. Only affects hotspot clients (no real DNS hijacking).
+# ─────────────────────────────────────────────────────────────────────────
+server {
+    listen 80;
+    server_name
+        www.msftconnecttest.com msftconnecttest.com
+        captive.apple.com
+        connectivitycheck.gstatic.com
+        clients3.google.com
+        detectportal.firefox.com
+        connectivity-check.ubuntu.com;
+
+    # Windows: GET /connecttest.txt → "Microsoft Connect Test"
+    location = /connecttest.txt {
+        return 200 "Microsoft Connect Test";
+    }
+    # Windows: GET /redirect → 200 (not a redirect)
+    location = /redirect {
+        return 200 "OK";
+    }
+    # macOS / iOS: GET /hotspot-detect.html → HTML with "Success"
+    location = /hotspot-detect.html {
+        return 200 "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>";
+    }
+    # Android / Chrome OS: GET /generate_204 → HTTP 204
+    location = /generate_204 {
+        return 204;
+    }
+    # Firefox: GET /success.txt → "success\n"
+    location = /success.txt {
+        return 200 "success\n";
+    }
+    # Ubuntu: GET / → HTTP 204
+    location = / {
+        return 204;
+    }
+    # Catch-all for any other path on these domains
+    location / {
+        return 200 "OK";
+    }
+}
+
 upstream fastapi_backend {
     server 127.0.0.1:8000;
     keepalive 32;

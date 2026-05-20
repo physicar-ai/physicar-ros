@@ -259,7 +259,7 @@ const WIFI = (() => {
         n.security === 'enterprise' ? '🏢' : '🔒';
       const freq = n.frequency > 5000 ? '<span class="wifi-freq">5G</span>' : '';
       const savedLabel = '';
-      const forgetBtn = (saved && !isCur)
+      const forgetBtn = saved
         ? `<button class="wifi-forget" data-name="${esc(saved.name)}" data-ssid="${esc(n.ssid)}" title="Forget saved network" aria-label="Forget"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button>`
         : '';
       // Mark saved networks for click handler dispatch (activate vs select).

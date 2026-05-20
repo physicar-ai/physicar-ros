@@ -536,7 +536,7 @@
                         '<span class="security-icon" title="Password required">🔒</span>';
                     const freqBadge = n.frequency > 5000 ? '<span style="color:#888;font-size:0.8rem;margin-right:8px;">5G</span>' : '';
                     const safeSsid = n.ssid.replace(/'/g, "\\'");
-                    const forgetBtn = (savedConn && !isConnected)
+                    const forgetBtn = savedConn
                         ? '<button class="wifi-popup-forget" onclick="event.stopPropagation();forgetWifi(\'' + savedConn.name.replace(/'/g, "\\'") + '\', \'' + safeSsid + '\')" title="Forget saved network" aria-label="Forget"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button>'
                         : '';
                     // Connected items: no click handler (already connected, nothing to do).
@@ -1280,7 +1280,7 @@
                         '<span class="security-icon" title="Password required">🔒</span>';
                     const freqBadge = n.frequency > 5000 ? '<span style="color:#888;font-size:0.8rem;margin-right:8px;">5G</span>' : '';
                     const safeSsid = n.ssid.replace(/'/g, "\\'");
-                    const forgetBtn = (savedConn && !isConnected)
+                    const forgetBtn = savedConn
                         ? '<button class="wifi-popup-forget" onclick="event.stopPropagation();forgetWifi(\'' + savedConn.name.replace(/'/g, "\\'") + '\', \'' + safeSsid + '\')" title="Forget saved network" aria-label="Forget"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button>'
                         : '';
                     // Connected: no click. Saved: activate via stored creds. Other: password modal.

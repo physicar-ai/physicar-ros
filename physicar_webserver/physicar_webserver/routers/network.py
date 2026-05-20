@@ -86,7 +86,7 @@ def _parse_nmcli_scan() -> list[WifiNetwork]:
     # main reason the UI used to show "Scan failed" 1-in-5 times.
     try:
         subprocess.run(
-            ["nmcli", "dev", "wifi", "rescan", "ifname", "wlan0"],
+            ["sudo", "nmcli", "dev", "wifi", "rescan", "ifname", "wlan0"],
             capture_output=True, text=True, timeout=10
         )
     except Exception:
@@ -126,6 +126,8 @@ def _parse_nmcli_scan() -> list[WifiNetwork]:
         ssid = parts[0].strip()
         if not ssid or ssid == '--' or ssid in seen:
             continue
+        if ssid.lower().startswith('physicar-'):
+            continue
         seen.add(ssid)
         try:
             sig_pct = int(parts[1])
@@ -155,7 +157,7 @@ def _parse_nmcli_scan() -> list[WifiNetwork]:
 def _parse_iw_scan_fallback() -> list[WifiNetwork]:
     try:
         result = subprocess.run(
-            ["iw", "dev", "wlan0", "scan"],
+            ["sudo", "iw", "dev", "wlan0", "scan"],
             capture_output=True, text=True, timeout=15
         )
         output = result.stdout
@@ -208,6 +210,8 @@ def _parse_iw_scan_fallback() -> list[WifiNetwork]:
     out: list[WifiNetwork] = []
     for n in networks:
         if n['ssid'] and n['ssid'] not in seen:
+            if n['ssid'].lower().startswith('physicar-'):
+                continue
             seen.add(n['ssid'])
             out.append(WifiNetwork(
                 ssid=n['ssid'],
@@ -547,9 +551,9 @@ async def wifi_connect(request: WifiConnectRequest):
     try:
         if is_enterprise:
             con_name = f"wifi-{request.ssid[:20]}"
-            run_cmd(["nmcli", "connection", "delete", con_name], timeout=10)
+            run_cmd(["sudo", "nmcli", "connection", "delete", con_name], timeout=10)
             cmd = [
-                "nmcli", "connection", "add",
+                "sudo", "nmcli", "connection", "add",
                 "type", "wifi",
                 "con-name", con_name,
                 "ifname", "wlan0",
@@ -563,12 +567,12 @@ async def wifi_connect(request: WifiConnectRequest):
             ]
             result = run_cmd(cmd, timeout=30)
             if result.returncode == 0:
-                result = run_cmd(["nmcli", "connection", "up", con_name], timeout=30)
+                result = run_cmd(["sudo", "nmcli", "connection", "up", con_name], timeout=30)
                 if result.returncode == 0:
                     _bump_network()
                     return {"success": True, "message": f"Connected to {request.ssid}"}
                 error_msg = result.stderr.strip()
-                run_cmd(["nmcli", "connection", "delete", con_name], timeout=10)
+                run_cmd(["sudo", "nmcli", "connection", "delete", con_name], timeout=10)
                 if any(x in error_msg.lower() for x in ["password", "auth", "secrets"]):
                     raise HTTPException(status_code=401, detail="Wrong username or password")
                 raise HTTPException(status_code=400, detail=error_msg or "Connection failed")
@@ -582,7 +586,7 @@ async def wifi_connect(request: WifiConnectRequest):
                 ]):
                     raise HTTPException(status_code=400, detail=error_msg)
         else:
-            cmd = ["nmcli", "dev", "wifi", "connect", request.ssid, "ifname", "wlan0"]
+            cmd = ["sudo", "nmcli", "dev", "wifi", "connect", request.ssid, "ifname", "wlan0"]
             if request.password:
                 cmd.extend(["password", request.password])
             result = run_cmd(cmd, timeout=30)
@@ -643,14 +647,14 @@ async def wifi_connect(request: WifiConnectRequest):
             password: "{psk}"
 '''
         config_path = "/etc/netplan/60-wifi-kiosk.yaml"
-        write_cmd = ["bash", "-c", f"cat > {config_path} << 'NETPLAN_EOF'\n{netplan_config}NETPLAN_EOF"]
+        write_cmd = ["sudo", "bash", "-c", f"cat > {config_path} << 'NETPLAN_EOF'\n{netplan_config}NETPLAN_EOF"]
         result = run_cmd(write_cmd)
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to write config: {result.stderr}")
-        run_cmd(["chmod", "600", config_path])
-        result = run_cmd(["netplan", "apply"], timeout=30)
+        run_cmd(["sudo", "chmod", "600", config_path])
+        result = run_cmd(["sudo", "netplan", "apply"], timeout=30)
         if result.returncode != 0:
-            run_cmd(["rm", "-f", config_path])
+            run_cmd(["sudo", "rm", "-f", config_path])
             error_msg = result.stderr.strip()
             if "password" in error_msg.lower() or "invalid" in error_msg.lower():
                 raise HTTPException(status_code=401, detail="Invalid password format")
@@ -748,7 +752,7 @@ async def wifi_saved_delete(name: str):
     if _is_sim():
         raise HTTPException(status_code=501, detail="WiFi control not available in simulation mode")
     try:
-        result = _run_cmd(["nmcli", "connection", "delete", name], timeout=10)
+        result = _run_cmd(["sudo", "nmcli", "connection", "delete", name], timeout=10)
         if result.returncode != 0:
             err = (result.stderr or result.stdout).strip()
             if "unknown connection" in err.lower() or "not found" in err.lower():
@@ -778,7 +782,7 @@ async def wifi_activate(request: WifiActivateRequest):
         raise HTTPException(status_code=501, detail="WiFi control not available in simulation mode")
     try:
         result = _run_cmd(
-            ["nmcli", "connection", "up", request.name, "ifname", "wlan0"],
+            ["sudo", "nmcli", "connection", "up", request.name, "ifname", "wlan0"],
             timeout=30,
         )
         if result.returncode != 0:

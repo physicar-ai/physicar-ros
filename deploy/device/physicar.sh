@@ -110,82 +110,127 @@ fi
 
 # ────────────────── WiFi Hotspot (AP+STA) ──────────────────
 
-if ! iw dev ap0 info &>/dev/null; then
-  sudo iw dev wlan0 interface add ap0 type __ap 2>/dev/null || true
-fi
-
-sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
-{
-  echo "address=/$DEVICE_HOSTNAME.local/10.42.0.1"
-  [ "$DEVICE_HOSTNAME" != "physicar" ] && echo "address=/physicar.local/10.42.0.1"
-  echo "address=/device.physicar.ai/10.42.0.1"
-  echo "address=/preview.physicar.ai/10.42.0.1"
-  echo ""
-  echo "no-resolv"
-  echo "server=1.1.1.1"
-  echo "server=8.8.8.8"
-  echo "server=8.8.4.4"
-} | sudo tee /etc/NetworkManager/dnsmasq-shared.d/physicar.conf > /dev/null
-
-# Only recreate hotspot if SSID or password changed
-_HOTSPOT_SSID=$(sudo nmcli -t -f 802-11-wireless.ssid connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
-_HOTSPOT_PSK=$(sudo nmcli -s -t -f 802-11-wireless-security.psk connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
-
-if [ "$_HOTSPOT_SSID" = "$DEVICE_HOSTNAME" ] && [ "$_HOTSPOT_PSK" = "$PASSWORD" ]; then
-  # Same config — just ensure it's up
-  if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
-    sudo nmcli connection up physicar-hotspot &>/dev/null && \
-      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
-      echo "[physicar] WARNING: Hotspot failed to start" >&2
-  else
-    echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
+# Run in background — nothing below depends on hotspot being ready
+(
+  if ! iw dev ap0 info &>/dev/null; then
+    sudo iw dev wlan0 interface add ap0 type __ap 2>/dev/null || true
   fi
-else
-  # Config changed or not exists — recreate
-  sudo nmcli connection delete physicar-hotspot &>/dev/null || true
-  sleep 1
-  if iw dev ap0 info &>/dev/null; then
-    sudo nmcli connection add \
-      type wifi ifname ap0 con-name physicar-hotspot \
-      autoconnect no ssid "$DEVICE_HOSTNAME" \
-      wifi.mode ap wifi.band bg \
-      wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD" \
-      wifi-sec.wps-method 0x1 \
-      ipv4.method shared ipv4.addresses 10.42.0.1/24 \
-      &>/dev/null
-    sudo nmcli connection up physicar-hotspot &>/dev/null && \
-      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
-      echo "[physicar] WARNING: Hotspot failed to start" >&2
-  else
-    echo "[physicar] WARNING: Could not create AP interface" >&2
+
+  # Try STA autoconnect first so we know which band we'll be on.
+  _sta_connected=0
+  _sta_freq=0
+  if sudo nmcli -t -f NAME,TYPE connection show 2>/dev/null | grep -q '802-11-wireless'; then
+    sudo nmcli device wifi rescan ifname wlan0 &>/dev/null || true
+    sleep 2
+    for _try in 1 2 3; do
+      _sta_freq=$(iw dev wlan0 link 2>/dev/null | awk '/freq:/{printf "%d",$2}')
+      if [ -n "$_sta_freq" ] && [ "$_sta_freq" != "0" ]; then
+        _sta_connected=1
+        break
+      fi
+      sleep 2
+    done
   fi
-fi
+
+  if [ "$_sta_connected" = "1" ]; then
+    _ap_band=""
+    _ap_channel=""
+    echo "[physicar] STA on ${_sta_freq} MHz; hotspot follows STA channel"
+  else
+    _best_channel=$(sudo iw dev wlan0 scan 2>/dev/null \
+      | awk '/freq:/{f=$2} /signal:/{s=$2;
+        if(f>=2402&&f<=2422)c1+=10^(s/10);
+        else if(f>=2427&&f<=2447)c6+=10^(s/10);
+        else if(f>=2452&&f<=2472)c11+=10^(s/10)}
+        END{if(c11<=c1&&c11<=c6)print 11;
+            else if(c1<=c6)print 1;
+            else print 6}')
+    : "${_best_channel:=6}"
+    _ap_band="wifi.band bg"
+    _ap_channel="wifi.channel $_best_channel"
+    echo "[physicar] Hotspot channel: ${_best_channel} (2.4 GHz)"
+  fi
+
+  sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+  {
+    echo "address=/$DEVICE_HOSTNAME.local/10.42.0.1"
+    [ "$DEVICE_HOSTNAME" != "physicar" ] && echo "address=/physicar.local/10.42.0.1"
+    echo "address=/device.physicar.ai/10.42.0.1"
+    echo "address=/preview.physicar.ai/10.42.0.1"
+    echo ""
+    echo "address=/www.msftconnecttest.com/10.42.0.1"
+    echo "address=/msftconnecttest.com/10.42.0.1"
+    echo "address=/captive.apple.com/10.42.0.1"
+    echo "address=/connectivitycheck.gstatic.com/10.42.0.1"
+    echo "address=/clients3.google.com/10.42.0.1"
+    echo "address=/detectportal.firefox.com/10.42.0.1"
+    echo "address=/connectivity-check.ubuntu.com/10.42.0.1"
+    echo ""
+    echo "no-resolv"
+    echo "server=1.1.1.1"
+    echo "server=8.8.8.8"
+    echo "server=8.8.4.4"
+  } | sudo tee /etc/NetworkManager/dnsmasq-shared.d/physicar.conf > /dev/null
+
+  _HOTSPOT_SSID=$(sudo nmcli -t -f 802-11-wireless.ssid connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
+  _HOTSPOT_PSK=$(sudo nmcli -s -t -f 802-11-wireless-security.psk connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
+
+  if [ "$_HOTSPOT_SSID" = "$DEVICE_HOSTNAME" ] && [ "$_HOTSPOT_PSK" = "$PASSWORD" ]; then
+    if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
+      sudo nmcli connection up physicar-hotspot &>/dev/null && \
+        echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
+        echo "[physicar] WARNING: Hotspot failed to start" >&2
+    else
+      echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
+    fi
+  else
+    sudo nmcli connection delete physicar-hotspot &>/dev/null || true
+    sleep 1
+    if iw dev ap0 info &>/dev/null; then
+      sudo nmcli connection add \
+        type wifi ifname ap0 con-name physicar-hotspot \
+        autoconnect no ssid "$DEVICE_HOSTNAME" \
+        wifi.mode ap $_ap_band $_ap_channel \
+        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD" \
+        wifi-sec.wps-method 0x1 \
+        ipv4.method shared ipv4.addresses 10.42.0.1/24 \
+        &>/dev/null
+      sudo nmcli connection up physicar-hotspot &>/dev/null && \
+        echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
+        echo "[physicar] WARNING: Hotspot failed to start" >&2
+    else
+      echo "[physicar] WARNING: Could not create AP interface" >&2
+    fi
+  fi
+) &
 
 # ────────────────── X11 Display ──────────────────
 
-if ! pgrep -x "Xorg" > /dev/null; then
-  sudo Xorg :0 &>/dev/null &
-  for i in {1..30}; do
-    xdpyinfo -display :0 &>/dev/null && break
-    sleep 0.5
-  done
-  sudo xhost +local: &>/dev/null || true
-fi
+# Xorg + splash in background — nothing below depends on :0 being ready
+(
+  if ! pgrep -x "Xorg" > /dev/null; then
+    sudo Xorg :0 &>/dev/null &
+    for i in {1..30}; do
+      xdpyinfo -display :0 &>/dev/null && break
+      sleep 0.5
+    done
+    sudo xhost +local: &>/dev/null || true
+  fi
 
-export DISPLAY=:0
-xset s off; xset s noblank; xset -dpms; xset dpms force on
+  export DISPLAY=:0
+  xset s off; xset s noblank; xset -dpms; xset dpms force on
 
-# Boot splash
-SPLASH_IMG="$PHYSICAR_ROS_DIR/physicar_webserver/static/img/splash.png"
-SPLASH_PID=""
-if [ -f "$SPLASH_IMG" ]; then
-  feh --bg-fill --no-fehbg "$SPLASH_IMG" &>/dev/null || true
-  feh --fullscreen --hide-pointer --no-menus --image-bg black --no-fehbg \
-      "$SPLASH_IMG" &>/dev/null &
-  SPLASH_PID=$!
-else
-  xsetroot -solid '#0b0b0b' &>/dev/null || true
-fi
+  # Boot splash
+  SPLASH_IMG="$PHYSICAR_ROS_DIR/physicar_webserver/static/img/splash.png"
+  if [ -f "$SPLASH_IMG" ]; then
+    feh --bg-fill --no-fehbg "$SPLASH_IMG" &>/dev/null || true
+    feh --fullscreen --hide-pointer --no-menus --image-bg black --no-fehbg \
+        "$SPLASH_IMG" &>/dev/null &
+    echo $! > /run/physicar/splash.pid
+  else
+    xsetroot -solid '#0b0b0b' &>/dev/null || true
+  fi
+) &
 
 # ────────────────── Virtual Display + VNC ──────────────────
 
@@ -446,8 +491,6 @@ do_build() {
     return $exit_code
 }
 
-python3 -m pip install --upgrade physicar 2>/dev/null || true
-
 rm -f "$UPDATE_SIGNAL"
 
 # Build only once on first boot (or if install/ is missing)
@@ -488,6 +531,11 @@ fi
   FIRST=1
   while true; do
     if ! pgrep -f "chromium.*--kiosk" > /dev/null 2>&1; then
+      # Wait for Xorg :0 (started in background)
+      until xdpyinfo -display :0 &>/dev/null; do
+        sleep 0.5
+      done
+
       until [[ "$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/kiosk)" == "200" ]]; do
         sleep 0.5
       done
@@ -523,15 +571,19 @@ fi
 
       DISPLAY=:0 unclutter -idle 0.1 -root &>/dev/null &
 
-      if [ "$FIRST" = "1" ] && [ -n "$SPLASH_PID" ]; then
-        for _ in {1..120}; do
-          if DISPLAY=:0 xwininfo -root -tree 2>/dev/null | grep -qi 'chromium'; then
-            break
-          fi
-          sleep 0.25
-        done
-        sleep 4
-        kill "$SPLASH_PID" 2>/dev/null || true
+      if [ "$FIRST" = "1" ]; then
+        SPLASH_PID=$(cat /run/physicar/splash.pid 2>/dev/null)
+        if [ -n "$SPLASH_PID" ]; then
+          for _ in {1..120}; do
+            if DISPLAY=:0 xwininfo -root -tree 2>/dev/null | grep -qi 'chromium'; then
+              break
+            fi
+            sleep 0.25
+          done
+          sleep 4
+          kill "$SPLASH_PID" 2>/dev/null || true
+          rm -f /run/physicar/splash.pid
+        fi
         FIRST=0
       fi
     fi
