@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
 # Verify physicar user exists
 if ! id -u physicar &>/dev/null; then
   echo "ERROR: 'physicar' user not found. Create it first:"
@@ -14,6 +17,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PHYSICAR_ROS_DIR="$(dirname "$SCRIPT_DIR")"
 PHYSICAR_WS="$(dirname "$(dirname "$PHYSICAR_ROS_DIR")")"
 DEPLOY_DIR="$SCRIPT_DIR/device"
+
+# ── Helper: wait for apt/dpkg lock before running apt commands ──
+wait_for_apt() {
+  local max_wait=300 waited=0
+  while fuser /var/lib/dpkg/lock-frontend &>/dev/null 2>&1; do
+    if [ $waited -ge $max_wait ]; then
+      echo "ERROR: dpkg lock held for over ${max_wait}s, aborting."
+      exit 1
+    fi
+    echo "  waiting for dpkg lock (${waited}s)..."
+    sleep 5
+    waited=$((waited + 5))
+  done
+}
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  1. System Configuration                                                   │
@@ -57,7 +74,7 @@ systemctl mask apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
 
 tee /etc/apt/apt.conf.d/10physicar-no-autoupdate >/dev/null < "$DEPLOY_DIR/etc/apt/apt.conf.d/10physicar-no-autoupdate"
 [ -f /etc/apt/apt.conf.d/20auto-upgrades ] && \
-  mv /etc/apt/apt.conf.d/20auto-upgrades /etc/apt/apt.conf.d/20auto-upgrades.disabled
+  mv /etc/apt/apt.conf.d/20auto-upgrades /etc/apt/apt.conf.d/20auto-upgrades.disabled || true
 
 # Block snap automatic refresh
 snap set system refresh.hold="forever" 2>/dev/null || true
@@ -76,9 +93,18 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 __NOBLE_UPDATES__
 fi
 
+wait_for_apt
 apt-get update -y
 apt-get remove -y unattended-upgrades needrestart 2>/dev/null || true
 
+# ── Kernel upgrade (do this BEFORE installing DKMS modules) ──
+# Upgrade kernel+headers first so DKMS builds target the new kernel.
+wait_for_apt
+apt-get install -y linux-image-raspi linux-headers-raspi
+NEW_KVER=$(ls /lib/modules/ | sort -V | tail -1)
+echo "  Kernel target: $NEW_KVER (running: $(uname -r))"
+
+wait_for_apt
 apt-get install -y \
   openssh-server net-tools iw network-manager \
   bluez bluez-tools \
@@ -111,17 +137,22 @@ fi
 systemctl enable --now bluetooth 2>/dev/null || true
 
 # ── xpadneo: Xbox One/Series controller BLE-HID driver ──
+# Build for the newest installed kernel (may differ from running kernel).
 if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo"; then
-  apt-get install -y "linux-headers-$(uname -r)" 2>/dev/null || true
   TMPD=$(mktemp -d)
   git clone --depth 1 --branch v0.11-pre https://github.com/atar-axis/xpadneo.git "$TMPD/xpadneo"
   git config --global --add safe.directory "$TMPD/xpadneo"
-  ( cd "$TMPD/xpadneo" && ./install.sh )
+  ( cd "$TMPD/xpadneo" && ./install.sh ) || true
+  # Ensure module is built for the new kernel (install.sh only builds for running kernel)
+  if [ "$NEW_KVER" != "$(uname -r)" ]; then
+    XPADNEO_VER=$(dkms status hid-xpadneo 2>/dev/null | head -1 | sed 's/.*\///' | cut -d',' -f1)
+    [ -n "$XPADNEO_VER" ] && dkms install "hid-xpadneo/$XPADNEO_VER" -k "$NEW_KVER" 2>/dev/null || true
+  fi
   rm -rf "$TMPD"
 fi
 
 # noVNC symlink
-ln -sf vnc_lite.html /usr/share/novnc/index.html
+[ -d /usr/share/novnc ] && ln -sf vnc_lite.html /usr/share/novnc/index.html
 
 # Deploy openbox / tint2 config
 mkdir -p /etc/xdg/openbox /home/physicar/.config/tint2
@@ -137,7 +168,9 @@ curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
   -o /usr/share/keyrings/ros-archive-keyring.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
   | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+wait_for_apt
 apt-get update -y
+wait_for_apt
 apt-get install -y \
   ros-jazzy-ros-base \
   ros-jazzy-rviz2 \
@@ -160,6 +193,7 @@ apt-get install -y \
   ros-jazzy-ros2-controllers
 
 # SLAM/Nav2 packages for host-side navigation practice
+wait_for_apt
 apt-get install -y --no-install-recommends \
   ros-jazzy-slam-toolbox \
   ros-jazzy-cartographer-ros \
@@ -169,9 +203,9 @@ apt-get install -y --no-install-recommends \
   ros-jazzy-rqt-tf-tree \
   ros-jazzy-rqt-graph
 
-source /opt/ros/jazzy/setup.bash
+set +u; source /opt/ros/jazzy/setup.bash; set -u
 rosdep init 2>/dev/null || true
-rosdep update --rosdistro jazzy 2>/dev/null || true
+sudo -u physicar rosdep update --rosdistro jazzy 2>/dev/null || true
 
 # Patch nav2 navigation_launch.py: disable docking_server & route_server
 NAV2_LAUNCH=/opt/ros/jazzy/share/nav2_bringup/launch/navigation_launch.py
@@ -205,6 +239,7 @@ fi
 
 # Prevent automatic package upgrades (lock installed versions)
 apt-mark hold $(dpkg -l | grep -E '^ii  (ros-jazzy|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
+apt-mark hold linux-image-raspi linux-headers-raspi linux-image-generic linux-headers-generic 2>/dev/null || true
 
 # python
 runuser -u physicar -- python3 -m pip config set global.break-system-packages true 2>/dev/null || true
@@ -212,7 +247,8 @@ runuser -u physicar -- python3 -m pip config set global.break-system-packages tr
 # Pin numpy<2 globally (cv_bridge C++ ABI requires numpy 1.x)
 mkdir -p /etc/pip
 echo 'numpy<2' | tee /etc/pip/constraints.txt > /dev/null
-echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' | tee -a /etc/environment > /dev/null
+grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
+  echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
 export PIP_CONSTRAINT=/etc/pip/constraints.txt
 
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
@@ -251,7 +287,8 @@ if ! pkg-config --exists libcamera 2>/dev/null; then
 fi
 
 # ── Chromium kiosk ──
-fc-cache -fv
+fc-cache -fv 2>/dev/null || true
+wait_for_apt
 apt-get install -y chromium-browser
 snap connect chromium:desktop :desktop 2>/dev/null || true
 snap connect chromium:desktop-legacy :desktop-legacy 2>/dev/null || true
@@ -269,7 +306,13 @@ cp /etc/chromium/policies/managed/kiosk-policy.json /var/snap/chromium/current/p
 echo "[3/7] Network configuration..."
 
 # ── NetworkManager ──
+# Guard: only configure if NetworkManager was installed
+if ! command -v nmcli &>/dev/null; then
+  echo "ERROR: NetworkManager not installed. Section 2 (Package Installation) likely failed."
+  exit 1
+fi
 
+mkdir -p /etc/NetworkManager/conf.d
 ln -sf "$DEPLOY_DIR/etc/NetworkManager/conf.d/10-globally-managed-devices.conf" /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
 
 mkdir -p /etc/NetworkManager/dispatcher.d
@@ -411,7 +454,7 @@ systemctl enable physicar.service
 systemctl enable physicar-myapp.service
 
 # Initial ROS 2 workspace build
-sudo -u physicar bash -c 'source /opt/ros/jazzy/setup.bash && cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
+sudo -u physicar bash -c 'set +u; source /opt/ros/jazzy/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
 rm -rf "$PHYSICAR_WS/log"
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -419,6 +462,14 @@ rm -rf "$PHYSICAR_WS/log"
 # └─────────────────────────────────────────────────────────────────────────────┘
 
 echo "[7/7] Cleanup..."
+
+# Remove old kernel packages (keep only the newest)
+for pkg in $(dpkg -l | grep '^ii  linux-\(image\|headers\|modules\)-[0-9]' | awk '{print $2}' | sort -V); do
+  case "$pkg" in
+    *"${NEW_KVER}"*) continue ;;
+    *) apt-get purge -y "$pkg" 2>/dev/null || true ;;
+  esac
+done
 
 journalctl --vacuum-size=1M 2>/dev/null || true
 rm -rf /var/log/apt/*
