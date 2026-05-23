@@ -65,6 +65,7 @@ except ImportError:
     HAS_TELEOP_STATUS = False
 
 from physicar_bringup.yahboom_board import YahboomBoard
+from physicar_bringup.gpio_pwm_board import GpioPwmBoard
 from physicar_bringup.servo_controller import ServoController
 
 
@@ -241,7 +242,8 @@ class PhysicarDriverNode(Node):
             baudrate=baudrate,
             logger=self.get_logger()
         )
-        self.servo = ServoController(self.board)
+        self.gpio_board = GpioPwmBoard(logger=self.get_logger())
+        self.servo = ServoController(self.board, drive_board=self.gpio_board)
 
         # Calibration state management
         self.calibration = CalibrationData()  # Current calibration
@@ -262,8 +264,7 @@ class PhysicarDriverNode(Node):
         self._last_adjust_time = 0.0       # time of last degree change (unused, kept for brake)
         self._prev_actual_speed = 0.0      # previous actual speed for acceleration
         self._prev_odom_time = 0.0         # previous odom timestamp
-        self._dither_toggle = False         # alternates for 0.5-step dithering
-        
+
         # ESC state tracking
         self._last_esc_angle = self.SERVO_CENTER  # last ESC angle sent
         
@@ -284,6 +285,11 @@ class PhysicarDriverNode(Node):
             self.get_logger().error(f'Failed to connect to expansion board on {serial_port}')
         else:
             self.get_logger().info(f'Connected to expansion board on {serial_port}')
+
+        # Connect GPIO PWM board for steering/ESC
+        if not self.gpio_board.connect():
+            self.get_logger().error('Failed to connect GPIO PWM board')
+        else:
             self._initialize_esc()
 
         # QoS
@@ -427,7 +433,7 @@ class PhysicarDriverNode(Node):
                 self._start_active_brake(self._actual_speed)
                 self.get_logger().warn(f'EMERGENCY BRAKE: speed={self._actual_speed:.2f} m/s')
             else:
-                self.board.set_servo(1, self.SERVO_CENTER)
+                self.gpio_board.set_servo(1, self.SERVO_CENTER)
                 self.get_logger().warn(f'Emergency active, ESC stopped (no odom or already stopped)')
         elif was_emergency and not is_emergency:
             # Emergency cleared → restore ESC (unless braking, in which case brake handles it)
@@ -436,7 +442,7 @@ class PhysicarDriverNode(Node):
             else:
                 esc_angle = self._compute_esc_angle_with_adjust()
                 self._last_esc_angle = esc_angle
-                self.board.set_servo(1, esc_angle)
+                self.gpio_board.set_servo(1, esc_angle)
                 self.get_logger().info(f'Emergency cleared, resuming ESC: {esc_angle:.1f}° (speed={self._target_speed:.2f} m/s)')
     
     def _check_emergency(self, target_speed: float) -> bool:
@@ -519,33 +525,11 @@ class PhysicarDriverNode(Node):
         # Power-law model
         target_degree = (self.ESC_A / V) * ((abs_speed - self.ESC_K) ** self.ESC_Q + self.ESC_P)
         raw = target_degree + self._current_degree_adjust
-        # +0.5 bias: forward if reverse_direction, reverse if normal
-        if (self.calibration.reverse_direction and self._last_esc_direction > 0) or \
-           (not self.calibration.reverse_direction and self._last_esc_direction < 0):
-            raw += 0.5
-        degree = self._dither_degree(raw)
-        
+
         if self._last_esc_direction > 0:
-            return self.SERVO_CENTER + degree
+            return self.SERVO_CENTER + raw
         else:
-            return self.SERVO_CENTER - degree
-    
-    def _dither_degree(self, raw_degree: float) -> int:
-        """Round to nearest 0.5, then dither X.5 by alternating floor/ceil.
-        
-        Integer values pass through unchanged.
-        Half values (e.g. 9.5) alternate 9,10,9,10 on successive calls.
-        """
-        half = round(raw_degree * 2) / 2.0  # snap to 0.5 grid
-        frac = half - int(half)
-        if abs(frac - 0.5) < 0.01:  # it's X.5
-            self._dither_toggle = not self._dither_toggle
-            if self._dither_toggle:
-                return int(half + 0.5)  # ceil
-            else:
-                return int(half - 0.5)  # floor
-        else:
-            return round(raw_degree)
+            return self.SERVO_CENTER - raw
 
     def _wheel_to_servo_angle(self, wheel_angle_deg: float) -> float:
         """Convert wheel angle to servo angle (sine model).
@@ -724,8 +708,7 @@ class PhysicarDriverNode(Node):
             # ESC command
             if abs(speed_mps) < 0.01:
                 # Stop command → ESC neutral
-                self.board.set_servo(1, self.SERVO_CENTER)
-                self._dither_toggle = False  # reset so next start always uses ceil
+                self.gpio_board.set_servo(1, self.SERVO_CENTER)
                 self.get_logger().debug(f'ESC STOP: 90° (actual={self._actual_speed:.2f} m/s)')
                 # Active brake disabled — reverse pulses confuse ESC during rapid on/off
                 # if abs(self._actual_speed) > self._brake_speed_threshold:
@@ -733,7 +716,7 @@ class PhysicarDriverNode(Node):
             else:
                 esc_angle = self._velocity_to_esc_angle(speed_mps)
                 self._last_esc_angle = esc_angle
-                self.board.set_servo(1, esc_angle)
+                self.gpio_board.set_servo(1, esc_angle)
                 self.get_logger().debug(
                     f'ESC: {esc_angle:.1f}° (speed={speed_mps:.2f} m/s, V={self.current_voltage:.1f}V)'
                 )
@@ -769,7 +752,7 @@ class PhysicarDriverNode(Node):
             steering_angle = self.SERVO_CENTER + servo_angle_offset + center_offset
             
             # Steering is always applied, regardless of Emergency
-            self.board.set_servo(2, steering_angle)
+            self.gpio_board.set_servo(2, steering_angle)
             self.get_logger().debug(
                 f'Steering: {steering_rad:.3f} rad ({steering_deg:.1f}°) → servo {steering_angle:.1f}°'
             )
@@ -889,7 +872,7 @@ class PhysicarDriverNode(Node):
             else:
                 esc_angle = self.SERVO_CENTER + brake_degree
         
-        self.board.set_servo(1, esc_angle)
+        self.gpio_board.set_servo(1, esc_angle)
         self.get_logger().debug(f'Brake tick: speed={actual_speed:.2f}, esc={esc_angle:.1f}°')
     
     def _stop_brake(self):
@@ -902,7 +885,7 @@ class PhysicarDriverNode(Node):
         self._brake_direction = 0
         # Keep _target_speed (used to restore when Emergency clears)
         self._current_degree_adjust = 0.0
-        self.board.set_servo(1, self.SERVO_CENTER)
+        self.gpio_board.set_servo(1, self.SERVO_CENTER)
         self.get_logger().info('Active brake complete')
 
     def _load_and_apply_calibration(self) -> None:
@@ -1226,7 +1209,7 @@ class PhysicarDriverNode(Node):
         
         # 2. Stabilise ESC neutral signal (repeat 90° signal)
         for _ in range(50):
-            self.board.set_servo(1, 90)  # ESC = channel 1
+            self.gpio_board.set_servo(1, 90)  # ESC = channel 1
             time.sleep(0.02)
         
         # 3. Wait for ESC to arm (time for it to learn neutral)
@@ -1250,7 +1233,6 @@ class PhysicarDriverNode(Node):
         if target_speed == 0:
             self._last_esc_direction = 0
             self._current_degree_adjust = 0.0  # reset adjustment when stopped
-            self._dither_toggle = False         # reset dither so first command is always ceil
             return self.SERVO_CENTER  # stopped
         
         V = self.current_voltage
@@ -1269,19 +1251,13 @@ class PhysicarDriverNode(Node):
         V = 7.4  # fixed voltage — disable voltage compensation
         target_degree = (self.ESC_A / V) * ((abs_speed - self.ESC_K) ** self.ESC_Q + self.ESC_P)
         
-        # Dither to nearest 0.5 step (alternates floor/ceil for X.5)
         raw = target_degree + self._current_degree_adjust
-        # +0.5 bias: forward if reverse_direction, reverse if normal
-        if (self.calibration.reverse_direction and self._last_esc_direction > 0) or \
-           (not self.calibration.reverse_direction and self._last_esc_direction < 0):
-            raw += 0.5
-        degree = self._dither_degree(raw)
         
         # Final angle calculation
         if self._last_esc_direction > 0:
-            return self.SERVO_CENTER + degree
+            return self.SERVO_CENTER + raw
         else:
-            return self.SERVO_CENTER - degree
+            return self.SERVO_CENTER - raw
 
     def pan_callback(self, msg: Float64):
         """Handle camera pan command.
@@ -1520,8 +1496,10 @@ class PhysicarDriverNode(Node):
     def destroy_node(self):
         """Cleanup on shutdown."""
         self.get_logger().info('Shutting down PhysiCar Driver...')
-        if self.board.is_connected():
+        if self.gpio_board.is_connected():
             self.servo.emergency_stop()
+            self.gpio_board.disconnect()
+        if self.board.is_connected():
             self.board.disconnect()
         super().destroy_node()
 

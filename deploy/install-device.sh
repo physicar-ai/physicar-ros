@@ -60,6 +60,20 @@ if ! grep -q "disable_overscan=1" /boot/firmware/config.txt 2>/dev/null; then
   echo "disable_overscan=1" | tee -a /boot/firmware/config.txt
 fi
 
+# ── Hardware PWM for steering + speed ──
+# RPi5 RP1: the stock device-tree ships with pwm@98000 disabled.
+# This overlay enables it and muxes two header pins:
+#   GPIO12 (board pin 32) alt0 = PWM0 ch0 → steering servo
+#   GPIO13 (board pin 33) alt0 = PWM0 ch1 → ESC speed
+dtc -@ -I dts -O dtb \
+  -o /boot/firmware/overlays/pwm0-gpio13.dtbo \
+  "$DEPLOY_DIR/boot/firmware/overlays/pwm0-gpio13.dts"
+if ! grep -q "dtoverlay=pwm0-gpio13" /boot/firmware/config.txt 2>/dev/null; then
+  echo -e "\n# Hardware PWM0: steering (GPIO12) + speed (GPIO13)" \
+    | tee -a /boot/firmware/config.txt
+  echo "dtoverlay=pwm0-gpio13" | tee -a /boot/firmware/config.txt
+fi
+
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  2. Package Installation                                                   │
 # └─────────────────────────────────────────────────────────────────────────────┘

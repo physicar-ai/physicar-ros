@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .yahboom_board import YahboomBoard
+from .gpio_pwm_board import GpioPwmBoard
 
 
 @dataclass
@@ -67,14 +68,19 @@ class ServoController:
     CHANNEL_PAN = 3        # S3: Camera Pan
     CHANNEL_TILT = 4       # S4: Camera Tilt
 
-    def __init__(self, board: Optional[YahboomBoard] = None):
+    def __init__(self, board: Optional[YahboomBoard] = None,
+                 drive_board: Optional[GpioPwmBoard] = None):
         """
         Initialize servo controller.
 
         Args:
             board: YahboomBoard instance. If None, creates a new one.
+            drive_board: Optional GpioPwmBoard for ch1 (throttle) and ch2
+                (steering).  When provided, drive channels use hardware
+                GPIO PWM while camera channels still go through *board*.
         """
         self.board = board or YahboomBoard()
+        self.drive_board = drive_board
 
         # Servo limits - initialised to a safe minimal range.
         # Actual values are set by physicar_driver_node._apply_calibration().
@@ -130,6 +136,9 @@ class ServoController:
         Apply angle to servo with inversion, limits, and trim.
         
         Order: inversion -> clamp to limits -> apply trim
+        
+        Drive channels (1, 2) are routed to drive_board (GpioPwmBoard)
+        when available; camera channels (3, 4) always go to board (YahboomBoard).
         """
         if self.inverted.get(channel, False):
             angle = 180 - angle
@@ -141,6 +150,10 @@ class ServoController:
 
         # Apply trim after clamp (shifts entire range, preserving limit span)
         angle += self.trim.get(channel, 0)
+
+        # Route drive channels to GPIO PWM board when available
+        if self.drive_board and channel in (self.CHANNEL_THROTTLE, self.CHANNEL_STEERING):
+            return self.drive_board.set_servo(channel, angle)
 
         return self.board.set_servo(channel, angle)
 
