@@ -39,6 +39,23 @@ for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
   echo performance | sudo tee "$cpu" > /dev/null 2>/dev/null || true
 done
 
+# PWM export + permissions (RP1 PWM0: steering ch0 + ESC ch1)
+if [ -d /sys/class/pwm/pwmchip0 ]; then
+  [ ! -d /sys/class/pwm/pwmchip0/pwm0 ] && echo 0 | sudo tee /sys/class/pwm/pwmchip0/export > /dev/null
+  [ ! -d /sys/class/pwm/pwmchip0/pwm1 ] && echo 1 | sudo tee /sys/class/pwm/pwmchip0/export > /dev/null
+  sleep 0.1
+  sudo chgrp gpio /sys/class/pwm/pwmchip0/export /sys/class/pwm/pwmchip0/unexport \
+    /sys/class/pwm/pwmchip0/pwm0/duty_cycle /sys/class/pwm/pwmchip0/pwm0/period \
+    /sys/class/pwm/pwmchip0/pwm0/enable /sys/class/pwm/pwmchip0/pwm0/polarity \
+    /sys/class/pwm/pwmchip0/pwm1/duty_cycle /sys/class/pwm/pwmchip0/pwm1/period \
+    /sys/class/pwm/pwmchip0/pwm1/enable /sys/class/pwm/pwmchip0/pwm1/polarity 2>/dev/null
+  sudo chmod g+w /sys/class/pwm/pwmchip0/export /sys/class/pwm/pwmchip0/unexport \
+    /sys/class/pwm/pwmchip0/pwm0/duty_cycle /sys/class/pwm/pwmchip0/pwm0/period \
+    /sys/class/pwm/pwmchip0/pwm0/enable /sys/class/pwm/pwmchip0/pwm0/polarity \
+    /sys/class/pwm/pwmchip0/pwm1/duty_cycle /sys/class/pwm/pwmchip0/pwm1/period \
+    /sys/class/pwm/pwmchip0/pwm1/enable /sys/class/pwm/pwmchip0/pwm1/polarity 2>/dev/null
+fi
+
 # ────────────────── Environment Variables ──────────────────
 
 sudo mkdir -p "$PHYSICAR_DIR" "$PHYSICAR_WS/src"
