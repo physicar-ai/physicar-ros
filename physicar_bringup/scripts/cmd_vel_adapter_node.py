@@ -22,7 +22,7 @@ Ackermann kinematics (same as physicar_driver_node.py):
 
 Physical parameters (from URDF/driver):
   wheelbase = 0.18 m
-  max_steering = 26° (0.4538 rad)
+  max_steering = 20° (0.3491 rad)
   max_speed = 3.0 m/s
 
 Subscribes:
@@ -63,7 +63,7 @@ class CmdVelAdapterNode(Node):
 
         # Physical parameters (same defaults as physicar_driver_node)
         self.declare_parameter('wheelbase', 0.18)
-        self.declare_parameter('max_steering', 26.0)  # degrees
+        self.declare_parameter('max_steering', 20.0)  # degrees
         self.declare_parameter('max_speed', 3.0)      # m/s
         self.declare_parameter('min_speed', 0.3)       # m/s (ESC dead zone)
 
@@ -151,7 +151,7 @@ class CmdVelAdapterNode(Node):
         """Publish default calibration status (SIM has no real calibration)."""
         msg = CalibrationStatus()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.max_steering = 26.0
+        msg.max_steering = 20.0
         msg.max_speed = self.max_speed
         msg.max_pan = 45.0
         msg.max_tilt = 45.0

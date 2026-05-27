@@ -36,7 +36,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu, MagneticField, BatteryState, JointState, LaserScan
+from sensor_msgs.msg import Imu, MagneticField, BatteryState, JointState
 from std_msgs.msg import Float64, Float64MultiArray
 
 # Custom interfaces
@@ -72,12 +72,6 @@ from physicar_bringup.servo_controller import ServoController
 @dataclass
 class CalibrationData:
     """Calibration data structure for all servos."""
-    # Max values
-    max_steering: float = 26.0    # ± degrees (wheel angle)
-    max_speed: float = 3.0        # ± m/s
-    max_pan: float = 45.0         # ± degrees
-    max_tilt: float = 45.0        # ± degrees
-    
     # Center offsets (degrees from 90°)
     steering_center: float = 0.0
     pan_center: float = 0.0
@@ -89,9 +83,6 @@ class CalibrationData:
     # ESC per-car calibration gain (scales duty offset; default 1.0)
     esc_gain: float = 1.0
     
-    # Emergency stop enable (None = use YAML param)
-    emergency_enabled: Optional[bool] = None
-    
     # Metadata
     source: str = 'defaults'  # 'json_file', 'yaml_params', 'defaults'
     is_saved: bool = False
@@ -99,19 +90,12 @@ class CalibrationData:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         d = {
-            'max_steering': self.max_steering,
-            'max_speed': self.max_speed,
-            'max_pan': self.max_pan,
-            'max_tilt': self.max_tilt,
             'steering_center': self.steering_center,
             'pan_center': self.pan_center,
             'tilt_center': self.tilt_center,
             'reverse_direction': self.reverse_direction,
             'esc_gain': self.esc_gain,
         }
-        # Only include emergency_enabled if explicitly set
-        if self.emergency_enabled is not None:
-            d['emergency_enabled'] = self.emergency_enabled
         return d
     
     def to_json(self) -> str:
@@ -140,21 +124,12 @@ class CalibrationData:
             v = data.get(key, default)
             return bool(v) if isinstance(v, (bool, int)) else default
 
-        em = data.get('emergency_enabled')
-        if em is not None and not isinstance(em, (bool, int)):
-            em = None
-
         return cls(
-            max_steering=_f('max_steering', 26.0, 0.1, 90.0),
-            max_speed=_f('max_speed', 3.0, 0.1, 10.0),
-            max_pan=_f('max_pan', 45.0, 0.1, 90.0),
-            max_tilt=_f('max_tilt', 45.0, 0.1, 90.0),
             steering_center=_f('steering_center', 0.0, -30.0, 30.0),
             pan_center=_f('pan_center', 0.0, -30.0, 30.0),
             tilt_center=_f('tilt_center', 0.0, -30.0, 30.0),
             reverse_direction=_b('reverse_direction', False),
             esc_gain=_f('esc_gain', 1.0, 0.1, 5.0),
-            emergency_enabled=(bool(em) if em is not None else None),
             source=source,
             is_saved=(source == 'json_file'),
         )
@@ -173,10 +148,12 @@ class PhysicarDriverNode(Node):
     FEEDBACK_P_GAIN = 1.5       # proportional gain
     FEEDBACK_MAX_ADJUST = 0.5   # max adjustment ±0.5 m/s
     SPEED_DEADZONE = 0.01       # below this = stopped (m/s)
-    
-    # Emergency Stop constants
-    EMERGENCY_SCAN_TIMEOUT = 0.05     # scan timeout (s)
-    EMERGENCY_ODOM_TIMEOUT = 0.1      # odom timeout (s)
+
+    # Hardware limits (not calibration — these are physical maximums)
+    MAX_STEERING = 20.0         # ± degrees (wheel angle)
+    MAX_SPEED = 3.0             # ± m/s
+    MAX_PAN = 45.0              # ± degrees
+    MAX_TILT = 45.0             # ± degrees
 
     def __init__(self):
         super().__init__('physicar_driver')
@@ -194,27 +171,11 @@ class PhysicarDriverNode(Node):
         self.declare_parameter('pan_center', 0.0)
         self.declare_parameter('tilt_center', 0.0)
 
-        # Max limits
-        self.declare_parameter('max_steering', 26.0)  # degrees (wheel angle)
-        self.declare_parameter('max_speed', 3.0)      # m/s
-        self.declare_parameter('max_pan', 45.0)       # degrees
-        self.declare_parameter('max_tilt', 45.0)      # degrees
-
         # ESC direction
         self.declare_parameter('reverse_direction', False)  # true: above 90° = forward
+        self.declare_parameter('esc_gain', 1.0)  # per-car ESC calibration gain
 
         # Robot physical parameters (from URDF/measurements)
-        self.declare_parameter('wheel_radius', 0.0375)  # meters (37.5mm, 7.5cm diameter)
-        self.declare_parameter('wheelbase', 0.18)       # meters (front-rear axle distance, measured)
-        self.declare_parameter('track_width', 0.16)     # meters (left-right wheel distance, measured)
-        self.declare_parameter('steering_ratio', 2.0)  # k = Rs/Rk (servo horn / knuckle arm ratio)
-        self.declare_parameter('calibration_file', self.DEFAULT_CALIBRATION_FILE)
-        
-        # Emergency Stop parameters
-        self.declare_parameter('emergency_enabled', True)        # Enable Emergency Stop
-        self.declare_parameter('emergency_angle_range', 30.0)    # total detection angle range (°)
-        self.declare_parameter('emergency_front_margin', 0.25)   # front collision margin (m)
-        self.declare_parameter('emergency_rear_margin', 0.15)    # rear collision margin (m)
 
         # Get parameters
         serial_port = self.get_parameter('serial_port').value
@@ -226,14 +187,7 @@ class PhysicarDriverNode(Node):
         self.wheel_radius = self.get_parameter('wheel_radius').value
         self.wheelbase = self.get_parameter('wheelbase').value
         self.track_width = self.get_parameter('track_width').value
-        self.steering_ratio = self.get_parameter('steering_ratio').value  # k for sine model
         self.CALIBRATION_FILE = self.get_parameter('calibration_file').value
-        
-        # Emergency Stop parameters
-        self.emergency_enabled = self.get_parameter('emergency_enabled').value
-        self.emergency_angle_range = self.get_parameter('emergency_angle_range').value / 2.0  # total → half-angle
-        self.emergency_front_margin = self.get_parameter('emergency_front_margin').value
-        self.emergency_rear_margin = self.get_parameter('emergency_rear_margin').value
 
         # DEV mode (from environment variable, e.g. userdata/.env)
         self._dev_mode = os.environ.get('DEV', '').lower() == 'true'
@@ -246,7 +200,6 @@ class PhysicarDriverNode(Node):
         )
         self.gpio_board = GpioPwmBoard(logger=self.get_logger())
         self.servo = ServoController(self.board, drive_board=self.gpio_board)
-        self.servo.steering_ratio = self.steering_ratio
 
         # Calibration state management
         self.calibration = CalibrationData()  # Current calibration
@@ -274,18 +227,6 @@ class PhysicarDriverNode(Node):
         if self._dev_mode:
             self._speed_log_file = self._open_speed_log()
             self.get_logger().info('DEV mode: speed mapping logger enabled')
-
-        # Emergency state
-        self._front_min_dist = float('inf')
-        self._rear_min_dist = float('inf')
-        self._scan_time = 0.0
-        self._emergency_active = False
-        
-        # Brake state
-        self._braking = False  # whether currently braking
-        self._brake_direction = 0  # brake direction (1=brake-while-reversing, -1=brake-while-forward)
-        self._brake_timer = None  # brake timer
-        self._brake_speed_threshold = 0.1  # below this speed, braking is complete (m/s)
 
         # Connect to board
         if not self.board.connect():
@@ -359,10 +300,6 @@ class PhysicarDriverNode(Node):
         # Subscribe to rf2o odometry (for feedback control)
         # EKF publishes RELIABLE, so must match (BEST_EFFORT cannot receive RELIABLE)
         self.create_subscription(Odometry, '/odom', self.odom_callback, qos)
-        
-        # Subscribe to LiDAR (for Emergency Stop)
-        # rplidar publishes RELIABLE, so must match
-        self.create_subscription(LaserScan, '/scan', self.scan_callback, qos)
 
         # Services - use custom interfaces if available, otherwise fallback
         if HAS_CUSTOM_INTERFACES:
@@ -392,129 +329,6 @@ class PhysicarDriverNode(Node):
 
         self.get_logger().info('PhysiCar Driver Node started')
 
-    def scan_callback(self, msg: LaserScan):
-        """From the LiDAR scan, compute front/rear minimum distance and check Emergency."""
-        self._scan_time = time.time()
-        
-        # Current wheel angle (degrees) — current_steering is in radians
-        wheel_angle_deg = math.degrees(self.current_steering)
-        
-        # Front centre angle = wheel angle; rear centre angle = wheel angle + 180°
-        front_center = wheel_angle_deg
-        rear_center = wheel_angle_deg + 180.0
-        
-        # angle → index converter
-        def angle_to_idx(angle_deg):
-            angle_rad = math.radians(angle_deg)
-            return int((angle_rad - msg.angle_min) / msg.angle_increment)
-        
-        # Compute minimum distance within range (with intensity-based filtering)
-        def get_min_dist(center_deg, half_range):
-            start_idx = angle_to_idx(center_deg - half_range)
-            end_idx = angle_to_idx(center_deg + half_range)
-            n = len(msg.ranges)
-            has_intensities = len(msg.intensities) == n
-            
-            min_dist = float('inf')
-            for i in range(start_idx, end_idx + 1):
-                idx = i % n
-                if 0 <= idx < n:
-                    r = msg.ranges[idx]
-                    # intensity below 10 = low confidence → ignore
-                    if has_intensities and msg.intensities[idx] < 10:
-                        continue
-                    if math.isfinite(r) and r > 0 and r < min_dist:
-                        min_dist = r
-            return min_dist
-        
-        self._front_min_dist = get_min_dist(front_center, self.emergency_angle_range)
-        self._rear_min_dist = get_min_dist(rear_center, self.emergency_angle_range)
-        
-        # Emergency check and automatic recovery
-        was_emergency = self._emergency_active
-        is_emergency = self._check_emergency(self._target_speed)
-        
-        if is_emergency and not was_emergency:
-            # Emergency triggered → active brake (reverse speed if odom present, else 90°)
-            if abs(self._actual_speed) > self._brake_speed_threshold:
-                self._start_active_brake(self._actual_speed)
-                self.get_logger().warn(f'EMERGENCY BRAKE: speed={self._actual_speed:.2f} m/s')
-            else:
-                self.servo.set_throttle_speed(0.0)
-                self.get_logger().warn(f'Emergency active, ESC stopped (no odom or already stopped)')
-        elif was_emergency and not is_emergency:
-            # Emergency cleared → restore ESC (unless braking, in which case brake handles it)
-            if self._braking:
-                self.get_logger().info(f'Emergency cleared, but braking in progress - brake will handle ESC')
-            else:
-                adjusted_speed = self._get_adjusted_speed()
-                self.servo.set_throttle_speed(adjusted_speed, self.current_voltage)
-                self.get_logger().info(f'Emergency cleared, resuming speed={self._target_speed:.2f} m/s')
-    
-    def _check_emergency(self, target_speed: float) -> bool:
-        """Check whether Emergency Stop conditions are met.
-        
-        Returns:
-            True if a stop is required
-        """
-        # Check whether Emergency is disabled
-        if not self.emergency_enabled:
-            self._emergency_active = False
-            return False
-        
-        # Check scan timeout
-        if time.time() - self._scan_time > self.EMERGENCY_SCAN_TIMEOUT:
-            self._emergency_active = False
-            return False
-        
-        # Check odom timeout — if data is stale, fall back to target_speed only
-        odom_valid = (time.time() - self._actual_speed_time) < self.EMERGENCY_ODOM_TIMEOUT
-        actual_speed = self._actual_speed if odom_valid else 0.0
-        
-        # If actual_speed opposes target_speed, treat actual_speed as 0
-        if odom_valid and (target_speed * actual_speed < 0):
-            actual_speed = 0.0
-        
-        # Use average of target_speed and actual_speed (conservative)
-        avg_speed = (target_speed + actual_speed) / 2.0 if odom_valid else target_speed
-        
-        if abs(avg_speed) < 0.05:  # essentially stopped
-            self._emergency_active = False
-            return False
-        
-        if avg_speed > 0:
-            # Going forward: predict front-collision distance
-            brake_time = 0.15 + avg_speed / 5.0  # braking time (0.15s base + speed-proportional)
-            front_collision_dist = self._front_min_dist - self.emergency_front_margin
-            predicted_dist = front_collision_dist - (avg_speed * brake_time)
-            if predicted_dist < 0:
-                if not self._emergency_active:
-                    self.get_logger().warn(
-                        f'EMERGENCY STOP: front={self._front_min_dist:.2f}m, '
-                        f'avg_speed={avg_speed:.2f}m/s (target={target_speed:.2f}, actual={actual_speed:.2f}), '
-                        f'predicted={predicted_dist:.2f}m'
-                    )
-                self._emergency_active = True
-                return True
-        else:
-            # Going reverse: predict rear-collision distance
-            speed = abs(avg_speed)
-            brake_time = 0.15 + speed / 5.0  # braking time (0.15s base + speed-proportional)
-            rear_collision_dist = self._rear_min_dist - self.emergency_rear_margin
-            predicted_dist = rear_collision_dist - (speed * brake_time)
-            if predicted_dist < 0:
-                if not self._emergency_active:
-                    self.get_logger().warn(
-                        f'EMERGENCY STOP: rear={self._rear_min_dist:.2f}m, '
-                        f'avg_speed={speed:.2f}m/s (target={abs(target_speed):.2f}, actual={abs(actual_speed):.2f}), '
-                        f'predicted={predicted_dist:.2f}m'
-                    )
-                self._emergency_active = True
-                return True
-        
-        self._emergency_active = False
-        return False
-
     def odom_callback(self, msg: Odometry):
         """Predictive speed feedback: adjust ESC degree based on predicted speed error."""
         now = time.time()
@@ -533,7 +347,7 @@ class PhysicarDriverNode(Node):
         self._actual_speed_time = now
 
         # Only adjust when actively driving
-        if abs(self._target_speed) < self.SPEED_DEADZONE or self._braking or self._emergency_active:
+        if abs(self._target_speed) < self.SPEED_DEADZONE:
             return
 
         # predicted = actual + acceleration * lookahead
@@ -731,24 +545,14 @@ class PhysicarDriverNode(Node):
     def _set_speed(self, speed_mps: float):
         """Set target speed in m/s. Core low-level speed control.
         
-        All speed-related logic:
-        - Speed limit (max_speed)
-        - Save target_speed
-        - Cancel braking
-        - Emergency check
-        - Compute ESC angle and send
-        - Active brake
-        
         Args:
             speed_mps: target speed (m/s, positive=forward, negative=reverse)
         """
         try:
             # Apply speed limit
-            max_speed = self.calibration.max_speed
+            max_speed = self.MAX_SPEED
             speed_mps = max(-max_speed, min(max_speed, speed_mps))
             
-            # Save target_speed (for restore when Emergency clears)
-            prev_target = self._target_speed
             self._target_speed = speed_mps
 
             # Track target changes for speed logger (DEV mode)
@@ -759,14 +563,6 @@ class PhysicarDriverNode(Node):
             
             # Update joint state
             self.current_throttle = speed_mps
-            
-            # Movement command cancels braking (only when not in Emergency)
-            if abs(speed_mps) > self.SPEED_DEADZONE and self._braking and not self._emergency_active:
-                self._stop_brake()
-            
-            # When in Emergency, ignore ESC commands (scan_callback handles brake)
-            if self._emergency_active:
-                return
             
             # ESC command
             if abs(speed_mps) < self.SPEED_DEADZONE:
@@ -792,13 +588,13 @@ class PhysicarDriverNode(Node):
             steering_deg = math.degrees(steering_rad)
             
             # Angle limit (degrees)
-            max_steering = self.calibration.max_steering
+            max_steering = self.MAX_STEERING
             steering_deg = max(-max_steering, min(max_steering, steering_deg))
             
             # Update joint state (radians)
             self.current_steering = math.radians(steering_deg)
             
-            # Delegate to servo_controller (sine model + limits + trim)
+            # Apply steering
             self.servo.set_steering_wheel_angle(steering_deg)
             self.get_logger().debug(
                 f'Steering: {steering_rad:.3f} rad ({steering_deg:.1f}°)'
@@ -841,7 +637,7 @@ class PhysicarDriverNode(Node):
                 # Stopped or in-place rotation
                 if abs(angular_z) > 0.01:
                     # Attempt in-place rotation → max steering
-                    steering_deg = math.copysign(self.calibration.max_steering, angular_z)
+                    steering_deg = math.copysign(self.MAX_STEERING, angular_z)
                 else:
                     steering_deg = 0.0
             
@@ -855,78 +651,6 @@ class PhysicarDriverNode(Node):
             
         except Exception as e:
             self.get_logger().error(f'cmd_vel_callback error: {e}')
-
-    def _start_active_brake(self, actual_speed: float):
-        """Begin active braking: brake in the opposite direction of current speed.
-        
-        Args:
-            actual_speed: current actual speed (m/s, positive=forward, negative=reverse)
-        """
-        if self._braking:
-            return  # already braking
-        
-        self._braking = True
-        # Keep _target_speed (used for Emergency recovery; cmd_vel=0 already set)
-        
-        # Brake opposite to current direction of motion
-        # actual_speed > 0 (going forward) → need reverse brake
-        # actual_speed < 0 (going reverse) → need forward brake
-        if actual_speed > 0:
-            self._brake_direction = -1  # reverse braking
-        else:
-            self._brake_direction = 1   # forward braking
-        
-        self.get_logger().info(f'Active brake started: speed={actual_speed:.2f} m/s, direction={self._brake_direction}')
-        
-        # Start brake timer (check speed and brake every 50ms)
-        self._brake_timer = self.create_timer(0.05, self._brake_tick)
-    
-    def _brake_tick(self):
-        """Brake-timer callback: check speed and apply reverse-direction brake."""
-        # Continue braking even during Emergency (Emergency may have started the brake)
-        
-        actual_speed = self._actual_speed
-        abs_speed = abs(actual_speed)
-        
-        # Brake complete when speed drops below threshold
-        if abs_speed <= self._brake_speed_threshold:
-            self._stop_brake()
-            return
-        
-        # Check whether direction has flipped (over-braking caused reverse motion)
-        # _brake_direction > 0: was originally reversing → now actual > 0 means flipped
-        # _brake_direction < 0: was originally going forward → now actual < 0 means flipped
-        if actual_speed * self._brake_direction > 0:
-            self.get_logger().info(f'Brake direction reversed: speed={actual_speed:.2f} m/s, stopping')
-            self._stop_brake()
-            return
-        
-        # Apply reverse-direction brake
-        # Smooth braking: brake force proportional to speed
-        # Faster → stronger reverse, slower → weaker reverse
-        brake_degree = min(int(abs_speed * 10) + 3, 8)  # 3~8 degree range
-        
-        if self._brake_direction > 0:
-            # Forward brake (was going reverse) → apply forward power
-            esc_angle = self.SERVO_CENTER - brake_degree
-        else:
-            # Reverse brake (was going forward) → apply reverse power
-            esc_angle = self.SERVO_CENTER + brake_degree
-        
-        self.servo._apply_angle(ServoController.CHANNEL_THROTTLE, esc_angle)
-        self.get_logger().debug(f'Brake tick: speed={actual_speed:.2f}, esc={esc_angle:.1f}°')
-    
-    def _stop_brake(self):
-        """Brake complete: clean up the timer and stop the ESC."""
-        if self._brake_timer:
-            self._brake_timer.cancel()
-            self._brake_timer = None
-        
-        self._braking = False
-        self._brake_direction = 0
-        # Keep _target_speed (used to restore when Emergency clears)
-        self._current_speed_adjust = 0.0
-        self.servo.set_throttle_speed(0.0)
 
     def _load_and_apply_calibration(self) -> None:
         """Load calibration and apply to servo controller.
@@ -942,11 +666,6 @@ class PhysicarDriverNode(Node):
                     raise ValueError('calibration file is not a JSON object')
                 self.calibration = CalibrationData.from_dict(data, source='json_file')
                 self.get_logger().info(f'Loaded calibration from {self.CALIBRATION_FILE}')
-                
-                # Apply emergency_enabled from JSON if set
-                if self.calibration.emergency_enabled is not None:
-                    self.emergency_enabled = self.calibration.emergency_enabled
-                    self.get_logger().info(f'Emergency enabled from calibration: {self.emergency_enabled}')
             except Exception as e:
                 # Bad file is left alone — user can fix it, or the next valid
                 # save from the calibration UI overwrites it.
@@ -963,14 +682,11 @@ class PhysicarDriverNode(Node):
     def _calibration_from_params(self) -> CalibrationData:
         """Create CalibrationData from ROS parameters."""
         return CalibrationData(
-            max_steering=self.get_parameter('max_steering').value,
-            max_speed=self.get_parameter('max_speed').value,
-            max_pan=self.get_parameter('max_pan').value,
-            max_tilt=self.get_parameter('max_tilt').value,
             steering_center=self.get_parameter('steering_center').value,
             pan_center=self.get_parameter('pan_center').value,
             tilt_center=self.get_parameter('tilt_center').value,
             reverse_direction=self.get_parameter('reverse_direction').value,
+            esc_gain=self.get_parameter('esc_gain').value,
             source='yaml_params',
             is_saved=False,
         )
@@ -986,7 +702,7 @@ class PhysicarDriverNode(Node):
         
         # Steering — limits in servo-angle space (after sine model conversion)
         max_servo_offset = math.degrees(math.asin(
-            math.sin(math.radians(cal.max_steering)) / self.servo.steering_ratio))
+            math.sin(math.radians(self.MAX_STEERING)) / self.servo.steering_ratio))
         self.servo.set_limits(ServoController.CHANNEL_STEERING,
                              self.SERVO_CENTER - max_servo_offset,
                              self.SERVO_CENTER + max_servo_offset,
@@ -1002,15 +718,15 @@ class PhysicarDriverNode(Node):
         
         # Pan (limits are real angles; 2x scaling is applied in servo_controller)
         self.servo.set_limits(ServoController.CHANNEL_PAN,
-                             self.SERVO_CENTER - cal.max_pan,
-                             self.SERVO_CENTER + cal.max_pan,
+                             self.SERVO_CENTER - self.MAX_PAN,
+                             self.SERVO_CENTER + self.MAX_PAN,
                              self.SERVO_CENTER)
         self.servo.set_trim(ServoController.CHANNEL_PAN, cal.pan_center)
         
         # Tilt (positive centre = up; lower servo angle = up, so apply negative trim)
         self.servo.set_limits(ServoController.CHANNEL_TILT,
-                             self.SERVO_CENTER - cal.max_tilt,
-                             self.SERVO_CENTER + cal.max_tilt,
+                             self.SERVO_CENTER - self.MAX_TILT,
+                             self.SERVO_CENTER + self.MAX_TILT,
                              self.SERVO_CENTER)
         self.servo.set_trim(ServoController.CHANNEL_TILT, -cal.tilt_center)
         
@@ -1028,10 +744,10 @@ class PhysicarDriverNode(Node):
         
         # Log
         self.get_logger().info(f'Calibration applied (source: {cal.source}):')
-        self.get_logger().info(f'  Steering: max=±{cal.max_steering}°, center={cal.steering_center}°')
-        self.get_logger().info(f'  Max Speed: ±{cal.max_speed} m/s')
-        self.get_logger().info(f'  Pan: max=±{cal.max_pan}°, center={cal.pan_center}°')
-        self.get_logger().info(f'  Tilt: max=±{cal.max_tilt}°, center={cal.tilt_center}°')
+        self.get_logger().info(f'  Steering: max=±{self.MAX_STEERING}°, center={cal.steering_center}°')
+        self.get_logger().info(f'  Max Speed: ±{self.MAX_SPEED} m/s')
+        self.get_logger().info(f'  Pan: max=±{self.MAX_PAN}°, center={cal.pan_center}°')
+        self.get_logger().info(f'  Tilt: max=±{self.MAX_TILT}°, center={cal.tilt_center}°')
         self.get_logger().info(f'  ESC reverse_direction: {cal.reverse_direction}')
         self.get_logger().info(f'  ESC gain: {cal.esc_gain}')
         
@@ -1071,10 +787,10 @@ class PhysicarDriverNode(Node):
         
         msg = CalibrationStatus()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.max_steering = self.calibration.max_steering
-        msg.max_speed = self.calibration.max_speed
-        msg.max_pan = self.calibration.max_pan
-        msg.max_tilt = self.calibration.max_tilt
+        msg.max_steering = self.MAX_STEERING
+        msg.max_speed = self.MAX_SPEED
+        msg.max_pan = self.MAX_PAN
+        msg.max_tilt = self.MAX_TILT
         msg.steering_center = self.calibration.steering_center
         msg.pan_center = self.calibration.pan_center
         msg.tilt_center = self.calibration.tilt_center
@@ -1089,23 +805,18 @@ class PhysicarDriverNode(Node):
     def set_calibration_callback(self, request, response):
         """Set calibration values, apply, and optionally save.
         
-        channel: 'steering', 'speed', 'pan', 'tilt', 'reverse', or 'all' (reload from file)
+        channel: 'steering', 'pan', 'tilt', 'reverse', or 'all' (reload from file)
         
         Range limits:
-            max_pan: 0 ~ 45°
-            max_tilt: 0 ~ 30°
-            max_steering: 0 ~ 26°
-            max_speed: 0 ~ 3.0 m/s
             pan_center, tilt_center, steering_center: -15 ~ 15°
+        
+        Note: max_steering, max_speed, max_pan, max_tilt are hardware constants
+        and cannot be changed via calibration.
         """
         channel = request.channel.lower()
         
-        # Range-limit constants (max must be ≥1.0 to avoid divide-by-zero)
+        # Range-limit constants
         LIMITS = {
-            'max_pan': (1.0, 60.0),
-            'max_tilt': (1.0, 45.0),
-            'max_steering': (1.0, 26.0),
-            'max_speed': (0.1, 3.0),
             'pan_center': (-15.0, 15.0),
             'tilt_center': (-15.0, 15.0),
             'steering_center': (-15.0, 15.0),
@@ -1132,64 +843,28 @@ class PhysicarDriverNode(Node):
             self._apply_calibration_to_servos()
             response.success = True
             response.message = f'reverse_direction set to {request.bool_value}'
-        elif channel == 'emergency':
-            # Set emergency_enabled
-            self.calibration.emergency_enabled = request.bool_value
-            self.emergency_enabled = request.bool_value  # Also update runtime value
-            # When disabled, also clear any active emergency state
-            if not request.bool_value:
-                self._emergency_active = False
-            self.calibration.is_saved = False
-            response.success = True
-            response.message = f'emergency_enabled set to {request.bool_value}'
-            self.get_logger().info(f'Emergency stop {"enabled" if request.bool_value else "disabled"}')
         elif channel == 'speed':
-            # Speed only has max (no center)
-            valid, err = validate_range('max_speed', request.max_value)
-            if not valid:
-                response.success = False
-                response.message = err
-                response.current_calibration_json = self.calibration.to_json()
-                return response
-            self.calibration.max_speed = request.max_value
-            self.calibration.is_saved = False
-            self._apply_calibration_to_servos()
-            response.success = True
-            response.message = f'max_speed set to ±{request.max_value} m/s'
+            # Speed max is a hardware constant — reject
+            response.success = False
+            response.message = f'max_speed is a hardware constant ({self.MAX_SPEED} m/s), not adjustable'
         elif channel in ['steering', 'pan', 'tilt']:
-            # Set both max and center
-            valid_max, err_max = validate_range(f'max_{channel}', request.max_value)
+            # Set center only (max is hardware constant)
             valid_center, err_center = validate_range(f'{channel}_center', request.center_value)
-            if not valid_max:
-                response.success = False
-                response.message = err_max
-                response.current_calibration_json = self.calibration.to_json()
-                return response
             if not valid_center:
                 response.success = False
                 response.message = err_center
                 response.current_calibration_json = self.calibration.to_json()
                 return response
-            setattr(self.calibration, f'max_{channel}', request.max_value)
             setattr(self.calibration, f'{channel}_center', request.center_value)
             self.calibration.is_saved = False
             self._apply_calibration_to_servos(move_to_center=channel)
             response.success = True
-            response.message = f'{channel}: max=±{request.max_value}°, center={request.center_value}° (moved to center)'
+            response.message = f'{channel}: center={request.center_value}° (moved to center)'
         elif channel.endswith('_max') and channel[:-4] in ['steering', 'pan', 'tilt']:
-            # Set max only
+            # Max values are hardware constants — reject
             base = channel[:-4]
-            valid, err = validate_range(f'max_{base}', request.max_value)
-            if not valid:
-                response.success = False
-                response.message = err
-                response.current_calibration_json = self.calibration.to_json()
-                return response
-            setattr(self.calibration, f'max_{base}', request.max_value)
-            self.calibration.is_saved = False
-            self._apply_calibration_to_servos(move_to_center=base)
-            response.success = True
-            response.message = f'{base}: max=±{request.max_value}° (moved to center)'
+            response.success = False
+            response.message = f'max_{base} is a hardware constant, not adjustable'
         elif channel.endswith('_center') and channel[:-7] in ['steering', 'pan', 'tilt']:
             # Set center only
             base = channel[:-7]
@@ -1206,7 +881,7 @@ class PhysicarDriverNode(Node):
             response.message = f'{base}: center={request.center_value}° (moved to center)'
         else:
             response.success = False
-            response.message = f'Invalid channel: {channel}. Use steering, pan, tilt, steering_max, steering_center, pan_max, pan_center, tilt_max, tilt_center, speed, reverse, emergency, or all'
+            response.message = f'Invalid channel: {channel}. Use steering, pan, tilt, steering_center, pan_center, tilt_center, reverse, or all'
             response.current_calibration_json = self.calibration.to_json()
             return response
         
@@ -1224,15 +899,14 @@ class PhysicarDriverNode(Node):
         """Get current calibration values."""
         response.success = True
         response.message = f'Current calibration from {self.calibration.source}'
-        response.max_steering = self.calibration.max_steering
-        response.max_speed = self.calibration.max_speed
-        response.max_pan = self.calibration.max_pan
-        response.max_tilt = self.calibration.max_tilt
+        response.max_steering = self.MAX_STEERING
+        response.max_speed = self.MAX_SPEED
+        response.max_pan = self.MAX_PAN
+        response.max_tilt = self.MAX_TILT
         response.steering_center = self.calibration.steering_center
         response.pan_center = self.calibration.pan_center
         response.tilt_center = self.calibration.tilt_center
         response.reverse_direction = self.calibration.reverse_direction
-        response.emergency_enabled = self.emergency_enabled  # Use runtime value
         response.source = self.calibration.source
         response.calibration_json = self.calibration.to_json()
         return response
@@ -1289,7 +963,7 @@ class PhysicarDriverNode(Node):
         degrees_in = math.degrees(radians_in)
         
         # Clamp to limits (degrees)
-        max_deg = self.calibration.max_pan
+        max_deg = self.MAX_PAN
         degrees_in = max(-max_deg, min(max_deg, degrees_in))
         
         # Convert to normalized (-1 to 1)
@@ -1324,7 +998,7 @@ class PhysicarDriverNode(Node):
         degrees_in = math.degrees(radians_in)
         
         # Clamp to limits (degrees)
-        max_deg = self.calibration.max_tilt
+        max_deg = self.MAX_TILT
         degrees_in = max(-max_deg, min(max_deg, degrees_in))
         
         # Convert to normalized (-1 to 1)
@@ -1507,7 +1181,8 @@ class PhysicarDriverNode(Node):
         """Cleanup on shutdown."""
         self.get_logger().info('Shutting down PhysiCar Driver...')
         if self.gpio_board.is_connected():
-            self.servo.emergency_stop()
+            self.servo.set_throttle_speed(0.0)
+            self.servo.center_all()
             self.gpio_board.disconnect()
         if self.board.is_connected():
             self.board.disconnect()

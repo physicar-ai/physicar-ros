@@ -134,7 +134,7 @@ _SIM_BLOCKED_PREFIXES = (
     "/network/wifi/saved",  # DELETE on saved connections
     "/network/bluetooth/",  # All bluetooth mutating endpoints
     "/auth/password",       # POST: change device password (reboots host)
-    "/kiosk/calibration",   # POST endpoints (center/reverse/emergency)
+    "/kiosk/calibration",   # POST endpoints (center/reverse)
 )
 
 

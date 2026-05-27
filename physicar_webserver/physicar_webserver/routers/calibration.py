@@ -61,7 +61,6 @@ async def get_calibration():
     - pan_center: Camera pan servo center offset
     - tilt_center: Camera tilt servo center offset
     - reverse_direction: ESC reverse direction enabled
-    - emergency_enabled: Emergency stop enabled
     - max_steering: Maximum steering angle
     - max_speed: Maximum speed
     - max_pan: Maximum pan angle
@@ -169,29 +168,6 @@ async def set_reverse_direction(request: CalibrationBoolRequest):
     try:
         return await bridge.set_calibration(
             channel="reverse",
-            bool_value=request.enabled,
-            save=request.save
-        )
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-
-@router.post("/emergency")
-async def set_emergency_enabled(request: CalibrationBoolRequest):
-    """
-    Enable/disable emergency stop feature.
-    
-    When enabled, the robot will stop if obstacles are detected
-    within the safety threshold distance.
-    """
-    reject_in_sim("calibration")
-    bridge = get_ros_bridge()
-    if not bridge.is_ready:
-        raise HTTPException(503, "ROS bridge not ready")
-    
-    try:
-        return await bridge.set_calibration(
-            channel="emergency",
             bool_value=request.enabled,
             save=request.save
         )

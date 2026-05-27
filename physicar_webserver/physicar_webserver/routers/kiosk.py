@@ -109,10 +109,6 @@ class CalibrationReverseRequest(BaseModel):
     reverse_direction: bool
 
 
-class CalibrationEmergencyRequest(BaseModel):
-    emergency_enabled: bool
-
-
 @router.get("/kiosk/calibration")
 async def get_calibration(
     request: Request,
@@ -149,7 +145,6 @@ async def get_calibration(
                 "pan_center": result.get('pan_center', 0.0),
                 "tilt_center": result.get('tilt_center', 0.0),
                 "reverse_direction": result.get('reverse_direction', False),
-                "emergency_enabled": result.get('emergency_enabled', True),
             }
         else:
             raise HTTPException(status_code=500, detail=result.get('message', 'Failed to get calibration'))
@@ -218,32 +213,6 @@ async def set_calibration_reverse(request: CalibrationReverseRequest):
         raise HTTPException(status_code=500, detail=f"ROS service error: {str(e)}")
 
 
-@router.post("/kiosk/calibration/emergency")
-async def set_calibration_emergency(request: CalibrationEmergencyRequest):
-    """
-    Set emergency stop enabled.
-    """
-    try:
-        bridge = get_ros_bridge()
-        if not bridge.is_ready:
-            raise HTTPException(status_code=503, detail="ROS bridge not ready")
-        
-        result = await bridge.set_calibration(
-            channel="emergency",
-            bool_value=request.emergency_enabled,
-            save=True
-        )
-        if result.get('success'):
-            _bump_calibration()
-            return {"success": True, "message": result.get('message', 'OK')}
-        else:
-            raise HTTPException(status_code=500, detail=result.get('message', 'Failed to set emergency'))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ROS service error: {str(e)}")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Calibration SSE Broadcaster
 # ─────────────────────────────────────────────────────────────────────────────
@@ -304,7 +273,6 @@ class _CalibrationBroadcaster:
                                 "pan_center": result.get('pan_center', 0.0),
                                 "tilt_center": result.get('tilt_center', 0.0),
                                 "reverse_direction": result.get('reverse_direction', False),
-                                "emergency_enabled": result.get('emergency_enabled', True),
                             }
                             payload = json.dumps(data, sort_keys=True)
                             if payload != self._last_payload:

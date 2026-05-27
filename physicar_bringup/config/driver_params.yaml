@@ -15,11 +15,8 @@ physicar_driver:
     battery_publish_rate: 1.0  # Hz
     battery_low_threshold: 6.6  # Volts - triggers warning
 
-    # Servo angle limits (degrees)
-    max_pan: 45.0               # ±45° (45°~135°)
-    max_tilt: 45.0              # ±45° (45°~135°)
-    max_steering: 26.0          # ±26° actual maximum wheel steering angle (servo angle derived via sine model)
-    max_speed: 3.0              # ±3.0 m/s max speed limit
+    # Hardware limits (max_steering=20°, max_speed=3.0, max_pan=45°, max_tilt=45°)
+    # are hardcoded in the driver node as constants.
 
     # Center offsets (degrees from 90°)
     pan_center: 0.0
@@ -29,11 +26,8 @@ physicar_driver:
     # ESC direction (some ESCs have reversed polarity)
     reverse_direction: false     # true: above 90° = forward, false: below 90° = forward
 
-    # Emergency Stop settings
-    emergency_enabled: true         # Enable Emergency Stop (overridable via calibration.json)
-    emergency_angle_range: 30.0     # Total detection angle range (°), ±15° relative to front
-    emergency_front_margin: 0.25    # Front collision margin (m)
-    emergency_rear_margin: 0.15     # Rear collision margin (m)
+    # ESC per-car calibration gain (scales duty offset; default 1.0)
+    esc_gain: 1.0
 
     # Robot physical parameters (from URDF measurements)
     wheel_radius: 0.0375        # meters (37.5mm wheel, 7.5cm diameter)

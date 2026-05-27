@@ -359,7 +359,7 @@ physicar_driver:
     # Servo limits (degrees)
     max_pan: 45.0
     max_tilt: 45.0
-    max_steering: 26.0                 # wheel angle, sine model derives the servo angle
+    max_steering: 20.0                 # wheel angle, sine model derives the servo angle
     max_speed: 3.0                     # m/s
 
     # Center offsets (degrees from 90°)

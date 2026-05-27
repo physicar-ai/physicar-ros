@@ -1,7 +1,7 @@
 /* ===== Control Module ===== */
 const CTRL = {
   // Config
-  MAX_STEER: 0.45,           // rad (~26°) max steering
+  MAX_STEER: 0.349,          // rad (~20°) max steering
   MAX_PAN: 0.7854,           // rad (45°) - matches real kit max_pan
   MAX_TILT: 0.7854,          // rad (45°) - matches real kit max_tilt
   SEND_HZ: 10,               // control send rate

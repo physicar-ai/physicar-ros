@@ -83,7 +83,7 @@ class ServoController:
     SERVO_CENTER = 90.0
 
     # Steering sine-model ratio (k = Rs/Rk, servo horn / knuckle arm)
-    DEFAULT_STEERING_RATIO = 2.0
+    DEFAULT_STEERING_RATIO = 0.96
 
     def __init__(self, board: Optional[YahboomBoard] = None,
                  drive_board: Optional[GpioPwmBoard] = None):
@@ -316,15 +316,3 @@ class ServoController:
         for channel, limits in self.limits.items():
             results.append(self._apply_angle(channel, limits.center_angle))
         return all(results)
-
-    def emergency_stop(self) -> bool:
-        """Emergency stop - center steering and set throttle to neutral."""
-        steering_ok = self._apply_angle(
-            self.CHANNEL_STEERING,
-            self.limits[self.CHANNEL_STEERING].center_angle
-        )
-        throttle_ok = self._apply_angle(
-            self.CHANNEL_THROTTLE,
-            self.limits[self.CHANNEL_THROTTLE].center_angle
-        )
-        return steering_ok and throttle_ok

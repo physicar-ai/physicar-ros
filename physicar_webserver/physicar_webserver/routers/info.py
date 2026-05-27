@@ -74,7 +74,7 @@ KIT_INFO = {
         "wheelbase_m": 0.18,
         "track_width_m": 0.16,
         "max_speed_ms": 3.0,
-        "max_steering_deg": 26.0,
+        "max_steering_deg": 20.0,
     },
     "endpoints": {
         "health": "/health",

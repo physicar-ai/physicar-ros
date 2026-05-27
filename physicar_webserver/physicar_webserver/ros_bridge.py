@@ -725,7 +725,6 @@ class ROSBridge:
             'pan_center': response.pan_center,
             'tilt_center': response.tilt_center,
             'reverse_direction': response.reverse_direction,
-            'emergency_enabled': response.emergency_enabled,
             'source': response.source,
         }
     
@@ -740,10 +739,10 @@ class ROSBridge:
         """Set calibration values for a specific channel.
         
         Args:
-            channel: 'steering', 'speed', 'pan', 'tilt', 'reverse', 'emergency', or 'all'
+            channel: 'steering', 'speed', 'pan', 'tilt', 'reverse', or 'all'
             max_value: max limit (degrees or m/s for speed)
             center_value: center offset (degrees)
-            bool_value: for reverse_direction or emergency_enabled
+            bool_value: for reverse_direction
             save: save to calibration.json after applying
         """
         if not HAS_CALIBRATION_SERVICES or not self._set_calibration_client:

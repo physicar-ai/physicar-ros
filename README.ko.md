@@ -359,7 +359,7 @@ physicar_driver:
     # 서보 한계 (도)
     max_pan: 45.0
     max_tilt: 45.0
-    max_steering: 26.0                 # 바퀴 각도; 서보 각도는 사인 모델로 환산
+    max_steering: 20.0                 # 바퀴 각도; 서보 각도는 사인 모델로 환산
     max_speed: 3.0                     # m/s
 
     # 중심 오프셋 (90° 기준 도)

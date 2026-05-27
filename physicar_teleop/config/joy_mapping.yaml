@@ -19,7 +19,7 @@ physicar_joy_teleop:
   ros__parameters:
     # Output limits
     max_speed: 2.0          # m/s, applied to /teleop/speed
-    max_steering: 26.0      # deg, converted to rad before publishing /teleop/steering
+    max_steering: 20.0      # deg, converted to rad before publishing /teleop/steering
     max_pan: 45.0           # deg, converted to rad before publishing /teleop/camera/pan
     max_tilt: 45.0          # deg, converted to rad before publishing /teleop/camera/tilt
 
