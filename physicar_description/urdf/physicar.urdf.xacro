@@ -119,7 +119,7 @@
     <child link="camera_pan_link"/>
     <origin xyz="0.05 0.0 0.1" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.7854" upper="0.7854" effort="10" velocity="1.0"/>
+    <limit lower="-0.5236" upper="0.5236" effort="10" velocity="1.0"/>
     <dynamics damping="0.1" friction="0.1"/>
   </joint>
 
@@ -151,7 +151,7 @@
     <child link="camera_tilt_link"/>
     <origin xyz="0.025 0.0 0.013" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-0.7854" upper="0.7854" effort="10" velocity="1.0"/>
+    <limit lower="-0.5236" upper="0.5236" effort="10" velocity="1.0"/>
     <dynamics damping="0.1" friction="0.1"/>
   </joint>
 

@@ -153,8 +153,8 @@ class CmdVelAdapterNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.max_steering = 20.0
         msg.max_speed = self.max_speed
-        msg.max_pan = 45.0
-        msg.max_tilt = 45.0
+        msg.max_pan = 30.0
+        msg.max_tilt = 30.0
         msg.steering_center = 0.0
         msg.pan_center = 0.0
         msg.tilt_center = 0.0

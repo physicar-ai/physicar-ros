@@ -464,8 +464,8 @@ async def set_config(request: SetConfigRequest):
     
     Keys:
     - 'action_selection': 'greedy' or 'stochastic'
-    - 'pan': camera pan angle in degrees (-45 to 45)
-    - 'tilt': camera tilt angle in degrees (-45 to 45)
+    - 'pan': camera pan angle in degrees (-30 to 30)
+    - 'tilt': camera tilt angle in degrees (-30 to 30)
     - 'all': reload config from file
     
     Calls ROS service: /deepracer/set_config

@@ -10,7 +10,7 @@ def tool() -> list:
 
     Resolution: 480x360. Returns a single JPEG image.
     The camera is mounted on a pan/tilt gimbal controlled via
-    the control tool (pan: ±45°, tilt: ±45°).
+    the control tool (pan: ±30°, tilt: ±30°).
 
     Examples:
         camera()

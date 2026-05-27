@@ -98,8 +98,8 @@ class JoyTeleopNode(Node):
         defaults = [
             ('max_speed', 2.0),         # m/s
             ('max_steering', 20.0),     # deg (wheel angle)
-            ('max_pan', 45.0),          # deg
-            ('max_tilt', 45.0),         # deg
+            ('max_pan', 30.0),          # deg
+            ('max_tilt', 30.0),         # deg
             ('axis_speed', 1),
             ('axis_steering', 0),
             ('axis_pan', 3),

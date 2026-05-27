@@ -506,7 +506,8 @@ async def ap_info():
             ["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", "physicar-hotspot"],
             capture_output=True, text=True, timeout=5
         )
-        ap_ssid = result.stdout.strip() or socket.gethostname()
+        # nmcli may return multiple lines (SSID history); take the first non-empty line
+        ap_ssid = next((l for l in result.stdout.splitlines() if l.strip()), '') or socket.gethostname()
     except Exception:
         ap_ssid = socket.gethostname()
 

@@ -452,9 +452,9 @@ class DeepracerNode(Node):
                 
             elif key == 'pan':
                 value = request.float_value
-                if not -45.0 <= value <= 45.0:
+                if not -30.0 <= value <= 30.0:
                     response.success = False
-                    response.message = f"pan {value} out of range [-45.0, 45.0]"
+                    response.message = f"pan {value} out of range [-30.0, 30.0]"
                     return response
                 self.config.pan = value
                 response.success = True
@@ -462,9 +462,9 @@ class DeepracerNode(Node):
                 
             elif key == 'tilt':
                 value = request.float_value
-                if not -45.0 <= value <= 45.0:
+                if not -30.0 <= value <= 30.0:
                     response.success = False
-                    response.message = f"tilt {value} out of range [-45.0, 45.0]"
+                    response.message = f"tilt {value} out of range [-30.0, 30.0]"
                     return response
                 self.config.tilt = value
                 response.success = True

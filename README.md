@@ -248,7 +248,7 @@ Routers (mounted in `main.py`):
 | `/state`, `/state/{odom,battery,imu,camera,camera/{pan,tilt},lidar,audio}` | `state` | JSON snapshot or SSE (`?stream=true` / `Accept: text/event-stream`). `/state/camera/image` returns JPEG (or MJPEG with `?stream=true`, optional `?width=&height=`). `/state/lidar?step=N` decimates the scan. |
 | `/control/{speed,steering,camera/pan,camera/tilt,audio}` | `control` | Posts a single value to the matching ROS 2 topic |
 | `/agent/tool/{list,get,call,set,delete,reset}` | `agent` | Manage and invoke agent tools (Python source + PEP 723 deps) |
-| `/calibration`, `/calibration/{steering,pan,tilt,reverse,emergency}` | `calibration` | Read / write `/home/physicar/physicar_ws/userdata/calibration.json` |
+| `/calibration`, `/calibration/{steering,pan,tilt,reverse}` | `calibration` | Read / write `/home/physicar/physicar_ws/userdata/calibration.json` |
 | `/teleop/joy`, `/teleop/joy/mapping` | `joy` | Joystick mapping CRUD |
 | `/teleop` | `teleop` | Source-agnostic teleop status / lock |
 | `/network`, `/network/bluetooth` | `network`, `bluetooth` | WiFi / BT pairing |
@@ -357,8 +357,8 @@ physicar_driver:
     baudrate: 115200
 
     # Servo limits (degrees)
-    max_pan: 45.0
-    max_tilt: 45.0
+    max_pan: 30.0
+    max_tilt: 30.0
     max_steering: 20.0                 # wheel angle, sine model derives the servo angle
     max_speed: 3.0                     # m/s
 
@@ -368,12 +368,6 @@ physicar_driver:
     steering_center: 0.0
 
     reverse_direction: false           # true = ESC polarity reversed
-
-    # Emergency stop (LiDAR-based)
-    emergency_enabled: true
-    emergency_angle_range: 30.0        # total ° (±15° from heading)
-    emergency_front_margin: 0.25       # m
-    emergency_rear_margin: 0.15        # m
 
     # Geometry (matches the URDF)
     wheel_radius: 0.0375               # 75 mm wheel

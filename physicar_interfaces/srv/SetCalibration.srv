@@ -2,10 +2,10 @@
 # Set calibration values for a specific servo channel and save to file
 
 # Request
-string channel          # 'steering', 'speed', 'pan', 'tilt', 'reverse', 'emergency', or 'all'
-float64 max_value       # max limit (degrees or m/s for speed), ignored if channel='all', 'reverse', or 'emergency'
-float64 center_value    # center offset (degrees), ignored if channel='all', 'speed', 'reverse', or 'emergency'
-bool bool_value         # for reverse_direction or emergency_enabled
+string channel          # 'steering', 'speed', 'pan', 'tilt', 'reverse', or 'all'
+float64 max_value       # max limit (degrees or m/s for speed), ignored if channel='all' or 'reverse'
+float64 center_value    # center offset (degrees), ignored if channel='all', 'speed', or 'reverse'
+bool bool_value         # for reverse_direction
 bool save_to_file       # true: save to /opt/physicar/calibration.json after applying
 ---
 # Response

@@ -62,7 +62,7 @@
       <child link="${prefix}_steering_link"/>
       <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-0.4538" upper="0.4538" effort="25" velocity="1.0"/>
+      <limit lower="-0.3491" upper="0.3491" effort="25" velocity="1.0"/>
       <dynamics damping="0.1" friction="0.1"/>
     </joint>
 

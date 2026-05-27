@@ -148,12 +148,13 @@ class PhysicarDriverNode(Node):
     FEEDBACK_P_GAIN = 1.5       # proportional gain
     FEEDBACK_MAX_ADJUST = 0.5   # max adjustment ±0.5 m/s
     SPEED_DEADZONE = 0.01       # below this = stopped (m/s)
+    BRAKE_SPEED = 0.3            # reverse-kick brake speed & stop threshold (m/s)
 
     # Hardware limits (not calibration — these are physical maximums)
     MAX_STEERING = 20.0         # ± degrees (wheel angle)
     MAX_SPEED = 3.0             # ± m/s
-    MAX_PAN = 45.0              # ± degrees
-    MAX_TILT = 45.0             # ± degrees
+    MAX_PAN = 30.0              # ± degrees
+    MAX_TILT = 30.0             # ± degrees
 
     def __init__(self):
         super().__init__('physicar_driver')
@@ -176,6 +177,11 @@ class PhysicarDriverNode(Node):
         self.declare_parameter('esc_gain', 1.0)  # per-car ESC calibration gain
 
         # Robot physical parameters (from URDF/measurements)
+        self.declare_parameter('wheel_radius', 0.0375)
+        self.declare_parameter('wheelbase', 0.18)
+        self.declare_parameter('track_width', 0.16)
+        self.declare_parameter('calibration_file',
+                               os.path.expanduser('~/physicar_ws/userdata/calibration.json'))
 
         # Get parameters
         serial_port = self.get_parameter('serial_port').value
@@ -218,6 +224,7 @@ class PhysicarDriverNode(Node):
         self._target_speed = 0.0           # current target speed
         self._prev_actual_speed = 0.0      # previous actual speed for acceleration
         self._prev_odom_time = 0.0         # previous odom timestamp
+        self._brake_active = False         # True while actively braking to stop
 
         # Speed mapping data logger (DEV mode)
         self._speed_log_file = None
@@ -346,8 +353,17 @@ class PhysicarDriverNode(Node):
         self._actual_speed = actual
         self._actual_speed_time = now
 
-        # Only adjust when actively driving
+        # Braking: target=0 and actively braking → apply reverse force
         if abs(self._target_speed) < self.SPEED_DEADZONE:
+            if not self._brake_active:
+                return
+            if abs(actual) <= self.BRAKE_SPEED:
+                self.servo.set_throttle_speed(0.0)
+                self._current_speed_adjust = 0.0
+                self._brake_active = False
+            else:
+                brake_speed = -math.copysign(self.BRAKE_SPEED, actual)
+                self.servo.set_throttle_speed(brake_speed, self.current_voltage)
             return
 
         # predicted = actual + acceleration * lookahead
@@ -566,10 +582,17 @@ class PhysicarDriverNode(Node):
             
             # ESC command
             if abs(speed_mps) < self.SPEED_DEADZONE:
-                # Stop command → ESC neutral
-                self.servo.set_throttle_speed(0.0)
-                self._current_speed_adjust = 0.0
+                # If odom is stale or already slow → neutral immediately
+                # Otherwise odom_callback feedback loop handles braking
+                stale = (time.time() - self._actual_speed_time) > self.FEEDBACK_TIMEOUT
+                if stale or abs(self._actual_speed) <= self.BRAKE_SPEED:
+                    self.servo.set_throttle_speed(0.0)
+                    self._current_speed_adjust = 0.0
+                    self._brake_active = False
+                else:
+                    self._brake_active = True
             else:
+                self._brake_active = False
                 adjusted = self._get_adjusted_speed()
                 self.servo.set_throttle_speed(adjusted, self.current_voltage)
                 self.get_logger().debug(

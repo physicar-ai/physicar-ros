@@ -13,8 +13,8 @@ import time
 def tool(
     speed: Annotated[Optional[float], Field(description="Speed in m/s (-2.0..2.0, positive=forward)")] = None,
     steering: Annotated[Optional[float], Field(description="Steering in degrees (-26..26, positive=left)")] = None,
-    pan: Annotated[Optional[float], Field(description="Camera pan in degrees (-45..45, positive=left)")] = None,
-    tilt: Annotated[Optional[float], Field(description="Camera tilt in degrees (-45..45, positive=up)")] = None,
+    pan: Annotated[Optional[float], Field(description="Camera pan in degrees (-30..30, positive=left)")] = None,
+    tilt: Annotated[Optional[float], Field(description="Camera tilt in degrees (-30..30, positive=up)")] = None,
     duration: Annotated[float, Field(description="Duration in seconds")] = 3.0,
 ) -> dict:
     """Drive the robot or move the camera.

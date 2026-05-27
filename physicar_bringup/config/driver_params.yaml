@@ -15,7 +15,7 @@ physicar_driver:
     battery_publish_rate: 1.0  # Hz
     battery_low_threshold: 6.6  # Volts - triggers warning
 
-    # Hardware limits (max_steering=20°, max_speed=3.0, max_pan=45°, max_tilt=45°)
+    # Hardware limits (max_steering=20°, max_speed=3.0, max_pan=30°, max_tilt=30°)
     # are hardcoded in the driver node as constants.
 
     # Center offsets (degrees from 90°)

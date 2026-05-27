@@ -13,7 +13,6 @@ const SETTINGS = (() => {
     pan_center: 0,
     tilt_center: 0,
     reverse_direction: false,
-    emergency_enabled: true,
   };
 
   // Joystick sub-panel (created lazily on first switch to its tab so the
@@ -167,7 +166,6 @@ const SETTINGS = (() => {
     el('settings-cal-pan').textContent = `${cal.pan_center}°`;
     el('settings-cal-tilt').textContent = `${cal.tilt_center}°`;
     el('settings-cal-reverse').checked = !!cal.reverse_direction;
-    el('settings-cal-emergency').checked = cal.emergency_enabled !== false;
   }
 
   async function adjust(channel, delta) {
@@ -207,26 +205,6 @@ const SETTINGS = (() => {
       }
     } catch (e) {
       el('settings-cal-reverse').checked = !v;
-      if (typeof showToast === 'function') showToast('Error: ' + e.message, true);
-    }
-  }
-
-  async function toggleEmergency() {
-    const v = el('settings-cal-emergency').checked;
-    try {
-      const res = await fetch('/kiosk/calibration/emergency', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emergency_enabled: v }),
-      });
-      if (res.ok) {
-        cal.emergency_enabled = v;
-      } else {
-        el('settings-cal-emergency').checked = !v;
-        if (typeof showToast === 'function') showToast('Failed', true);
-      }
-    } catch (e) {
-      el('settings-cal-emergency').checked = !v;
       if (typeof showToast === 'function') showToast('Error: ' + e.message, true);
     }
   }
@@ -367,7 +345,7 @@ const SETTINGS = (() => {
   }
 
   return {
-    open, close, switchTab, togglePw, adjust, toggleReverse, toggleEmergency,
+    open, close, switchTab, togglePw, adjust, toggleReverse,
     changePassword, resetPassword, sanitizePw, toggleNewPw,
     joyToggleEnabled: () => { const jp = ensureJoyPanel(); if (jp) jp.toggleEnabled(); },
     joyReset:        () => { const jp = ensureJoyPanel(); if (jp) jp.reset(); },

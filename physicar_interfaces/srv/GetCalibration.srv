@@ -24,9 +24,6 @@ float64 tilt_center
 # ESC direction
 bool reverse_direction   # true: 90° above = forward (reversed ESC)
 
-# Emergency stop
-bool emergency_enabled   # true: emergency stop enabled
-
 # Source of current calibration
 string source           # 'json_file', 'yaml_params', or 'defaults'
 string calibration_json # Full calibration as JSON string

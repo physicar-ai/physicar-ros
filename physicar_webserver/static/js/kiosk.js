@@ -1025,8 +1025,6 @@
             
             // Reverse Direction
             document.getElementById('cal-reverse').checked = calibrationData.reverse_direction;
-            // Emergency Stop
-            document.getElementById('cal-emergency').checked = calibrationData.emergency_enabled !== false;
         }
         
         async function adjustCenter(channel, delta) {
@@ -1070,28 +1068,6 @@
             } catch (e) {
                 showToast('Error: ' + e.message, true);
                 document.getElementById('cal-reverse').checked = !newValue;
-            }
-        }
-        
-        async function toggleEmergency() {
-            const newValue = document.getElementById('cal-emergency').checked;
-            
-            try {
-                const res = await fetch('/kiosk/calibration/emergency', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({emergency_enabled: newValue})
-                });
-                if (res.ok) {
-                    calibrationData.emergency_enabled = newValue;
-                } else {
-                    const err = await res.json();
-                    showToast(err.detail || 'Failed', true);
-                    document.getElementById('cal-emergency').checked = !newValue;
-                }
-            } catch (e) {
-                showToast('Error: ' + e.message, true);
-                document.getElementById('cal-emergency').checked = !newValue;
             }
         }
 

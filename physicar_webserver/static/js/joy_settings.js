@@ -41,9 +41,9 @@ window.createJoyPanel = function createJoyPanel(opts) {
   ];
   const TUNE_FLOATS = [
     { key: 'max_speed',    label: 'Max speed (m/s)',  min: 0.5, max: 3.0,  step: 0.1 },
-    { key: 'max_steering', label: 'Max steering (deg)', min: 1,  max: 26,  step: 1 },
-    { key: 'max_pan',      label: 'Max pan (deg)',    min: 1,   max: 45,   step: 1 },
-    { key: 'max_tilt',     label: 'Max tilt (deg)',   min: 1,   max: 45,   step: 1 },
+    { key: 'max_steering', label: 'Max steering (deg)', min: 1,  max: 20,  step: 1 },
+    { key: 'max_pan',      label: 'Max pan (deg)',    min: 1,   max: 30,   step: 1 },
+    { key: 'max_tilt',     label: 'Max tilt (deg)',   min: 1,   max: 30,   step: 1 },
     { key: 'deadzone',     label: 'Deadzone',         min: 0.0, max: 0.1,  step: 0.01 },
   ];
   const TUNE_BOOLS = [
