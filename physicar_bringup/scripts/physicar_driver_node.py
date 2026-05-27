@@ -86,6 +86,9 @@ class CalibrationData:
     # ESC direction
     reverse_direction: bool = False  # True: above 90° = forward (reversed ESC)
     
+    # ESC per-car calibration gain (scales duty offset; default 1.0)
+    esc_gain: float = 1.0
+    
     # Emergency stop enable (None = use YAML param)
     emergency_enabled: Optional[bool] = None
     
@@ -104,6 +107,7 @@ class CalibrationData:
             'pan_center': self.pan_center,
             'tilt_center': self.tilt_center,
             'reverse_direction': self.reverse_direction,
+            'esc_gain': self.esc_gain,
         }
         # Only include emergency_enabled if explicitly set
         if self.emergency_enabled is not None:
@@ -149,6 +153,7 @@ class CalibrationData:
             pan_center=_f('pan_center', 0.0, -30.0, 30.0),
             tilt_center=_f('tilt_center', 0.0, -30.0, 30.0),
             reverse_direction=_b('reverse_direction', False),
+            esc_gain=_f('esc_gain', 1.0, 0.1, 5.0),
             emergency_enabled=(bool(em) if em is not None else None),
             source=source,
             is_saved=(source == 'json_file'),
@@ -162,18 +167,12 @@ class PhysicarDriverNode(Node):
     # Servo center angle (standard for RC servos)
     SERVO_CENTER = 90.0
     
-    # ESC speed-model constants (measured, power law, 6.5V–8.1V)
-    # Model: degree = (ESC_A / V) * ((speed - ESC_K)^ESC_Q + ESC_P)
-    # Relative-error RMSE: 2.1%
-    ESC_A = 14.0       # scale factor
-    ESC_K = -0.05      # speed offset (negative, so speed - k = speed + 0.05)
-    ESC_Q = 1.65       # exponent
-    ESC_P = 4.0        # constant term
-    
     # Feedback-control constants
     FEEDBACK_TIMEOUT = 0.5      # speed-measurement timeout (s)
-    FEEDBACK_MAX_ADJUST = 2     # max degree adjustment (±2)
-    FEEDBACK_LOOKAHEAD = 0.3    # predict speed this far ahead (seconds)
+    FEEDBACK_LOOKAHEAD = 0.2    # predict speed this far ahead (seconds)
+    FEEDBACK_P_GAIN = 1.5       # proportional gain
+    FEEDBACK_MAX_ADJUST = 0.5   # max adjustment ±0.5 m/s
+    SPEED_DEADZONE = 0.01       # below this = stopped (m/s)
     
     # Emergency Stop constants
     EMERGENCY_SCAN_TIMEOUT = 0.05     # scan timeout (s)
@@ -236,6 +235,9 @@ class PhysicarDriverNode(Node):
         self.emergency_front_margin = self.get_parameter('emergency_front_margin').value
         self.emergency_rear_margin = self.get_parameter('emergency_rear_margin').value
 
+        # DEV mode (from environment variable, e.g. userdata/.env)
+        self._dev_mode = os.environ.get('DEV', '').lower() == 'true'
+
         # Initialize hardware (pass ROS logger for consistent logging)
         self.board = YahboomBoard(
             port=serial_port, 
@@ -244,6 +246,7 @@ class PhysicarDriverNode(Node):
         )
         self.gpio_board = GpioPwmBoard(logger=self.get_logger())
         self.servo = ServoController(self.board, drive_board=self.gpio_board)
+        self.servo.steering_ratio = self.steering_ratio
 
         # Calibration state management
         self.calibration = CalibrationData()  # Current calibration
@@ -254,20 +257,24 @@ class PhysicarDriverNode(Node):
         self.current_voltage = 7.4  # default
         
         # ESC control state
-        self._last_esc_direction = 0  # last ESC direction (1=forward, -1=reverse, 0=stopped)
         
         # Feedback-control state
         self._actual_speed = 0.0           # actual speed measured from rf2o (m/s)
         self._actual_speed_time = 0.0      # time of last speed measurement
-        self._current_degree_adjust = 0.0   # current degree adjustment (float, 0.5 steps)
+        self._current_speed_adjust = 0.0   # speed adjustment (m/s)
         self._target_speed = 0.0           # current target speed
-        self._last_adjust_time = 0.0       # time of last degree change (unused, kept for brake)
         self._prev_actual_speed = 0.0      # previous actual speed for acceleration
         self._prev_odom_time = 0.0         # previous odom timestamp
 
-        # ESC state tracking
-        self._last_esc_angle = self.SERVO_CENTER  # last ESC angle sent
-        
+        # Speed mapping data logger (DEV mode)
+        self._speed_log_file = None
+        self._speed_log_target_time = 0.0       # when current target was set
+        self._speed_log_last_target = 0.0       # last target speed value
+        self._speed_log_written = False          # already logged for this target?
+        if self._dev_mode:
+            self._speed_log_file = self._open_speed_log()
+            self.get_logger().info('DEV mode: speed mapping logger enabled')
+
         # Emergency state
         self._front_min_dist = float('inf')
         self._rear_min_dist = float('inf')
@@ -433,17 +440,16 @@ class PhysicarDriverNode(Node):
                 self._start_active_brake(self._actual_speed)
                 self.get_logger().warn(f'EMERGENCY BRAKE: speed={self._actual_speed:.2f} m/s')
             else:
-                self.gpio_board.set_servo(1, self.SERVO_CENTER)
+                self.servo.set_throttle_speed(0.0)
                 self.get_logger().warn(f'Emergency active, ESC stopped (no odom or already stopped)')
         elif was_emergency and not is_emergency:
             # Emergency cleared → restore ESC (unless braking, in which case brake handles it)
             if self._braking:
                 self.get_logger().info(f'Emergency cleared, but braking in progress - brake will handle ESC')
             else:
-                esc_angle = self._compute_esc_angle_with_adjust()
-                self._last_esc_angle = esc_angle
-                self.gpio_board.set_servo(1, esc_angle)
-                self.get_logger().info(f'Emergency cleared, resuming ESC: {esc_angle:.1f}° (speed={self._target_speed:.2f} m/s)')
+                adjusted_speed = self._get_adjusted_speed()
+                self.servo.set_throttle_speed(adjusted_speed, self.current_voltage)
+                self.get_logger().info(f'Emergency cleared, resuming speed={self._target_speed:.2f} m/s')
     
     def _check_emergency(self, target_speed: float) -> bool:
         """Check whether Emergency Stop conditions are met.
@@ -510,50 +516,106 @@ class PhysicarDriverNode(Node):
         return False
 
     def odom_callback(self, msg: Odometry):
-        """Store actual speed from rf2o odometry (feedback disabled)."""
-        self._actual_speed = msg.twist.twist.linear.x
-        self._actual_speed_time = time.time()
-    
-    def _compute_esc_angle_with_adjust(self) -> float:
-        """Compute ESC angle from the current target speed and adjustment."""
-        if self._target_speed == 0:
-            return self.SERVO_CENTER
-        
-        V = 7.4  # fixed voltage — disable voltage compensation
-        abs_speed = abs(self._target_speed)
-        
-        # Power-law model
-        target_degree = (self.ESC_A / V) * ((abs_speed - self.ESC_K) ** self.ESC_Q + self.ESC_P)
-        raw = target_degree + self._current_degree_adjust
+        """Predictive speed feedback: adjust ESC degree based on predicted speed error."""
+        now = time.time()
+        actual = msg.twist.twist.linear.x
+        dt = now - self._prev_odom_time if self._prev_odom_time > 0 else 0.0
 
-        if self._last_esc_direction > 0:
-            return self.SERVO_CENTER + raw
+        # Compute acceleration
+        if dt > 0.001:
+            acceleration = (actual - self._prev_actual_speed) / dt
         else:
-            return self.SERVO_CENTER - raw
+            acceleration = 0.0
 
-    def _wheel_to_servo_angle(self, wheel_angle_deg: float) -> float:
-        """Convert wheel angle to servo angle (sine model).
-        
-        Kinematics: Rs × sin(θs) = Rk × sin(θw)
-        Hence: θs = arcsin(sin(θw) / k), where k = Rs/Rk
-        
-        Args:
-            wheel_angle_deg: wheel angle (degrees)
-            
+        self._prev_actual_speed = actual
+        self._prev_odom_time = now
+        self._actual_speed = actual
+        self._actual_speed_time = now
+
+        # Only adjust when actively driving
+        if abs(self._target_speed) < self.SPEED_DEADZONE or self._braking or self._emergency_active:
+            return
+
+        # predicted = actual + acceleration * lookahead
+        predicted = actual + acceleration * self.FEEDBACK_LOOKAHEAD
+
+        # Error = target - predicted (m/s)
+        error = self._target_speed - predicted
+
+        # P controller, clamped to ±MAX_ADJUST
+        adjust = error * self.FEEDBACK_P_GAIN
+        adjust = max(-self.FEEDBACK_MAX_ADJUST,
+                    min(self.FEEDBACK_MAX_ADJUST, adjust))
+        self._current_speed_adjust = adjust
+
+        # Apply updated ESC speed
+        adjusted_speed = self._get_adjusted_speed()
+        self.servo.set_throttle_speed(adjusted_speed, self.current_voltage)
+
+        # Speed mapping data logger (DEV mode)
+        self._log_speed_mapping(now, actual)
+
+    def _open_speed_log(self):
+        """Open (or append to) boot-scoped CSV log file for speed mapping."""
+        log_dir = os.path.join(os.path.dirname(self.CALIBRATION_FILE), 'speed_log')
+        os.makedirs(log_dir, exist_ok=True)
+        try:
+            boot_id = open('/proc/sys/kernel/random/boot_id').read().strip()
+        except Exception:
+            boot_id = f'{int(time.time())}'
+        filepath = os.path.join(log_dir, f'speed_map_{boot_id}.csv')
+        is_new = not os.path.exists(filepath)
+        f = open(filepath, 'a')
+        if is_new:
+            f.write('timestamp,target_speed,duty_cycle_ns,actual_speed,voltage\n')
+            f.flush()
+        self.get_logger().info(f'Speed log: {filepath}')
+        return f
+
+    def _log_speed_mapping(self, now: float, actual_speed: float):
+        """Log duty cycle vs actual speed when target has been stable for 1+ second."""
+        if not self._speed_log_file:
+            return
+        if self._speed_log_written:
+            return
+        if abs(self._target_speed) < self.SPEED_DEADZONE:
+            return
+        if self._speed_log_target_time <= 0:
+            return
+        if now - self._speed_log_target_time < 1.0:
+            return
+        try:
+            duty_ns = int(open('/sys/class/pwm/pwmchip0/pwm1/duty_cycle').read().strip())
+            self._speed_log_file.write(
+                f'{now:.3f},{self._target_speed:.4f},{duty_ns},{actual_speed:.4f},{self.current_voltage:.2f}\n'
+            )
+            self._speed_log_file.flush()
+            self._speed_log_written = True
+            self.get_logger().debug(
+                f'Speed log: target={self._target_speed:.3f} duty={duty_ns} actual={actual_speed:.3f}'
+            )
+        except Exception as e:
+            self.get_logger().warning(f'Speed log write failed: {e}')
+
+    def _get_adjusted_speed(self) -> float:
+        """Get target speed with feedback adjustment applied.
+
         Returns:
-            servo_angle_offset: servo angle offset (degrees, displacement from centre)
+            Adjusted speed (m/s, signed: positive=forward, negative=reverse)
         """
-        if abs(wheel_angle_deg) < 0.001:
+        if self._target_speed == 0:
             return 0.0
-        
-        wheel_rad = math.radians(wheel_angle_deg)
-        sin_servo = math.sin(wheel_rad) / self.steering_ratio
-        
-        # Range check for arcsin (-1 ~ 1)
-        sin_servo = max(-1.0, min(1.0, sin_servo))
-        servo_rad = math.asin(sin_servo)
-        
-        return math.degrees(servo_rad)
+
+        # Discard stale feedback correction if odom is dead
+        if time.time() - self._actual_speed_time > self.FEEDBACK_TIMEOUT:
+            self._current_speed_adjust = 0.0
+
+        # Apply absolute adjustment (m/s)
+        adjusted = self._target_speed + self._current_speed_adjust
+        if self._target_speed > 0:
+            return max(self.SPEED_DEADZONE, adjusted)
+        else:
+            return min(-self.SPEED_DEADZONE, adjusted)
 
     # ========== Low-level Control Methods ==========
     
@@ -685,20 +747,21 @@ class PhysicarDriverNode(Node):
             max_speed = self.calibration.max_speed
             speed_mps = max(-max_speed, min(max_speed, speed_mps))
             
-            # Minimum effective speed: clamp small non-zero to 0.3 m/s
-            if 0 < speed_mps < 0.3:
-                speed_mps = 0.3
-            elif -0.3 < speed_mps < 0:
-                speed_mps = -0.3
-            
             # Save target_speed (for restore when Emergency clears)
+            prev_target = self._target_speed
             self._target_speed = speed_mps
+
+            # Track target changes for speed logger (DEV mode)
+            if self._dev_mode and abs(speed_mps - self._speed_log_last_target) > 0.001:
+                self._speed_log_target_time = time.time()
+                self._speed_log_last_target = speed_mps
+                self._speed_log_written = False
             
             # Update joint state
             self.current_throttle = speed_mps
             
             # Movement command cancels braking (only when not in Emergency)
-            if abs(speed_mps) > 0.01 and self._braking and not self._emergency_active:
+            if abs(speed_mps) > self.SPEED_DEADZONE and self._braking and not self._emergency_active:
                 self._stop_brake()
             
             # When in Emergency, ignore ESC commands (scan_callback handles brake)
@@ -706,19 +769,15 @@ class PhysicarDriverNode(Node):
                 return
             
             # ESC command
-            if abs(speed_mps) < 0.01:
+            if abs(speed_mps) < self.SPEED_DEADZONE:
                 # Stop command → ESC neutral
-                self.gpio_board.set_servo(1, self.SERVO_CENTER)
-                self.get_logger().debug(f'ESC STOP: 90° (actual={self._actual_speed:.2f} m/s)')
-                # Active brake disabled — reverse pulses confuse ESC during rapid on/off
-                # if abs(self._actual_speed) > self._brake_speed_threshold:
-                #     self._start_active_brake(self._actual_speed)
+                self.servo.set_throttle_speed(0.0)
+                self._current_speed_adjust = 0.0
             else:
-                esc_angle = self._velocity_to_esc_angle(speed_mps)
-                self._last_esc_angle = esc_angle
-                self.gpio_board.set_servo(1, esc_angle)
+                adjusted = self._get_adjusted_speed()
+                self.servo.set_throttle_speed(adjusted, self.current_voltage)
                 self.get_logger().debug(
-                    f'ESC: {esc_angle:.1f}° (speed={speed_mps:.2f} m/s, V={self.current_voltage:.1f}V)'
+                    f'ESC: speed={speed_mps:.2f} m/s, V={self.current_voltage:.1f}V'
                 )
         except Exception as e:
             self.get_logger().error(f'_set_speed error: {e}')
@@ -726,17 +785,10 @@ class PhysicarDriverNode(Node):
     def _set_steering_rad(self, steering_rad: float):
         """Set steering angle in radians. Core low-level steering control.
         
-        All steering-related logic:
-        - Angle limit (max_steering)
-        - Update joint state
-        - Convert to servo angle via sine model
-        - Apply steering_center calibration
-        
         Args:
             steering_rad: wheel steering angle (radians, positive=left turn)
         """
         try:
-            # Convert radians → degrees (for internal processing)
             steering_deg = math.degrees(steering_rad)
             
             # Angle limit (degrees)
@@ -746,15 +798,10 @@ class PhysicarDriverNode(Node):
             # Update joint state (radians)
             self.current_steering = math.radians(steering_deg)
             
-            # Convert wheel angle → servo angle via sine model
-            servo_angle_offset = self._wheel_to_servo_angle(steering_deg)
-            center_offset = self._wheel_to_servo_angle(self.calibration.steering_center)
-            steering_angle = self.SERVO_CENTER + servo_angle_offset + center_offset
-            
-            # Steering is always applied, regardless of Emergency
-            self.gpio_board.set_servo(2, steering_angle)
+            # Delegate to servo_controller (sine model + limits + trim)
+            self.servo.set_steering_wheel_angle(steering_deg)
             self.get_logger().debug(
-                f'Steering: {steering_rad:.3f} rad ({steering_deg:.1f}°) → servo {steering_angle:.1f}°'
+                f'Steering: {steering_rad:.3f} rad ({steering_deg:.1f}°)'
             )
         except Exception as e:
             self.get_logger().error(f'_set_steering_rad error: {e}')
@@ -860,19 +907,13 @@ class PhysicarDriverNode(Node):
         brake_degree = min(int(abs_speed * 10) + 3, 8)  # 3~8 degree range
         
         if self._brake_direction > 0:
-            # Forward brake (was going reverse)
-            if self.calibration.reverse_direction:
-                esc_angle = self.SERVO_CENTER + brake_degree
-            else:
-                esc_angle = self.SERVO_CENTER - brake_degree
+            # Forward brake (was going reverse) → apply forward power
+            esc_angle = self.SERVO_CENTER - brake_degree
         else:
-            # Reverse brake (was going forward)
-            if self.calibration.reverse_direction:
-                esc_angle = self.SERVO_CENTER - brake_degree
-            else:
-                esc_angle = self.SERVO_CENTER + brake_degree
+            # Reverse brake (was going forward) → apply reverse power
+            esc_angle = self.SERVO_CENTER + brake_degree
         
-        self.gpio_board.set_servo(1, esc_angle)
+        self.servo._apply_angle(ServoController.CHANNEL_THROTTLE, esc_angle)
         self.get_logger().debug(f'Brake tick: speed={actual_speed:.2f}, esc={esc_angle:.1f}°')
     
     def _stop_brake(self):
@@ -884,9 +925,8 @@ class PhysicarDriverNode(Node):
         self._braking = False
         self._brake_direction = 0
         # Keep _target_speed (used to restore when Emergency clears)
-        self._current_degree_adjust = 0.0
-        self.gpio_board.set_servo(1, self.SERVO_CENTER)
-        self.get_logger().info('Active brake complete')
+        self._current_speed_adjust = 0.0
+        self.servo.set_throttle_speed(0.0)
 
     def _load_and_apply_calibration(self) -> None:
         """Load calibration and apply to servo controller.
@@ -944,10 +984,12 @@ class PhysicarDriverNode(Node):
         """
         cal = self.calibration
         
-        # Steering
+        # Steering — limits in servo-angle space (after sine model conversion)
+        max_servo_offset = math.degrees(math.asin(
+            math.sin(math.radians(cal.max_steering)) / self.servo.steering_ratio))
         self.servo.set_limits(ServoController.CHANNEL_STEERING,
-                             self.SERVO_CENTER - cal.max_steering,
-                             self.SERVO_CENTER + cal.max_steering,
+                             self.SERVO_CENTER - max_servo_offset,
+                             self.SERVO_CENTER + max_servo_offset,
                              self.SERVO_CENTER)
         self.servo.set_trim(ServoController.CHANNEL_STEERING, cal.steering_center)
         
@@ -991,6 +1033,13 @@ class PhysicarDriverNode(Node):
         self.get_logger().info(f'  Pan: max=±{cal.max_pan}°, center={cal.pan_center}°')
         self.get_logger().info(f'  Tilt: max=±{cal.max_tilt}°, center={cal.tilt_center}°')
         self.get_logger().info(f'  ESC reverse_direction: {cal.reverse_direction}')
+        self.get_logger().info(f'  ESC gain: {cal.esc_gain}')
+        
+        # Apply reverse_direction as inversion on throttle channel
+        self.servo.set_inverted(ServoController.CHANNEL_THROTTLE, cal.reverse_direction)
+        
+        # Apply ESC gain
+        self.servo.esc_gain = cal.esc_gain
         
         # Publish status if available
         self._publish_calibration_status()
@@ -1209,7 +1258,7 @@ class PhysicarDriverNode(Node):
         
         # 2. Stabilise ESC neutral signal (repeat 90° signal)
         for _ in range(50):
-            self.gpio_board.set_servo(1, 90)  # ESC = channel 1
+            self.servo._apply_angle(ServoController.CHANNEL_THROTTLE, 90)
             time.sleep(0.02)
         
         # 3. Wait for ESC to arm (time for it to learn neutral)
@@ -1219,45 +1268,6 @@ class PhysicarDriverNode(Node):
         self.servo.center_all()
         
         self.get_logger().info('ESC initialization complete - neutral point set to 90°')
-
-    def _velocity_to_esc_angle(self, target_speed: float) -> float:
-        """Convert cmd_vel to ESC servo angle using power law model.
-        
-        Model (empirically measured, power law, 6.5V–8.1V):
-        - degree = (A / V) * ((speed - K)^Q + P)
-        - ESC angle = 90 + degree (forward), 90 - degree (reverse) [reverse_direction=true]
-        - Relative-error RMSE: 2.1%
-        
-        Sets the initial degree only; feedback adjustment runs in odom_callback.
-        """
-        if target_speed == 0:
-            self._last_esc_direction = 0
-            self._current_degree_adjust = 0.0  # reset adjustment when stopped
-            return self.SERVO_CENTER  # stopped
-        
-        V = self.current_voltage
-        abs_speed = abs(target_speed)
-        is_forward = target_speed > 0
-        
-        # Determine ESC direction (taking reverse_direction into account)
-        if self.calibration.reverse_direction:
-            # Reversed ESC: above 90° = forward
-            self._last_esc_direction = 1 if is_forward else -1
-        else:
-            # Normal ESC: below 90° = forward
-            self._last_esc_direction = -1 if is_forward else 1
-        
-        # Power-law model: degree = (A / V) * ((speed - K)^Q + P)
-        V = 7.4  # fixed voltage — disable voltage compensation
-        target_degree = (self.ESC_A / V) * ((abs_speed - self.ESC_K) ** self.ESC_Q + self.ESC_P)
-        
-        raw = target_degree + self._current_degree_adjust
-        
-        # Final angle calculation
-        if self._last_esc_direction > 0:
-            return self.SERVO_CENTER + raw
-        else:
-            return self.SERVO_CENTER - raw
 
     def pan_callback(self, msg: Float64):
         """Handle camera pan command.

@@ -321,10 +321,12 @@ def generate_launch_description():
     # Play intro sound — wait for audio_node subscriber instead of fixed delay.
     # Uses TRANSIENT_LOCAL so a late-matching subscriber still receives it,
     # and waits for actual subscriber match before publishing.
+    # Skip in DEV mode to avoid annoying sound during development.
     intro_sound = os.path.join(sounds_dir, 'intro.mp3')
+    is_dev = os.environ.get('DEV', '').lower() == 'true'
     play_intro = TimerAction(
         period=3.0,
-        actions=[
+        actions=[] if is_dev else [
             ExecuteProcess(
                 cmd=['python3', '-c', (
                     'import rclpy, time\n'

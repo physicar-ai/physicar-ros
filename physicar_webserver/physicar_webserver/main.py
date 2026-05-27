@@ -138,22 +138,38 @@ _SIM_BLOCKED_PREFIXES = (
 )
 
 
-@app.middleware("http")
-async def block_sim_mutations(request: Request, call_next):
-    if request.method in ("POST", "DELETE", "PUT", "PATCH"):
-        path = request.url.path
-        if any(path.startswith(p) for p in _SIM_BLOCKED_PREFIXES):
-            try:
-                from physicar_webserver.routers.info import _get_mode
-                if _get_mode() == "sim":
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Not supported in simulation mode."},
-                    )
-            except Exception:
-                pass
-    return await call_next(request)
+class SimBlockMiddleware:
+    """Block mutating requests in SIM mode.
+
+    Implemented as a pure ASGI middleware instead of BaseHTTPMiddleware to
+    avoid 'No response returned' errors on long-lived StreamingResponse
+    connections (SSE, MJPEG).
+    """
+
+    _MUTATING = {b"POST", b"DELETE", b"PUT", b"PATCH"}
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method", "").encode() in self._MUTATING:
+            path = scope.get("path", "")
+            if any(path.startswith(p) for p in _SIM_BLOCKED_PREFIXES):
+                try:
+                    from physicar_webserver.routers.info import _get_mode
+                    if _get_mode() == "sim":
+                        from starlette.responses import JSONResponse
+                        resp = JSONResponse(
+                            status_code=403,
+                            content={"detail": "Not supported in simulation mode."},
+                        )
+                        await resp(scope, receive, send)
+                        return
+                except Exception:
+                    pass
+        await self.app(scope, receive, send)
+
+app.add_middleware(SimBlockMiddleware)
 
 # GZipMiddleware REMOVED — it buffers StreamingResponse chunks internally,
 # causing massive latency for real-time SSE and MJPEG streams.

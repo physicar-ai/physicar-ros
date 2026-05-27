@@ -87,7 +87,9 @@ nav {
 .sensor-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); font-weight: 600; }
 .sensor-modal-close { background: transparent; color: var(--fg2); font-size: 1.6rem; line-height: 1; padding: 0 0.4rem; cursor: pointer; }
 .sensor-modal-close:hover { color: var(--fg); }
-.sensor-modal img, .sensor-modal canvas { display: block; max-width: 100%; max-height: calc(95vh - 60px); object-fit: contain; background: #0a0a0a; }
+.sensor-modal img { display: block; width: 100%; max-height: calc(95vh - 60px); object-fit: contain; background: #0a0a0a; }
+.sensor-modal-body { width: min(90vw, 1200px); }
+.sensor-modal canvas { display: block; max-width: 100%; max-height: calc(95vh - 60px); object-fit: contain; background: #0a0a0a; }
 .sensor-modal-lidar canvas { width: min(85vmin, 800px); height: min(85vmin, 800px); aspect-ratio: 1; }
 
 /* ===== Page ===== */

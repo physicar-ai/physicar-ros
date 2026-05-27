@@ -26,7 +26,8 @@ Servo Channel Mapping:
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
+import math
 
 from .yahboom_board import YahboomBoard
 from .gpio_pwm_board import GpioPwmBoard
@@ -68,6 +69,22 @@ class ServoController:
     CHANNEL_PAN = 3        # S3: Camera Pan
     CHANNEL_TILT = 4       # S4: Camera Tilt
 
+    # ESC speed-model constants (power-law fit from speed_map data)
+    # Model: offset_ns = G_dir * (a * |speed|^k + d)
+    #        duty_ns   = CENTER ± offset_ns
+    # Per-type constants (type determined by reverse_direction flag):
+    #   Type1 (reverse_direction=False): a1, k1, d1, p1
+    #   Type2 (reverse_direction=True):  a2, k2, d2, p2
+    # G (esc_gain) is a per-car calibration scalar (default 1.0).
+    ESC_A1 = 37937;  ESC_K1 = 1.150;  ESC_D1 = 73177;  ESC_P1 = 0.810
+    ESC_A2 = 37773;  ESC_K2 = 1.186;  ESC_D2 = 93981;  ESC_P2 = 0.913
+    ESC_REF_VOLTAGE = 7.4   # reference voltage for calibration data
+    ESC_CENTER_NS = 1_500_000
+    SERVO_CENTER = 90.0
+
+    # Steering sine-model ratio (k = Rs/Rk, servo horn / knuckle arm)
+    DEFAULT_STEERING_RATIO = 2.0
+
     def __init__(self, board: Optional[YahboomBoard] = None,
                  drive_board: Optional[GpioPwmBoard] = None):
         """
@@ -107,6 +124,12 @@ class ServoController:
             self.CHANNEL_PAN: False,
             self.CHANNEL_TILT: False,
         }
+
+        # Steering sine-model ratio
+        self.steering_ratio = self.DEFAULT_STEERING_RATIO
+
+        # ESC per-car calibration gain (default 1.0)
+        self.esc_gain = 1.0
 
     def connect(self) -> bool:
         """Connect to the Yahboom board."""
@@ -171,11 +194,108 @@ class ServoController:
         angle = limits.from_normalized(normalized)
         return self._apply_angle(self.CHANNEL_STEERING, angle)
 
+    def set_steering_wheel_angle(self, wheel_angle_deg: float) -> bool:
+        """Set steering from wheel angle (degrees) via Ackermann sine model.
+
+        Kinematics: Rs * sin(θs) = Rk * sin(θw)
+        Hence: θs = arcsin(sin(θw) / k), where k = steering_ratio
+
+        Args:
+            wheel_angle_deg: wheel angle in degrees (positive=left)
+
+        Returns:
+            True on success
+        """
+        if abs(wheel_angle_deg) < 0.001:
+            return self._apply_angle(self.CHANNEL_STEERING, self.SERVO_CENTER)
+
+        wheel_rad = math.radians(wheel_angle_deg)
+        sin_servo = math.sin(wheel_rad) / self.steering_ratio
+        sin_servo = max(-1.0, min(1.0, sin_servo))
+        servo_offset = math.degrees(math.asin(sin_servo))
+
+        angle = self.SERVO_CENTER + servo_offset
+        return self._apply_angle(self.CHANNEL_STEERING, angle)
+
     def set_throttle(self, normalized: float) -> bool:
         """Set throttle position (-1.0=reverse, 0=neutral, 1.0=forward)."""
         limits = self.limits[self.CHANNEL_THROTTLE]
         angle = limits.from_normalized(normalized)
         return self._apply_angle(self.CHANNEL_THROTTLE, angle)
+
+    def set_throttle_speed(self, speed_mps: float, voltage: float = 7.4) -> bool:
+        """Convert speed (m/s) to ESC duty cycle and apply directly.
+
+        Uses power-law model with per-type constants:
+            offset_ns = G_dir * (a * |speed|^k + d) * (V_ref / voltage)
+            duty_ns   = CENTER ± offset_ns
+
+        Type is selected by reverse_direction (inverted flag).
+        G (esc_gain) is a per-car calibration scalar.
+        p is the forward/reverse asymmetry ratio for each type.
+        Voltage compensation: higher voltage → less offset needed.
+
+        Args:
+            speed_mps: target speed (positive=forward, negative=reverse)
+            voltage: current battery voltage (V)
+
+        Returns:
+            True on success
+        """
+        if abs(speed_mps) < 0.001:
+            if self.drive_board:
+                return self.drive_board.set_duty_ns(
+                    self.CHANNEL_THROTTLE, self.ESC_CENTER_NS)
+            return self._apply_angle(self.CHANNEL_THROTTLE, self.SERVO_CENTER)
+
+        reverse_direction = self.inverted.get(self.CHANNEL_THROTTLE, False)
+        abs_speed = abs(speed_mps)
+
+        # Select per-type constants
+        if reverse_direction:
+            a, k, d, p = self.ESC_A2, self.ESC_K2, self.ESC_D2, self.ESC_P2
+        else:
+            a, k, d, p = self.ESC_A1, self.ESC_K1, self.ESC_D1, self.ESC_P1
+
+        # Direction-dependent gain: p applied to the weaker direction
+        #   rev=F: G_fwd=G, G_bwd=G*p   |  rev=T: G_fwd=G*p, G_bwd=G
+        if reverse_direction:
+            g_dir = self.esc_gain * p if speed_mps > 0 else self.esc_gain
+        else:
+            g_dir = self.esc_gain if speed_mps > 0 else self.esc_gain * p
+
+        # Voltage compensation: calibrated at V_ref, scale inversely
+        v_comp = self.ESC_REF_VOLTAGE / max(voltage, 5.0)
+
+        offset = g_dir * (a * abs_speed ** k + d) * v_comp
+
+        # Forward = lower duty (non-inverted) or higher duty (inverted)
+        sign = -1 if speed_mps > 0 else 1
+        if reverse_direction:
+            sign = -sign
+        duty_ns = int(self.ESC_CENTER_NS + sign * offset)
+
+        if self.drive_board:
+            return self.drive_board.set_duty_ns(self.CHANNEL_THROTTLE, duty_ns)
+        # Fallback: convert duty_ns to angle
+        angle = (duty_ns - 500_000) / 2_000_000 * 180.0
+        return self.board.set_servo(self.CHANNEL_THROTTLE, angle)
+
+    def speed_to_duty_offset_ns(self, speed_mps: float) -> float:
+        """Convert absolute speed to ESC duty offset in nanoseconds (for logging/debug).
+
+        Args:
+            speed_mps: absolute speed (m/s, must be > 0)
+
+        Returns:
+            ESC duty offset from center (ns)
+        """
+        reverse_direction = self.inverted.get(self.CHANNEL_THROTTLE, False)
+        if reverse_direction:
+            a, k, d = self.ESC_A2, self.ESC_K2, self.ESC_D2
+        else:
+            a, k, d = self.ESC_A1, self.ESC_K1, self.ESC_D1
+        return self.esc_gain * (a * speed_mps ** k + d)
 
     def set_pan_tilt_normalized(self, pan: float, tilt: float) -> bool:
         """Set camera pan-tilt with normalized values."""

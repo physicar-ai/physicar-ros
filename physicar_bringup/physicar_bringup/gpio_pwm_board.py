@@ -157,3 +157,26 @@ class GpioPwmBoard:
             if self._logger:
                 self._logger.error(f'GpioPwmBoard: set_servo ch{channel} failed: {e}')
             return False
+
+    def set_duty_ns(self, channel: int, duty_ns: int) -> bool:
+        """Set PWM duty cycle directly in nanoseconds.
+
+        Args:
+            channel: 1 (throttle/ESC) or 2 (steering).
+            duty_ns: Duty cycle in nanoseconds (clamped to 500000–2500000).
+
+        Returns:
+            True on success.
+        """
+        pwm_idx = _CHANNEL_MAP.get(channel)
+        if pwm_idx is None:
+            return False
+
+        duty_ns = max(_MIN_DUTY_NS, min(_MIN_DUTY_NS + _DUTY_RANGE_NS, duty_ns))
+        try:
+            self._write(self._pwm_path(pwm_idx, 'duty_cycle'), str(duty_ns))
+            return True
+        except Exception as e:
+            if self._logger:
+                self._logger.error(f'GpioPwmBoard: set_duty_ns ch{channel} failed: {e}')
+            return False

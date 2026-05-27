@@ -351,29 +351,76 @@ function _drawLidarOnCanvas(c, lidar) {
 
 function startCameraStream() {
   const w = $('cam-res')?.value || 480;
-  console.log('[CAM] Starting MJPEG stream, width=' + w);
-  _startMjpeg(w);
+  console.log('[CAM] Starting camera stream, width=' + w);
+  _startMjpegFetch(w);
 }
 
 let _camRetryTimer = null;
+let _camAbort = null;
 
-function _startMjpeg(width) {
+function _stopCameraStream() {
   if (_camRetryTimer) { clearTimeout(_camRetryTimer); _camRetryTimer = null; }
+  if (_camAbort) { _camAbort.abort(); _camAbort = null; }
+}
+
+async function _startMjpegFetch(width) {
+  _stopCameraStream();
   const img = $('p-camera');
   if (!img) return;
 
-  // Stop any existing stream — clear src + add cache-bust to force new connection
-  img.src = '';
+  const controller = new AbortController();
+  _camAbort = controller;
 
-  const url = '/state/camera?stream=true&width=' + width + '&t=' + Date.now();
+  try {
+    const url = '/state/camera?stream=true&width=' + width + '&t=' + Date.now();
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok || !res.body) throw new Error('status ' + res.status);
 
-  img.onerror = function() {
-    console.warn('[CAM] Stream error, retrying in 3s...');
-    img.src = '';
-    _camRetryTimer = setTimeout(() => _startMjpeg(width), 3000);
-  };
+    const reader = res.body.getReader();
+    let buf = new Uint8Array(0);
 
-  img.src = url;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      // Append chunk to buffer
+      const tmp = new Uint8Array(buf.length + value.length);
+      tmp.set(buf); tmp.set(value, buf.length);
+      buf = tmp;
+
+      // Extract JPEG frames from multipart stream
+      while (true) {
+        // Find JPEG start (FFD8) and end (FFD9)
+        let jpegStart = -1;
+        for (let i = 0; i < buf.length - 1; i++) {
+          if (buf[i] === 0xFF && buf[i+1] === 0xD8) { jpegStart = i; break; }
+        }
+        if (jpegStart < 0) break;
+
+        let jpegEnd = -1;
+        for (let i = jpegStart + 2; i < buf.length - 1; i++) {
+          if (buf[i] === 0xFF && buf[i+1] === 0xD9) { jpegEnd = i + 2; break; }
+        }
+        if (jpegEnd < 0) break;
+
+        // Got a complete JPEG frame
+        const frame = buf.slice(jpegStart, jpegEnd);
+        buf = buf.slice(jpegEnd);
+
+        // Display frame
+        const blob = new Blob([frame], { type: 'image/jpeg' });
+        const blobUrl = URL.createObjectURL(blob);
+        const prev = img.src;
+        img.src = blobUrl;
+        if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+      }
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    console.warn('[CAM] Stream error, retrying in 3s...', e.message);
+  }
+  // Retry on disconnect
+  _camRetryTimer = setTimeout(() => _startMjpegFetch(width), 3000);
 }
 
 function changeCameraRes() {
@@ -426,9 +473,9 @@ const DeviceWatcher = (() => {
   function showOverlay() {
     ensureOverlay().classList.add('show');
     // Kill stale camera stream so last frame doesn't linger
+    _stopCameraStream();
     const cam = $('p-camera');
     if (cam) cam.src = '';
-    if (_camRetryTimer) { clearTimeout(_camRetryTimer); _camRetryTimer = null; }
     // Accelerate polling while down
     schedule(PERIOD_DOWN);
   }
