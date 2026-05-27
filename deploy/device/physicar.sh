@@ -129,6 +129,21 @@ fi
 
 # Run in background — nothing below depends on hotspot being ready
 (
+  # ── Purge ghost netplan passthrough files (physicar-hotspot only) ──
+  # nmcli connection add creates /etc/netplan/90-NM-*.yaml passthrough files.
+  # If netplan can't clean them (read-only FS at early boot), ghosts accumulate
+  # and make subsequent boots extremely slow. We now write a NM keyfile directly
+  # to /etc/NetworkManager/system-connections/ to bypass netplan entirely.
+  _ghost_files=$(find /etc/netplan -maxdepth 1 -name '90-NM-*-physicar-*.yaml' 2>/dev/null)
+  if [ -n "$_ghost_files" ]; then
+    _ghost_count=$(echo "$_ghost_files" | wc -l)
+    echo "[physicar] Cleaning ${_ghost_count} ghost netplan hotspot files"
+    echo "$_ghost_files" | xargs sudo rm -f 2>/dev/null
+    sudo rm -f /run/NetworkManager/system-connections/netplan-NM-*-physicar-*.nmconnection 2>/dev/null
+    sudo nmcli connection reload 2>/dev/null || true
+    sleep 1
+  fi
+
   if ! iw dev ap0 info &>/dev/null; then
     sudo iw dev wlan0 interface add ap0 type __ap 2>/dev/null || true
   fi
@@ -149,9 +164,9 @@ fi
     done
   fi
 
+  _ap_band_kf=""
+  _ap_channel_kf=""
   if [ "$_sta_connected" = "1" ]; then
-    _ap_band=""
-    _ap_channel=""
     echo "[physicar] STA on ${_sta_freq} MHz; hotspot follows STA channel"
   else
     _best_channel=$(sudo iw dev wlan0 scan 2>/dev/null \
@@ -163,8 +178,8 @@ fi
             else if(c1<=c6)print 1;
             else print 6}')
     : "${_best_channel:=6}"
-    _ap_band="wifi.band bg"
-    _ap_channel="wifi.channel $_best_channel"
+    _ap_band_kf="band=bg"
+    _ap_channel_kf="channel=${_best_channel}"
     echo "[physicar] Hotspot channel: ${_best_channel} (2.4 GHz)"
   fi
 
@@ -189,35 +204,64 @@ fi
     echo "server=8.8.4.4"
   } | sudo tee /etc/NetworkManager/dnsmasq-shared.d/physicar.conf > /dev/null
 
-  _HOTSPOT_SSID=$(sudo nmcli -t -f 802-11-wireless.ssid connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
-  _HOTSPOT_PSK=$(sudo nmcli -s -t -f 802-11-wireless-security.psk connection show physicar-hotspot 2>/dev/null | cut -d: -f2)
+  # ── Hotspot connection via NM keyfile (bypasses netplan passthrough) ──
+  _HOTSPOT_FILE="/etc/NetworkManager/system-connections/physicar-hotspot.nmconnection"
+  _need_write=1
 
-  if [ "$_HOTSPOT_SSID" = "$DEVICE_HOSTNAME" ] && [ "$_HOTSPOT_PSK" = "$PASSWORD" ]; then
-    if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
-      sudo nmcli connection up physicar-hotspot &>/dev/null && \
-        echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
-        echo "[physicar] WARNING: Hotspot failed to start" >&2
-    else
-      echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
+  if [ -f "$_HOTSPOT_FILE" ]; then
+    _file_ssid=$(sudo grep -m1 '^ssid=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
+    _file_psk=$(sudo grep -m1 '^psk=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
+    if [ "$_file_ssid" = "$DEVICE_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ]; then
+      _need_write=0
     fi
-  else
-    sudo nmcli connection delete physicar-hotspot &>/dev/null || true
-    sleep 1
-    if iw dev ap0 info &>/dev/null; then
-      sudo nmcli connection add \
-        type wifi ifname ap0 con-name physicar-hotspot \
-        autoconnect no ssid "$DEVICE_HOSTNAME" \
-        wifi.mode ap $_ap_band $_ap_channel \
-        wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PASSWORD" \
-        wifi-sec.wps-method 0x1 \
-        ipv4.method shared ipv4.addresses 10.42.0.1/24 \
-        &>/dev/null
-      sudo nmcli connection up physicar-hotspot &>/dev/null && \
-        echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
-        echo "[physicar] WARNING: Hotspot failed to start" >&2
-    else
+  fi
+
+  if [ "$_need_write" = "1" ]; then
+    if ! iw dev ap0 info &>/dev/null; then
       echo "[physicar] WARNING: Could not create AP interface" >&2
+      exit 1
     fi
+    sudo tee "$_HOTSPOT_FILE" > /dev/null <<HOTSPOT_KF
+[connection]
+id=physicar-hotspot
+uuid=$(cat /proc/sys/kernel/random/uuid)
+type=wifi
+interface-name=ap0
+autoconnect=false
+
+[wifi]
+ssid=${DEVICE_HOSTNAME}
+mode=ap
+${_ap_band_kf}
+${_ap_channel_kf}
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=${PASSWORD}
+wps-method=1
+
+[ipv4]
+method=shared
+address1=10.42.0.1/24
+
+[ipv6]
+method=auto
+addr-gen-mode=default
+
+[proxy]
+HOTSPOT_KF
+    sudo chmod 600 "$_HOTSPOT_FILE"
+    sudo nmcli connection reload 2>/dev/null
+    sleep 1
+    echo "[physicar] Hotspot keyfile written"
+  fi
+
+  if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
+    sudo nmcli connection up physicar-hotspot &>/dev/null && \
+      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
+      echo "[physicar] WARNING: Hotspot failed to start" >&2
+  else
+    echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
   fi
 ) &
 
