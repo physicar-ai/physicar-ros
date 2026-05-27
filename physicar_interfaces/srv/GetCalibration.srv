@@ -24,6 +24,9 @@ float64 tilt_center
 # ESC direction
 bool reverse_direction   # true: 90° above = forward (reversed ESC)
 
+# Per-car speed gain (scales ESC duty offset)
+float64 speed_gain       # 0.1 ~ 5.0, default 1.0
+
 # Source of current calibration
 string source           # 'json_file', 'yaml_params', or 'defaults'
 string calibration_json # Full calibration as JSON string

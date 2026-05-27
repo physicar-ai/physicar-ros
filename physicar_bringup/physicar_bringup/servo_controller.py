@@ -75,7 +75,7 @@ class ServoController:
     # Per-type constants (type determined by reverse_direction flag):
     #   Type1 (reverse_direction=False): a1, k1, d1, p1
     #   Type2 (reverse_direction=True):  a2, k2, d2, p2
-    # G (esc_gain) is a per-car calibration scalar (default 1.0).
+    # G (speed_gain) is a per-car calibration scalar (default 1.0).
     ESC_A1 = 37937;  ESC_K1 = 1.150;  ESC_D1 = 73177;  ESC_P1 = 0.810
     ESC_A2 = 37773;  ESC_K2 = 1.186;  ESC_D2 = 93981;  ESC_P2 = 0.913
     ESC_REF_VOLTAGE = 7.4   # reference voltage for calibration data
@@ -128,8 +128,8 @@ class ServoController:
         # Steering sine-model ratio
         self.steering_ratio = self.DEFAULT_STEERING_RATIO
 
-        # ESC per-car calibration gain (default 1.0)
-        self.esc_gain = 1.0
+        # Per-car speed calibration gain (default 1.0)
+        self.speed_gain = 1.0
 
     def connect(self) -> bool:
         """Connect to the Yahboom board."""
@@ -231,7 +231,7 @@ class ServoController:
             duty_ns   = CENTER ± offset_ns
 
         Type is selected by reverse_direction (inverted flag).
-        G (esc_gain) is a per-car calibration scalar.
+        G (speed_gain) is a per-car calibration scalar.
         p is the forward/reverse asymmetry ratio for each type.
         Voltage compensation: higher voltage → less offset needed.
 
@@ -260,9 +260,9 @@ class ServoController:
         # Direction-dependent gain: p applied to the weaker direction
         #   rev=F: G_fwd=G, G_bwd=G*p   |  rev=T: G_fwd=G*p, G_bwd=G
         if reverse_direction:
-            g_dir = self.esc_gain * p if speed_mps > 0 else self.esc_gain
+            g_dir = self.speed_gain * p if speed_mps > 0 else self.speed_gain
         else:
-            g_dir = self.esc_gain if speed_mps > 0 else self.esc_gain * p
+            g_dir = self.speed_gain if speed_mps > 0 else self.speed_gain * p
 
         # Voltage compensation: calibrated at V_ref, scale inversely
         v_comp = self.ESC_REF_VOLTAGE / max(voltage, 5.0)
@@ -295,7 +295,7 @@ class ServoController:
             a, k, d = self.ESC_A2, self.ESC_K2, self.ESC_D2
         else:
             a, k, d = self.ESC_A1, self.ESC_K1, self.ESC_D1
-        return self.esc_gain * (a * speed_mps ** k + d)
+        return self.speed_gain * (a * speed_mps ** k + d)
 
     def set_pan_tilt_normalized(self, pan: float, tilt: float) -> bool:
         """Set camera pan-tilt with normalized values."""

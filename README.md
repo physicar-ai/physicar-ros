@@ -248,7 +248,7 @@ Routers (mounted in `main.py`):
 | `/state`, `/state/{odom,battery,imu,camera,camera/{pan,tilt},lidar,audio}` | `state` | JSON snapshot or SSE (`?stream=true` / `Accept: text/event-stream`). `/state/camera/image` returns JPEG (or MJPEG with `?stream=true`, optional `?width=&height=`). `/state/lidar?step=N` decimates the scan. |
 | `/control/{speed,steering,camera/pan,camera/tilt,audio}` | `control` | Posts a single value to the matching ROS 2 topic |
 | `/agent/tool/{list,get,call,set,delete,reset}` | `agent` | Manage and invoke agent tools (Python source + PEP 723 deps) |
-| `/calibration`, `/calibration/{steering,pan,tilt,reverse}` | `calibration` | Read / write `/home/physicar/physicar_ws/userdata/calibration.json` |
+| `/calibration`, `/calibration/{steering,pan,tilt,reverse,speed_gain}` | `calibration` | Read / write `/home/physicar/physicar_ws/userdata/calibration.json` |
 | `/teleop/joy`, `/teleop/joy/mapping` | `joy` | Joystick mapping CRUD |
 | `/teleop` | `teleop` | Source-agnostic teleop status / lock |
 | `/network`, `/network/bluetooth` | `network`, `bluetooth` | WiFi / BT pairing |
@@ -368,6 +368,7 @@ physicar_driver:
     steering_center: 0.0
 
     reverse_direction: false           # true = ESC polarity reversed
+    speed_gain: 1.0                    # per-car speed gain (0.1 ~ 5.0)
 
     # Geometry (matches the URDF)
     wheel_radius: 0.0375               # 75 mm wheel

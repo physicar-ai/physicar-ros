@@ -725,6 +725,7 @@ class ROSBridge:
             'pan_center': response.pan_center,
             'tilt_center': response.tilt_center,
             'reverse_direction': response.reverse_direction,
+            'speed_gain': response.speed_gain,
             'source': response.source,
         }
     

@@ -27,7 +27,7 @@ physicar_driver:
     reverse_direction: false     # true: above 90° = forward, false: below 90° = forward
 
     # ESC per-car calibration gain (scales duty offset; default 1.0)
-    esc_gain: 1.0
+    speed_gain: 1.0
 
     # Robot physical parameters (from URDF measurements)
     wheel_radius: 0.0375        # meters (37.5mm wheel, 7.5cm diameter)

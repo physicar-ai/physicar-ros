@@ -981,7 +981,8 @@
             steering_center: 0,
             pan_center: 0,
             tilt_center: 0,
-            reverse_direction: false
+            reverse_direction: false,
+            speed_gain: 1.0
         };
         
         async function loadCalibration() {
@@ -1025,6 +1026,8 @@
             
             // Reverse Direction
             document.getElementById('cal-reverse').checked = calibrationData.reverse_direction;
+            // Speed Gain
+            document.getElementById('cal-speed-gain').textContent = `${(calibrationData.speed_gain || 1.0).toFixed(1)}x`;
         }
         
         async function adjustCenter(channel, delta) {
@@ -1068,6 +1071,26 @@
             } catch (e) {
                 showToast('Error: ' + e.message, true);
                 document.getElementById('cal-reverse').checked = !newValue;
+            }
+        }
+
+        async function adjustSpeedGain(delta) {
+            const newValue = Math.round(Math.max(0.1, Math.min(5.0, (calibrationData.speed_gain || 1.0) + delta)) * 10) / 10;
+            try {
+                const res = await fetch('/kiosk/calibration/speed_gain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({speed_gain: newValue})
+                });
+                if (res.ok) {
+                    calibrationData.speed_gain = newValue;
+                    updateCalibrationUI();
+                } else {
+                    const err = await res.json();
+                    showToast(err.detail || 'Failed', true);
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, true);
             }
         }
 

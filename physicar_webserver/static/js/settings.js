@@ -13,6 +13,7 @@ const SETTINGS = (() => {
     pan_center: 0,
     tilt_center: 0,
     reverse_direction: false,
+    speed_gain: 1.0,
   };
 
   // Joystick sub-panel (created lazily on first switch to its tab so the
@@ -166,6 +167,7 @@ const SETTINGS = (() => {
     el('settings-cal-pan').textContent = `${cal.pan_center}°`;
     el('settings-cal-tilt').textContent = `${cal.tilt_center}°`;
     el('settings-cal-reverse').checked = !!cal.reverse_direction;
+    el('settings-cal-speed-gain').textContent = `${(cal.speed_gain || 1.0).toFixed(1)}x`;
   }
 
   async function adjust(channel, delta) {
@@ -205,6 +207,26 @@ const SETTINGS = (() => {
       }
     } catch (e) {
       el('settings-cal-reverse').checked = !v;
+      if (typeof showToast === 'function') showToast('Error: ' + e.message, true);
+    }
+  }
+
+  async function adjustGain(delta) {
+    const newValue = Math.round(Math.max(0.1, Math.min(5.0, (cal.speed_gain || 1.0) + delta)) * 10) / 10;
+    try {
+      const res = await fetch('/kiosk/calibration/speed_gain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speed_gain: newValue }),
+      });
+      if (res.ok) {
+        cal.speed_gain = newValue;
+        renderCal();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        if (typeof showToast === 'function') showToast(d.detail || 'Failed', true);
+      }
+    } catch (e) {
       if (typeof showToast === 'function') showToast('Error: ' + e.message, true);
     }
   }
@@ -345,7 +367,7 @@ const SETTINGS = (() => {
   }
 
   return {
-    open, close, switchTab, togglePw, adjust, toggleReverse,
+    open, close, switchTab, togglePw, adjust, adjustGain, toggleReverse,
     changePassword, resetPassword, sanitizePw, toggleNewPw,
     joyToggleEnabled: () => { const jp = ensureJoyPanel(); if (jp) jp.toggleEnabled(); },
     joyReset:        () => { const jp = ensureJoyPanel(); if (jp) jp.reset(); },

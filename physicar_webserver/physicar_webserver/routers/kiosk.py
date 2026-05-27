@@ -109,6 +109,10 @@ class CalibrationReverseRequest(BaseModel):
     reverse_direction: bool
 
 
+class CalibrationSpeedGainRequest(BaseModel):
+    speed_gain: float  # 0.1 ~ 5.0
+
+
 @router.get("/kiosk/calibration")
 async def get_calibration(
     request: Request,
@@ -145,6 +149,7 @@ async def get_calibration(
                 "pan_center": result.get('pan_center', 0.0),
                 "tilt_center": result.get('tilt_center', 0.0),
                 "reverse_direction": result.get('reverse_direction', False),
+                "speed_gain": result.get('speed_gain', 1.0),
             }
         else:
             raise HTTPException(status_code=500, detail=result.get('message', 'Failed to get calibration'))
@@ -207,6 +212,35 @@ async def set_calibration_reverse(request: CalibrationReverseRequest):
             return {"success": True, "message": result.get('message', 'OK')}
         else:
             raise HTTPException(status_code=500, detail=result.get('message', 'Failed to set reverse'))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ROS service error: {str(e)}")
+
+
+@router.post("/kiosk/calibration/speed_gain")
+async def set_calibration_speed_gain(request: CalibrationSpeedGainRequest):
+    """
+    Set per-car speed gain (0.1 ~ 5.0).
+    """
+    if not 0.1 <= request.speed_gain <= 5.0:
+        raise HTTPException(status_code=400, detail="speed_gain must be between 0.1 and 5.0")
+
+    try:
+        bridge = get_ros_bridge()
+        if not bridge.is_ready:
+            raise HTTPException(status_code=503, detail="ROS bridge not ready")
+
+        result = await bridge.set_calibration(
+            channel="speed_gain",
+            max_value=request.speed_gain,
+            save=True
+        )
+        if result.get('success'):
+            _bump_calibration()
+            return {"success": True, "message": result.get('message', 'OK')}
+        else:
+            raise HTTPException(status_code=500, detail=result.get('message', 'Failed to set speed_gain'))
     except HTTPException:
         raise
     except Exception as e:

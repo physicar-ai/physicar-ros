@@ -204,11 +204,23 @@
                 <div class="set-tab-panel" id="settab-calibration">
                     <div class="calibration-grid">
                         <div class="calibration-item">
+                            <span class="calibration-label">Reverse Direction</span>
+                            <label class="cal-switch"><input type="checkbox" id="cal-reverse" onchange="toggleReverse()"><span class="cal-slider"></span></label>
+                        </div>
+                        <div class="calibration-item">
+                            <div class="calibration-label">Speed Gain</div>
+                            <div class="calibration-control">
+                                <button class="cal-btn" onclick="adjustSpeedGain(-0.1)">−</button>
+                                <span class="cal-value" id="cal-speed-gain">1.0x</span>
+                                <button class="cal-btn" onclick="adjustSpeedGain(0.1)">+</button>
+                            </div>
+                        </div>
+                        <div class="calibration-item">
                             <div class="calibration-label">Steering Center</div>
                             <div class="calibration-control">
-                                <button class="cal-btn" onclick="adjustCenter('steering', -1)">−</button>
+                                <button class="cal-btn" onclick="adjustCenter('steering', -0.5)">−</button>
                                 <span class="cal-value" id="cal-steering">0°</span>
-                                <button class="cal-btn" onclick="adjustCenter('steering', 1)">+</button>
+                                <button class="cal-btn" onclick="adjustCenter('steering', 0.5)">+</button>
                             </div>
                         </div>
                         <div class="calibration-item">
@@ -226,10 +238,6 @@
                                 <span class="cal-value" id="cal-tilt">0°</span>
                                 <button class="cal-btn" onclick="adjustCenter('tilt', 1)">+</button>
                             </div>
-                        </div>
-                        <div class="calibration-item">
-                            <span class="calibration-label">Reverse Direction</span>
-                            <label class="cal-switch"><input type="checkbox" id="cal-reverse" onchange="toggleReverse()"><span class="cal-slider"></span></label>
                         </div>
                     </div>
                 </div>

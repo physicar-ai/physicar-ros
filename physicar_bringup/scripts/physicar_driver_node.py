@@ -80,8 +80,8 @@ class CalibrationData:
     # ESC direction
     reverse_direction: bool = False  # True: above 90° = forward (reversed ESC)
     
-    # ESC per-car calibration gain (scales duty offset; default 1.0)
-    esc_gain: float = 1.0
+    # Per-car speed gain (scales ESC duty offset; default 1.0)
+    speed_gain: float = 1.0
     
     # Metadata
     source: str = 'defaults'  # 'json_file', 'yaml_params', 'defaults'
@@ -94,7 +94,7 @@ class CalibrationData:
             'pan_center': self.pan_center,
             'tilt_center': self.tilt_center,
             'reverse_direction': self.reverse_direction,
-            'esc_gain': self.esc_gain,
+            'speed_gain': self.speed_gain,
         }
         return d
     
@@ -129,7 +129,7 @@ class CalibrationData:
             pan_center=_f('pan_center', 0.0, -30.0, 30.0),
             tilt_center=_f('tilt_center', 0.0, -30.0, 30.0),
             reverse_direction=_b('reverse_direction', False),
-            esc_gain=_f('esc_gain', 1.0, 0.1, 5.0),
+            speed_gain=_f('speed_gain', _f('esc_gain', 1.0, 0.1, 5.0), 0.1, 5.0),
             source=source,
             is_saved=(source == 'json_file'),
         )
@@ -174,7 +174,7 @@ class PhysicarDriverNode(Node):
 
         # ESC direction
         self.declare_parameter('reverse_direction', False)  # true: above 90° = forward
-        self.declare_parameter('esc_gain', 1.0)  # per-car ESC calibration gain
+        self.declare_parameter('speed_gain', 1.0)  # per-car speed calibration gain
 
         # Robot physical parameters (from URDF/measurements)
         self.declare_parameter('wheel_radius', 0.0375)
@@ -709,7 +709,7 @@ class PhysicarDriverNode(Node):
             pan_center=self.get_parameter('pan_center').value,
             tilt_center=self.get_parameter('tilt_center').value,
             reverse_direction=self.get_parameter('reverse_direction').value,
-            esc_gain=self.get_parameter('esc_gain').value,
+            speed_gain=self.get_parameter('speed_gain').value,
             source='yaml_params',
             is_saved=False,
         )
@@ -772,13 +772,13 @@ class PhysicarDriverNode(Node):
         self.get_logger().info(f'  Pan: max=±{self.MAX_PAN}°, center={cal.pan_center}°')
         self.get_logger().info(f'  Tilt: max=±{self.MAX_TILT}°, center={cal.tilt_center}°')
         self.get_logger().info(f'  ESC reverse_direction: {cal.reverse_direction}')
-        self.get_logger().info(f'  ESC gain: {cal.esc_gain}')
+        self.get_logger().info(f'  Speed gain: {cal.speed_gain}')
         
         # Apply reverse_direction as inversion on throttle channel
         self.servo.set_inverted(ServoController.CHANNEL_THROTTLE, cal.reverse_direction)
         
         # Apply ESC gain
-        self.servo.esc_gain = cal.esc_gain
+        self.servo.speed_gain = cal.speed_gain
         
         # Publish status if available
         self._publish_calibration_status()
@@ -828,7 +828,7 @@ class PhysicarDriverNode(Node):
     def set_calibration_callback(self, request, response):
         """Set calibration values, apply, and optionally save.
         
-        channel: 'steering', 'pan', 'tilt', 'reverse', or 'all' (reload from file)
+        channel: 'steering', 'pan', 'tilt', 'reverse', 'speed_gain', or 'all' (reload from file)
         
         Range limits:
             pan_center, tilt_center, steering_center: -15 ~ 15°
@@ -870,6 +870,19 @@ class PhysicarDriverNode(Node):
             # Speed max is a hardware constant — reject
             response.success = False
             response.message = f'max_speed is a hardware constant ({self.MAX_SPEED} m/s), not adjustable'
+        elif channel == 'speed_gain':
+            # Set per-car speed gain
+            gain = request.max_value
+            if gain < 0.1 or gain > 5.0:
+                response.success = False
+                response.message = f'speed_gain={gain} out of range [0.1, 5.0]'
+                response.current_calibration_json = self.calibration.to_json()
+                return response
+            self.calibration.speed_gain = gain
+            self.calibration.is_saved = False
+            self._apply_calibration_to_servos()
+            response.success = True
+            response.message = f'speed_gain set to {gain}'
         elif channel in ['steering', 'pan', 'tilt']:
             # Set center only (max is hardware constant)
             valid_center, err_center = validate_range(f'{channel}_center', request.center_value)
@@ -904,7 +917,7 @@ class PhysicarDriverNode(Node):
             response.message = f'{base}: center={request.center_value}° (moved to center)'
         else:
             response.success = False
-            response.message = f'Invalid channel: {channel}. Use steering, pan, tilt, steering_center, pan_center, tilt_center, reverse, or all'
+            response.message = f'Invalid channel: {channel}. Use steering, pan, tilt, steering_center, pan_center, tilt_center, reverse, speed_gain, or all'
             response.current_calibration_json = self.calibration.to_json()
             return response
         
@@ -930,6 +943,7 @@ class PhysicarDriverNode(Node):
         response.pan_center = self.calibration.pan_center
         response.tilt_center = self.calibration.tilt_center
         response.reverse_direction = self.calibration.reverse_direction
+        response.speed_gain = self.calibration.speed_gain
         response.source = self.calibration.source
         response.calibration_json = self.calibration.to_json()
         return response
