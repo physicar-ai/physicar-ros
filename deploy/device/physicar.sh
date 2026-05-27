@@ -251,6 +251,12 @@ fi
 
 # ────────────────── Virtual Display + VNC ──────────────────
 
+# VirtualGL: redirect OpenGL from Xvfb(:1) to GPU on Xorg(:0)
+export VGL_DISPLAY=:0
+export LD_PRELOAD=/usr/lib/libvglfaker.so
+export XDG_RUNTIME_DIR=/tmp/runtime-$(id -u)
+mkdir -p "$XDG_RUNTIME_DIR"
+
 if ! pgrep -x Xvfb > /dev/null 2>&1; then
   Xvfb :1 -screen 0 800x600x24 &>/dev/null &
   sleep 1

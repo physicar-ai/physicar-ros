@@ -1,6 +1,9 @@
 
 # physicar
 export DISPLAY=:1
+export XDG_RUNTIME_DIR=/tmp/runtime-$(id -u)
+export VGL_DISPLAY=:0
+export LD_PRELOAD=/usr/lib/libvglfaker.so
 export PHYSICAR_ROS_DIR=~/physicar_ws/src/physicar-ros
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml

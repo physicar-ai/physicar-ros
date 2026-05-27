@@ -138,7 +138,7 @@ apt-get install -y \
 # ── VirtualGL: forward GPU rendering to noVNC (:1) ──
 # Xvfb(:1) renders with llvmpipe (CPU), making 3D apps like rviz2 slow.
 # VirtualGL borrows the V3D GPU on Xorg(:0) and sends pixels to :1.
-# Usage: DISPLAY=:1 vglrun -d :0 rviz2
+# Auto-enabled via LD_PRELOAD in bashrc-append and physicar.sh — no manual vglrun needed.
 VGL_VER="3.1.4"
 if ! dpkg -s virtualgl &>/dev/null; then
   curl -fLo /tmp/virtualgl_${VGL_VER}_arm64.deb \
