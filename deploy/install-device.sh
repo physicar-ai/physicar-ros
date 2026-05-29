@@ -367,15 +367,6 @@ rm -f /etc/netplan/50-cloud-init.yaml 2>/dev/null || true
 netplan generate 2>/dev/null || true
 netplan apply 2>/dev/null || true
 
-# ── Clean up ghost netplan passthrough files (from nmcli connection add) ──
-# The boot script (physicar.sh) now writes hotspot keyfiles directly to
-# /etc/NetworkManager/system-connections/ to bypass netplan passthrough.
-# Remove any leftover ghost files that would cause duplicate connections.
-rm -f /etc/netplan/90-NM-*-physicar-*.yaml 2>/dev/null || true
-rm -f /run/NetworkManager/system-connections/netplan-NM-*-physicar-*.nmconnection 2>/dev/null || true
-rm -f /etc/NetworkManager/system-connections/physicar-hotspot.nmconnection 2>/dev/null || true
-nmcli connection reload 2>/dev/null || true
-
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  4. Nginx                                                                  │
 # └─────────────────────────────────────────────────────────────────────────────┘
