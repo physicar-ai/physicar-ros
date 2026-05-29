@@ -3,6 +3,23 @@ project(physicar_bringup)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(rosgraph_msgs REQUIRED)
+
+# ── C++ nodes ──
+add_executable(scan_filter_node src/scan_filter_node.cpp)
+ament_target_dependencies(scan_filter_node rclcpp sensor_msgs)
+
+add_executable(topic_watchdog_node src/topic_watchdog_node.cpp)
+ament_target_dependencies(topic_watchdog_node rclcpp sensor_msgs nav_msgs rosgraph_msgs)
+
+install(TARGETS
+  scan_filter_node
+  topic_watchdog_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # Install Python package (symlinked with --symlink-install)
 ament_python_install_package(${PROJECT_NAME})
@@ -10,10 +27,8 @@ ament_python_install_package(${PROJECT_NAME})
 # Node executables (entry points)
 install(PROGRAMS
   scripts/physicar_driver_node.py
-  scripts/scan_filter_node.py
   scripts/audio_node.py
   scripts/cmd_vel_adapter_node.py
-  scripts/topic_watchdog_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -142,7 +142,7 @@ def generate_launch_description():
     # Scan filter: /scan → /scan_filtered (same as real robot)
     scan_filter = Node(
         package='physicar_bringup',
-        executable='scan_filter_node.py',
+        executable='scan_filter_node',
         name='scan_filter',
         output='screen',
         parameters=[
@@ -277,7 +277,7 @@ def generate_launch_description():
         actions=[
             Node(
                 package='physicar_bringup',
-                executable='topic_watchdog_node.py',
+                executable='topic_watchdog_node',
                 name='topic_watchdog',
                 output='screen',
                 parameters=[{'mode': 'sim'}],

@@ -127,7 +127,7 @@ def generate_launch_description():
     # Converts inf, nan, out-of-range values to 0 for proper handling
     scan_filter = Node(
         package='physicar_bringup',
-        executable='scan_filter_node.py',
+        executable='scan_filter_node',
         name='scan_filter',
         output='log',
         parameters=[{
@@ -301,7 +301,7 @@ def generate_launch_description():
         actions=[
             Node(
                 package='physicar_bringup',
-                executable='topic_watchdog_node.py',
+                executable='topic_watchdog_node',
                 name='topic_watchdog',
                 output='screen',
                 respawn=True,
