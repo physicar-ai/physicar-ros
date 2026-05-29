@@ -518,12 +518,6 @@ if [ ! -f "$EXT_MARKER" ]; then
   ) &
 fi
 
-# ────────────────── Auto-launch terminal on :1 ──────────────────
-
-DISPLAY=:1 xterm -geometry 80x24+80+50 -fa Monospace -fs 10 \
-  -bg black -fg white -title Terminal \
-  -e "cd ~ && bash -l" &>/dev/null &
-
 # ────────────────── ROS2 Launch ──────────────────
 
 export DISPLAY=:1

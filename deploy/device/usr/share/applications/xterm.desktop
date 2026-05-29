@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=Terminal
 Comment=Open a terminal window
-Exec=sh -c "runuser -u physicar -- env DISPLAY=:1 HOME=/home/physicar xterm -fa Monospace -fs 10 -bg black -fg white -title Terminal -e 'cd ~ && bash -l'"
+Exec=xterm -fa Monospace -fs 10 -bg black -fg white -title Terminal -e "cd ~ && bash -l"
 Icon=utilities-terminal
 Terminal=false
 Categories=System;TerminalEmulator;
