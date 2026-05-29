@@ -374,7 +374,6 @@ physicar_driver:
     wheel_radius: 0.0375               # 75 mm wheel
     wheelbase: 0.18                    # m
     track_width: 0.16                  # m
-    steering_ratio: 2.0                # sine model: servo = arcsin(sin(wheel) / k)
 
 rplidar_node:
   ros__parameters:

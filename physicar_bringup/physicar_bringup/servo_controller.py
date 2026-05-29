@@ -131,14 +131,6 @@ class ServoController:
         # Per-car speed calibration gain (default 1.0)
         self.speed_gain = 1.0
 
-    def connect(self) -> bool:
-        """Connect to the Yahboom board."""
-        return self.board.connect()
-
-    def disconnect(self):
-        """Disconnect from the board."""
-        self.board.disconnect()
-
     def set_trim(self, channel: int, trim_degrees: float):
         """Set trim offset for a servo channel."""
         if channel in self.trim:
@@ -180,20 +172,6 @@ class ServoController:
 
         return self.board.set_servo(channel, angle)
 
-    def set_pan(self, angle: float) -> bool:
-        """Set camera pan angle (0-180°, 90=center)."""
-        return self._apply_angle(self.CHANNEL_PAN, angle)
-
-    def set_tilt(self, angle: float) -> bool:
-        """Set camera tilt angle (0-180°, 90=center)."""
-        return self._apply_angle(self.CHANNEL_TILT, angle)
-
-    def set_steering(self, normalized: float) -> bool:
-        """Set steering position (-1.0=left, 0=center, 1.0=right)."""
-        limits = self.limits[self.CHANNEL_STEERING]
-        angle = limits.from_normalized(normalized)
-        return self._apply_angle(self.CHANNEL_STEERING, angle)
-
     def set_steering_wheel_angle(self, wheel_angle_deg: float) -> bool:
         """Set steering from wheel angle (degrees) via Ackermann sine model.
 
@@ -216,12 +194,6 @@ class ServoController:
 
         angle = self.SERVO_CENTER + servo_offset
         return self._apply_angle(self.CHANNEL_STEERING, angle)
-
-    def set_throttle(self, normalized: float) -> bool:
-        """Set throttle position (-1.0=reverse, 0=neutral, 1.0=forward)."""
-        limits = self.limits[self.CHANNEL_THROTTLE]
-        angle = limits.from_normalized(normalized)
-        return self._apply_angle(self.CHANNEL_THROTTLE, angle)
 
     def set_throttle_speed(self, speed_mps: float, voltage: float = 7.4) -> bool:
         """Convert speed (m/s) to ESC duty cycle and apply directly.
@@ -280,35 +252,6 @@ class ServoController:
         # Fallback: convert duty_ns to angle
         angle = (duty_ns - 500_000) / 2_000_000 * 180.0
         return self.board.set_servo(self.CHANNEL_THROTTLE, angle)
-
-    def speed_to_duty_offset_ns(self, speed_mps: float) -> float:
-        """Convert absolute speed to ESC duty offset in nanoseconds (for logging/debug).
-
-        Args:
-            speed_mps: absolute speed (m/s, must be > 0)
-
-        Returns:
-            ESC duty offset from center (ns)
-        """
-        reverse_direction = self.inverted.get(self.CHANNEL_THROTTLE, False)
-        if reverse_direction:
-            a, k, d = self.ESC_A2, self.ESC_K2, self.ESC_D2
-        else:
-            a, k, d = self.ESC_A1, self.ESC_K1, self.ESC_D1
-        return self.speed_gain * (a * speed_mps ** k + d)
-
-    def set_pan_tilt_normalized(self, pan: float, tilt: float) -> bool:
-        """Set camera pan-tilt with normalized values."""
-        pan_limits = self.limits[self.CHANNEL_PAN]
-        tilt_limits = self.limits[self.CHANNEL_TILT]
-
-        pan_angle = pan_limits.from_normalized(pan)
-        tilt_angle = tilt_limits.from_normalized(tilt)
-
-        result_pan = self._apply_angle(self.CHANNEL_PAN, pan_angle)
-        result_tilt = self._apply_angle(self.CHANNEL_TILT, tilt_angle)
-
-        return result_pan and result_tilt
 
     def center_all(self) -> bool:
         """Center all servos to their default positions."""

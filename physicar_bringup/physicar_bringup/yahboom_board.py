@@ -33,7 +33,7 @@ PWM Servo channels:
 import logging
 import time
 import threading
-from typing import Optional, Tuple
+from typing import Optional
 
 try:
     # Use Rosmaster_Lib bundled inside this package
@@ -167,46 +167,6 @@ class YahboomBoard:
                 self._logger.error(f"Error setting servo {channel}: {e}")
                 return False
 
-    def set_servo_pulse(self, channel: int, pulse_us: int) -> bool:
-        """
-        Set servo position by pulse width.
-        Converts pulse width to angle and uses set_servo.
-
-        Args:
-            channel: Servo channel (1-4)
-            pulse_us: Pulse width in microseconds (500-2500)
-
-        Returns:
-            True if command sent successfully
-        """
-        # Convert pulse to angle: 500us=0deg, 1500us=90deg, 2500us=180deg
-        pulse_us = max(500, min(2500, pulse_us))
-        angle = (pulse_us - 500) / 2000.0 * 180.0
-        return self.set_servo(channel, angle)
-
-    def set_steering(self, value: float) -> bool:
-        """
-        [DEPRECATED] Use ServoController.set_steering() instead.
-        This method has hardcoded range (45°) - use ServoController for calibrated control.
-        """
-        import warnings
-        warnings.warn("YahboomBoard.set_steering() is deprecated. Use ServoController.set_steering()", DeprecationWarning)
-        # Convert -1.0~1.0 to servo angle (0-180)
-        servo_angle = 90 + (value * 45)  # +/-45 degrees from center
-        return self.set_servo(2, servo_angle)
-
-    def set_throttle(self, value: float) -> bool:
-        """
-        [DEPRECATED] Use direct ESC control via set_servo(1, angle) with voltage-compensated model.
-        This method has hardcoded range (45°) - use physicar_driver_node's ESC model instead.
-        """
-        import warnings
-        warnings.warn("YahboomBoard.set_throttle() is deprecated. Use ESC model in physicar_driver_node", DeprecationWarning)
-        # Convert -1.0~1.0 to servo angle
-        # 90 = neutral, >90 = forward, <90 = reverse
-        servo_angle = 90 + (value * 45)
-        return self.set_servo(1, servo_angle)
-
     def set_pan_tilt(self, pan: float, tilt: float) -> bool:
         """
         Set camera pan-tilt position.
@@ -259,35 +219,6 @@ class YahboomBoard:
                 self._logger.error(f"Error reading IMU: {e}")
                 return None
 
-    def set_rgb_led(self, r: int, g: int, b: int) -> bool:
-        """
-        Set RGB LED color.
-
-        Args:
-            r, g, b: Color values (0-255)
-
-        Returns:
-            True if command sent successfully
-        """
-        if not self.is_connected():
-            return False
-
-        r = max(0, min(255, r))
-        g = max(0, min(255, g))
-        b = max(0, min(255, b))
-
-        # Combine to single color value
-        color = (r << 16) | (g << 8) | b
-
-        with self._lock:
-            try:
-                # mode=1 is solid color, speed=100%
-                self._bot.set_colorful_effect(1, 100, color)
-                return True
-            except Exception as e:
-                self._logger.error(f"Error setting RGB LED: {e}")
-                return False
-
     def beep(self, duration_ms: int = 100) -> bool:
         """
         Activate buzzer.
@@ -308,13 +239,6 @@ class YahboomBoard:
             except Exception as e:
                 self._logger.error(f"Error beeping: {e}")
                 return False
-
-    def center_all_servos(self) -> bool:
-        """Center all servos to 90 degrees."""
-        results = []
-        for ch in range(1, 5):
-            results.append(self.set_servo(ch, 90))
-        return all(results)
 
     def read_battery_voltage(self) -> Optional[float]:
         """
@@ -392,42 +316,3 @@ class YahboomBoard:
         cells = self.detect_cell_count(voltage)
         return self._BATTERY_RANGES[cells]['low']
 
-    # ========== Ackermann steering specific methods ==========
-
-    def set_akm_steering_angle(self, angle: int) -> bool:
-        """
-        Set Ackermann steering angle.
-        
-        Args:
-            angle: Steering angle for Ackermann geometry
-            
-        Returns:
-            True if command sent successfully
-        """
-        if not self.is_connected():
-            return False
-            
-        with self._lock:
-            try:
-                self._bot.set_akm_steering_angle(angle)
-                return True
-            except Exception as e:
-                self._logger.error(f"Error setting AKM steering: {e}")
-                return False
-
-    def get_encoder(self) -> Optional[Tuple[int, int, int, int]]:
-        """
-        Get motor encoder values.
-        
-        Returns:
-            Tuple of (m1, m2, m3, m4) encoder counts, or None if failed
-        """
-        if not self.is_connected():
-            return None
-            
-        with self._lock:
-            try:
-                return self._bot.get_motor_encoder()
-            except Exception as e:
-                self._logger.error(f"Error reading encoder: {e}")
-                return None

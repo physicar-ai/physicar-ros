@@ -32,7 +32,7 @@ from typing import Optional, Dict, Any
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry

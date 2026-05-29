@@ -33,8 +33,7 @@ physicar_driver:
     wheel_radius: 0.0375        # meters (37.5mm wheel, 7.5cm diameter)
     wheelbase: 0.18             # meters (front-to-rear axle distance, measured)
     track_width: 0.16           # meters (left-right wheel centre distance, measured)
-    steering_ratio: 1.47         # k = Rs/Rk (servo-horn / knuckle-arm radius ratio, for sine model)
-    # Note: sine model: servo_angle = arcsin(sin(wheel_angle) / k)
+    # steering_ratio is hardcoded in servo_controller.py (DEFAULT_STEERING_RATIO = 0.96)
 
 # RPLidar C1 Configuration
 rplidar_node:
