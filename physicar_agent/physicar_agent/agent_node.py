@@ -6,16 +6,16 @@ Services:
 - /agent/tool/list   : List tools
 - /agent/tool/get    : Get tool details / source code
 - /agent/tool/call   : Run a tool
-- /agent/tool/set    : Save entire tools.py and reload
-- /agent/tool/reload : Reload tools.py from disk
-- /agent/tool/reset  : Reset (restore builtins)
+- /agent/tool/set    : Save entire tools.py and load
+- /agent/tool/reload : Load tools from disk
+- /agent/tool/reset  : Delete tools.py, load builtin
 
 System tools (reserved, cannot be used as function names):
-- tool_list   : List tools
-- tool_get    : Get tool details / source code
-- tool_set    : Save entire tools.py
-- tool_reload : Reload tools from disk
-- tool_reset  : Reset
+- tool_list  : List tools
+- tool_get   : Get tool details / source code
+- tool_set   : Save entire tools.py
+- tool_load  : Load tools from disk
+- tool_reset : Reset to builtin
 """
 
 import json
@@ -39,8 +39,8 @@ class AgentNode(Node):
     def __init__(self):
         super().__init__('agent_node')
 
-        tool_count = registry.init_tools()
-        self.get_logger().info(f"Loaded {tool_count} tools into cache")
+        result = registry.load_tools()
+        self.get_logger().info(f"Loaded {result.tool_count} tools (success={result.success})")
 
         self._srv_cb_group = ReentrantCallbackGroup()
 
@@ -82,16 +82,26 @@ class AgentNode(Node):
 
     def handle_get(self, request, response):
         try:
-            info = registry.get_tool_info(request.name)
-            if info is None:
-                response.found = False
-                response.info_json = json.dumps({"error": f"Tool '{request.name}' not found"})
+            if not request.name:
+                # Empty name → return full source code
+                code = registry.get_tool_code()
+                if code is not None:
+                    response.found = True
+                    response.info_json = json.dumps({"code": code}, ensure_ascii=False)
+                else:
+                    response.found = False
+                    response.info_json = json.dumps({"error": "No tools loaded"})
             else:
-                response.found = True
-                if not request.include_code and 'code' in info:
-                    info = info.copy()
-                    del info['code']
-                response.info_json = json.dumps(info, ensure_ascii=False)
+                info = registry.get_tool_info(request.name)
+                if info is None:
+                    response.found = False
+                    response.info_json = json.dumps({"error": f"Tool '{request.name}' not found"})
+                else:
+                    response.found = True
+                    if not request.include_code and 'code' in info:
+                        info = info.copy()
+                        del info['code']
+                    response.info_json = json.dumps(info, ensure_ascii=False)
         except Exception as e:
             self.get_logger().error(f"Get error: {e}")
             response.found = False
@@ -104,14 +114,11 @@ class AgentNode(Node):
             tools = registry.list_tools(include_system=include_system)
             return [{"type": "text", "text": json.dumps(tools, ensure_ascii=False)}]
 
-        elif name == "tool_get":
-            tool_name = args.get("name")
-            if not tool_name:
-                return [{"type": "text", "text": "Error: 'name' is required"}]
-            info = registry.get_tool_info(tool_name)
-            if info is None:
-                return [{"type": "text", "text": json.dumps({"error": f"Tool '{tool_name}' not found"}, ensure_ascii=False)}]
-            return [{"type": "text", "text": json.dumps(info, ensure_ascii=False)}]
+        elif name == "tool_code":
+            code = registry.get_tool_code()
+            if code is None:
+                return [{"type": "text", "text": "No tools loaded"}]
+            return [{"type": "text", "text": code}]
 
         elif name == "tool_set":
             code = args.get("code")
@@ -120,13 +127,13 @@ class AgentNode(Node):
             result = registry.set_tools(code)
             return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
 
-        elif name == "tool_reload":
-            count = registry.reload_tools()
-            return [{"type": "text", "text": json.dumps({"success": True, "tool_count": count}, ensure_ascii=False)}]
+        elif name == "tool_load":
+            result = registry.load_tools()
+            return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
 
-        elif name == "tool_reset":
-            count = registry.reset_tools()
-            return [{"type": "text", "text": json.dumps({"success": True, "tool_count": count}, ensure_ascii=False)}]
+        elif name == "tool_init":
+            result = registry.init_tools()
+            return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
 
         else:
             return [{"type": "text", "text": f"Unknown system tool: {name}"}]
@@ -170,22 +177,28 @@ class AgentNode(Node):
 
     def handle_reload(self, request, response):
         try:
-            count = registry.reload_tools()
-            response.success = True
-            response.tool_count = count
-            self.get_logger().info(f"Reloaded {count} tools")
+            result = registry.load_tools()
+            response.success = result.success
+            response.tool_count = result.tool_count
+            if result.success:
+                self.get_logger().info(f"Loaded {result.tool_count} tools")
+            else:
+                self.get_logger().warn(f"Load failed: {result.message}")
         except Exception as e:
-            self.get_logger().error(f"Reload error: {e}")
+            self.get_logger().error(f"Load error: {e}")
             response.success = False
             response.tool_count = 0
         return response
 
     def handle_reset(self, request, response):
         try:
-            count = registry.reset_tools()
-            response.success = True
-            response.tool_count = count
-            self.get_logger().info(f"Reset: {count} tools restored")
+            result = registry.init_tools()
+            response.success = result.success
+            response.tool_count = result.tool_count
+            if result.success:
+                self.get_logger().info(f"Reset: {result.tool_count} tools loaded")
+            else:
+                self.get_logger().warn(f"Reset failed: {result.message}")
         except Exception as e:
             self.get_logger().error(f"Reset error: {e}")
             response.success = False

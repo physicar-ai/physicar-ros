@@ -26,6 +26,7 @@ ament_target_dependencies(physicar_driver_node
   rclcpp sensor_msgs nav_msgs geometry_msgs std_msgs std_srvs)
 if(physicar_interfaces_FOUND)
   ament_target_dependencies(physicar_driver_node physicar_interfaces)
+  target_compile_definitions(physicar_driver_node PRIVATE HAS_CUSTOM_INTERFACES=1)
 endif()
 
 install(TARGETS

@@ -5,7 +5,7 @@ PhysiCar DeepRacer Node
 ROS 2 node that provides DeepRacer inference for autonomous driving.
 
 Services:
-    - deepracer/load_model: Load a model from /home/physicar/physicar_ws/userdata/deepracer/models/
+    - deepracer/load_model: Load a model from /opt/physicar/userdata/deepracer/models/
     - deepracer/control: Start/stop inference
     - deepracer/status: Get current status
     - deepracer/set_config: Set runtime configuration
@@ -19,7 +19,7 @@ Publications:
     - /steering: Steering command (radians) when inference is running
 
 Configuration:
-    - 1st priority: /home/physicar/physicar_ws/userdata/deepracer/config.json
+    - 1st priority: /opt/physicar/userdata/deepracer/config.json
     - 2nd priority: ROS parameters (default values)
 """
 

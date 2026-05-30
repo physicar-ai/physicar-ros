@@ -38,17 +38,11 @@
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
-// Custom interfaces (optional)
-#if __has_include("physicar_interfaces/srv/set_calibration.hpp")
+// Custom interfaces (optional — HAS_CUSTOM_INTERFACES defined by CMake)
+#ifdef HAS_CUSTOM_INTERFACES
   #include "physicar_interfaces/srv/set_calibration.hpp"
   #include "physicar_interfaces/srv/get_calibration.hpp"
   #include "physicar_interfaces/msg/calibration_status.hpp"
-  #define HAS_CUSTOM_INTERFACES 1
-#else
-  #define HAS_CUSTOM_INTERFACES 0
-#endif
-
-#if __has_include("physicar_interfaces/msg/teleop_status.hpp")
   #include "physicar_interfaces/msg/teleop_status.hpp"
   #define HAS_TELEOP_STATUS 1
 #else
@@ -641,7 +635,7 @@ public:
     declare_parameter("wheelbase", 0.18);
     declare_parameter("track_width", 0.16);
     declare_parameter("calibration_file",
-      std::string("/home/physicar/physicar_ws/userdata/calibration.json"));
+      std::string("/opt/physicar/userdata/calibration.json"));
 
     auto serial_port = get_parameter("serial_port").as_string();
     imu_frame_id_ = get_parameter("imu_frame_id").as_string();
@@ -723,11 +717,11 @@ public:
 #endif
 
     // Services
-#if HAS_CUSTOM_INTERFACES
-    create_service<physicar_interfaces::srv::SetCalibration>(
+#ifdef HAS_CUSTOM_INTERFACES
+    set_cal_srv_ = create_service<physicar_interfaces::srv::SetCalibration>(
       "~/set_calibration",
       std::bind(&PhysicarDriverNode::set_calibration_cb, this, _1, _2));
-    create_service<physicar_interfaces::srv::GetCalibration>(
+    get_cal_srv_ = create_service<physicar_interfaces::srv::GetCalibration>(
       "~/get_calibration",
       std::bind(&PhysicarDriverNode::get_calibration_cb, this, _1, _2));
     cal_status_pub_ = create_publisher<physicar_interfaces::msg::CalibrationStatus>(
@@ -984,7 +978,7 @@ private:
   }
 
   void publish_calibration_status() {
-#if HAS_CUSTOM_INTERFACES
+#ifdef HAS_CUSTOM_INTERFACES
     if (!cal_status_pub_) return;
     auto msg = physicar_interfaces::msg::CalibrationStatus();
     msg.header.stamp = now();
@@ -1003,7 +997,7 @@ private:
 #endif
   }
 
-#if HAS_CUSTOM_INTERFACES
+#ifdef HAS_CUSTOM_INTERFACES
   void set_calibration_cb(
     const physicar_interfaces::srv::SetCalibration::Request::SharedPtr req,
     physicar_interfaces::srv::SetCalibration::Response::SharedPtr resp) {
@@ -1271,8 +1265,10 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
-#if HAS_CUSTOM_INTERFACES
+#ifdef HAS_CUSTOM_INTERFACES
   rclcpp::Publisher<physicar_interfaces::msg::CalibrationStatus>::SharedPtr cal_status_pub_;
+  rclcpp::Service<physicar_interfaces::srv::SetCalibration>::SharedPtr set_cal_srv_;
+  rclcpp::Service<physicar_interfaces::srv::GetCalibration>::SharedPtr get_cal_srv_;
 #endif
 
   // Timers & subscriptions (prevent destruction — callback groups hold WeakPtr)

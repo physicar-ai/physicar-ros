@@ -15,6 +15,33 @@
         let _wifiModalFromPopup = false;
 
         // ─────────────────────────────────────────────────────────────────────
+        // Confirm modal (replaces native confirm())
+        // ─────────────────────────────────────────────────────────────────────
+        function confirmModal(message, opts) {
+          opts = opts || {};
+          return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'kiosk-confirm-overlay';
+            overlay.innerHTML = `<div class="kiosk-confirm">
+              <div class="kiosk-confirm-body"></div>
+              <div class="kiosk-confirm-actions">
+                <button class="kiosk-confirm-btn cancel" data-act="cancel">${opts.cancelText || 'Cancel'}</button>
+                <button class="kiosk-confirm-btn danger" data-act="ok">${opts.okText || 'OK'}</button>
+              </div></div>`;
+            overlay.querySelector('.kiosk-confirm-body').textContent = message;
+            document.body.appendChild(overlay);
+            function close(v) { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(v); }
+            function onKey(e) { if (e.key === 'Escape') close(false); else if (e.key === 'Enter') close(true); }
+            overlay.addEventListener('click', (e) => {
+              const t = e.target.closest('button[data-act]');
+              if (t) close(t.dataset.act === 'ok');
+              else if (e.target === overlay) close(false);
+            });
+            document.addEventListener('keydown', onKey);
+          });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // Connect Spinner (shown during long-running wifi connect/activate)
         // ─────────────────────────────────────────────────────────────────────
         let _connectSpinnerSubTimer = null;
@@ -1534,7 +1561,7 @@
             }
             const v = validateKioskPw(np);
             if (!v.ok) { setMsg(v.message, 'err'); return; }
-            if (!confirm('This will reboot the device. Continue?')) return;
+            if (!await confirmModal('This will reboot the device. Continue?')) return;
             btn.disabled = true;
             setMsg('Saving and rebooting…', 'info');
             try {
@@ -1560,7 +1587,7 @@
                 if (typeof showToast === 'function') showToast('Not supported in simulation mode', true);
                 return;
             }
-            if (!confirm('Reset the device password to its default and reboot now?\nAll active sessions will be logged out.')) return;
+            if (!await confirmModal('Reset the device password to its default and reboot now?\nAll active sessions will be logged out.')) return;
             const btn = document.getElementById('btn-pw-reset');
             if (btn) btn.disabled = true;
             if (typeof showToast === 'function') showToast('Resetting password and rebooting…');

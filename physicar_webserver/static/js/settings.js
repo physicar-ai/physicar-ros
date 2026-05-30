@@ -78,7 +78,7 @@ const SETTINGS = (() => {
     }
     const v = validatePw(np);
     if (!v.ok) { setMsg(v.message, 'err'); return; }
-    if (!confirm('This will reboot the device. Continue?')) return;
+    if (!await confirmModal('This will reboot the device. Continue?')) return;
     // Close the Settings modal so the connection-lost overlay (and the
     // automatic reload on auth failure) is visible while the device reboots.
     close();
@@ -111,7 +111,7 @@ const SETTINGS = (() => {
       status.textContent = msg || '';
       status.className = 'settings-form-status' + (msg ? ' ' + (kind || '') : '');
     }
-    if (!confirm('Reset the device password to its default and reboot now?\nAll active sessions will be logged out.')) return;
+    if (!await confirmModal('Reset the device password to its default and reboot now?\nAll active sessions will be logged out.')) return;
     close();
     if (btn) btn.disabled = true;
     setMsg('Resetting and rebooting…', 'info');

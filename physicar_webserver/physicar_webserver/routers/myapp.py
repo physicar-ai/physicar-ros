@@ -17,9 +17,9 @@
 """
 MyApp Router — student-facing webapp (:5000) slot management.
 
-``physicar-myapp.service`` runs ``/home/physicar/physicar_ws/userdata/myapp/run.sh``.
+``physicar-myapp.service`` runs ``/opt/physicar/userdata/myapp/run.sh``.
 This router writes run.sh / log under
-``/home/physicar/physicar_ws/userdata/myapp/`` and uses ``sudo systemctl`` to control the
+``/opt/physicar/userdata/myapp/`` and uses ``sudo systemctl`` to control the
 systemd unit (start / stop / restart).
 """
 
@@ -35,10 +35,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from physicar_webserver.sim import is_sim_mode
+
 router = APIRouter(prefix="/settings/myapp", tags=["myapp"])
 
 
-CONFIG_DIR = Path("/home/physicar/physicar_ws/userdata/myapp")
+CONFIG_DIR = Path("/opt/physicar/userdata/myapp")
 SCRIPT_FILE = CONFIG_DIR / "run.sh"
 LOG_FILE = CONFIG_DIR / "log"
 
@@ -96,7 +98,7 @@ def _is_running() -> bool:
 
 
 def _systemctl(action: str) -> None:
-    if os.environ.get("CODESPACE_NAME"):
+    if is_sim_mode():
         cmd = ["supervisorctl", "-s", "unix:///tmp/supervisor.sock",
                action, _MYAPP_SUPERVISOR_PROGRAM]
     else:

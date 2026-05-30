@@ -13,7 +13,7 @@ Model management (file-based):
     - /deepracer/models/{model_name} - Get/delete a specific model
 
 Model structure:
-    /home/physicar/physicar_ws/userdata/deepracer/models/<model_name>/
+    /opt/physicar/userdata/deepracer/models/<model_name>/
         ├── model_metadata.json
         └── agent/
             ├── model.pb      # TensorFlow frozen graph
@@ -38,9 +38,9 @@ from physicar_webserver.state_manager import get_state_manager
 router = APIRouter(prefix="/deepracer", tags=["deepracer"])
 
 # Constants
-MODELS_DIR = Path("/home/physicar/physicar_ws/userdata/deepracer/models")
+MODELS_DIR = Path("/opt/physicar/userdata/deepracer/models")
 IMPORT_DIR = Path("/tmp/deepracer_imports")
-REQUIRED_FILES = ["model_metadata.json", "agent/model.pb"]
+REQUIRED_FILES = ["model_metadata.json", "model.pb"]
 IMPORT_TIMEOUT_SEC = 600  # 10 minutes
 
 # Pending chunked imports: import_id -> {filename, model_name, total_chunks, received_chunks, created_at}
@@ -180,13 +180,13 @@ class ModelDeleteResponse(BaseModel):
 def validate_model_archive(extract_path: Path) -> tuple[bool, str]:
     """Validate that the extracted model contains required files and valid content."""
     metadata_path = extract_path / "model_metadata.json"
-    model_pb_path = extract_path / "agent" / "model.pb"
+    model_pb_path = extract_path / "model.pb"
     
     if not metadata_path.exists():
         return False, "Missing required file: model_metadata.json"
     
     if not model_pb_path.exists():
-        return False, "Missing required file: agent/model.pb"
+        return False, "Missing required file: model.pb"
     
     # Validate model_metadata.json
     try:
@@ -496,7 +496,7 @@ async def set_config(request: SetConfigRequest):
 @router.get("/models", response_model=ModelListResponse)
 async def list_models():
     """
-    List all available DeepRacer models in /home/physicar/physicar_ws/userdata/deepracer/models/
+    List all available DeepRacer models in /opt/physicar/userdata/deepracer/models/
     
     Returns validation status for each model.
     """
@@ -508,8 +508,8 @@ async def list_models():
     for item in MODELS_DIR.iterdir():
         if item.is_dir():
             has_metadata = (item / "model_metadata.json").exists()
-            has_model_pb = (item / "agent" / "model.pb").exists()
-            has_tflite = (item / "agent" / "model.tflite").exists()
+            has_model_pb = (item / "model.pb").exists()
+            has_tflite = (item / "model.tflite").exists()
             
             # Read sensor list from metadata
             sensors = []
@@ -679,6 +679,13 @@ async def import_complete(import_id: str = Form(...)):
                     raise HTTPException(status_code=400, detail="Archive contains unsafe paths")
             tar.extractall(path=extract_path)
         
+        # Flatten agent/ subfolder: move agent/model.pb → model.pb
+        agent_dir = extract_path / "agent"
+        if agent_dir.is_dir():
+            for f in agent_dir.iterdir():
+                shutil.move(str(f), str(extract_path / f.name))
+            agent_dir.rmdir()
+        
         is_valid, error_msg = validate_model_archive(extract_path)
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
@@ -730,8 +737,8 @@ async def get_model(model_name: str):
         raise HTTPException(status_code=400, detail=f"'{model_name}' is not a valid model directory")
     
     has_metadata = (target_path / "model_metadata.json").exists()
-    has_model_pb = (target_path / "agent" / "model.pb").exists()
-    has_tflite = (target_path / "agent" / "model.tflite").exists()
+    has_model_pb = (target_path / "model.pb").exists()
+    has_tflite = (target_path / "model.tflite").exists()
     
     return ModelInfo(
         name=model_name,
@@ -758,7 +765,7 @@ async def delete_model(model_name: str):
     if not target_path.is_dir():
         raise HTTPException(status_code=400, detail=f"'{model_name}' is not a valid model directory")
     
-    # Delete model directory (includes agent/model.pb and agent/model.tflite)
+    # Delete model directory (includes model.pb and model.tflite)
     try:
         shutil.rmtree(target_path)
     except Exception as e:

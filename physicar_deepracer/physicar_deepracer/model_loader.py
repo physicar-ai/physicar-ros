@@ -39,7 +39,7 @@ class ModelLoader:
     Loads and validates DeepRacer models for PhysiCar
     
     Model structure:
-        /home/physicar/physicar_ws/userdata/deepracer/models/<model_name>/
+        /opt/physicar/userdata/deepracer/models/<model_name>/
             ├── agent/model.pb         # TensorFlow frozen graph
             ├── model_metadata.json    # Model configuration
             └── ...
@@ -161,7 +161,7 @@ class ModelLoader:
         """
         # TFLite file stored alongside model.pb in agent/ folder
         model_dir = os.path.join(constants.MODELS_BASE_PATH, model_name)
-        tflite_path = os.path.join(model_dir, "agent", "model.tflite")
+        tflite_path = os.path.join(model_dir, "model.tflite")
         
         # Check if already converted
         if os.path.exists(tflite_path):

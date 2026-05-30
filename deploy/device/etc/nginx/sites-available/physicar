@@ -182,12 +182,12 @@ server {
 
     location = /login {
         add_header Cache-Control "no-store";
-        alias /home/physicar/physicar_ws/src/physicar-ros/physicar_webserver/static/login.html;
+        alias /opt/physicar/src/physicar-ros/physicar_webserver/static/login.html;
         default_type text/html;
     }
 
     location = /login/logo.png {
-        alias /home/physicar/physicar_ws/src/physicar-ros/physicar_webserver/static/img/logo.png;
+        alias /opt/physicar/src/physicar-ros/physicar_webserver/static/img/logo.png;
         add_header Cache-Control "public, max-age=86400";
     }
 
@@ -212,7 +212,7 @@ server {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
-        return 302 /code/?folder=/home/physicar/physicar_ws;
+        return 302 /code/?folder=/opt/physicar;
     }
 
     location /code/ {
@@ -354,7 +354,7 @@ server {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
-        alias /home/physicar/physicar_ws/src/physicar-ros/physicar_webserver/static/studio.html;
+        alias /opt/physicar/src/physicar-ros/physicar_webserver/static/studio.html;
         default_type text/html;
         add_header Cache-Control "no-cache" always;
     }
@@ -419,12 +419,12 @@ server {
 
     location = /login {
         add_header Cache-Control "no-store";
-        alias /home/physicar/physicar_ws/src/physicar-ros/physicar_webserver/static/login.html;
+        alias /opt/physicar/src/physicar-ros/physicar_webserver/static/login.html;
         default_type text/html;
     }
 
     location = /login/logo.png {
-        alias /home/physicar/physicar_ws/src/physicar-ros/physicar_webserver/static/img/logo.png;
+        alias /opt/physicar/src/physicar-ros/physicar_webserver/static/img/logo.png;
         add_header Cache-Control "public, max-age=86400";
     }
 
@@ -451,7 +451,7 @@ server {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
-        return 302 /code/?folder=/home/physicar/physicar_ws;
+        return 302 /code/?folder=/opt/physicar;
     }
 
     location /code/ {
@@ -581,7 +581,7 @@ server {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
-        alias /home/physicar/physicar_ws/src/physicar-ros/physicar_webserver/static/studio.html;
+        alias /opt/physicar/src/physicar-ros/physicar_webserver/static/studio.html;
         default_type text/html;
         add_header Cache-Control "no-cache" always;
     }

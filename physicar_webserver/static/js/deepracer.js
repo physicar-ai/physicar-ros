@@ -138,7 +138,7 @@ const DR = {
   },
 
   async deleteModel(name) {
-    if (!confirm('Delete "' + name + '"?')) return;
+    if (!await confirmModal('Delete "' + name + '"?')) return;
     try {
       await api('/deepracer/models/' + encodeURIComponent(name), { method: 'DELETE' });
       this.loadedModels.delete(name);

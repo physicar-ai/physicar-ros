@@ -9,7 +9,7 @@ device password value (e.g. WiFi hotspot SSID setup, the
 POST /auth/password endpoint that rewrites the password file).
 
 Password resolution priority (matches physicar.sh):
-  1. /home/physicar/physicar_ws/userdata/password file (8-63 ASCII printable)
+  1. /opt/physicar/userdata/password file (8-63 ASCII printable)
   2. SHA-256(serial)[8:16]
   3. fallback → "physicar"
 """
@@ -22,7 +22,7 @@ from functools import lru_cache
 @lru_cache(maxsize=1)
 def get_password() -> str:
     """Get the device password (cached)."""
-    password_file = '/home/physicar/physicar_ws/userdata/password'
+    password_file = '/opt/physicar/userdata/password'
     if os.path.exists(password_file):
         try:
             with open(password_file, 'r') as f:

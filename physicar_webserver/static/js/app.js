@@ -440,7 +440,7 @@ async function restartContainer() {
     if (!data.ok) throw new Error(data.error || 'Failed');
   } catch (e) {
     if (btn) { btn.disabled = false; btn.innerHTML = '&#x21bb; Restart'; }
-    alert('Restart failed: ' + e.message);
+    showToast('Restart failed: ' + e.message, true);
     return;
   }
   // Hand off to the single connection watcher — it handles overlay, camera, button

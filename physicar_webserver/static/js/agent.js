@@ -846,7 +846,7 @@ const AGENT = {
       const sorted = [...this.tools].sort((a, b) => {
         const as = this.systemToolNames.has(a.name), bs = this.systemToolNames.has(b.name);
         if (as !== bs) return as ? 1 : -1;
-        return a.name.localeCompare(b.name);
+        return 0;
       });
       list.innerHTML = sorted.map(t => {
         const sys = this.systemToolNames.has(t.name);
@@ -868,7 +868,6 @@ const AGENT = {
     } catch (e) { showToast('Failed to load tools.py: ' + e.message, true); return; }
     const modal = document.createElement('div');
     modal.className = 'tool-modal-overlay';
-    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
     modal.innerHTML = `
       <div class="tool-modal tool-modal-wide">
         <div class="tool-modal-header">
@@ -899,12 +898,24 @@ const AGENT = {
     }
   },
 
-  async resetTools() {
-    if (!confirm('Reset all tools to defaults?')) return;
+  async reloadTools() {
     const list = $('agent-tools-list');
-    if (list) list.innerHTML = '<span class="cfg-label">Resetting...</span>';
+    if (list) list.innerHTML = '<span class="cfg-label">Reloading...</span>';
     try {
-      await api('/agent/tool/reset', { method: 'POST' });
+      const res = await api('/agent/tool/reload', { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) { showToast('Load failed', true); }
+      else { showToast(`Loaded ${data.tool_count} tools`); }
+      this.refreshTools();
+    } catch (e) { showToast(e.message, true); this.refreshTools(); }
+  },
+
+  async initTools() {
+    if (!await confirmModal('Initialize tools to defaults?')) return;
+    const list = $('agent-tools-list');
+    if (list) list.innerHTML = '<span class="cfg-label">Initializing...</span>';
+    try {
+      await api('/agent/tool/init', { method: 'POST' });
       this.enabledTools.clear(); this.knownTools.clear();
       this.refreshTools();
     } catch (e) { showToast(e.message, true); if (list) list.innerHTML = ''; }

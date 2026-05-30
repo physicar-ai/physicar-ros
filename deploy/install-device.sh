@@ -444,6 +444,11 @@ if [ -n "$CS_RES" ]; then
   cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_RES/code-512.png"
 fi
 
+# code-server user settings
+CS_USER_DIR="/home/physicar/.local/share/code-server/User"
+sudo -u physicar mkdir -p "$CS_USER_DIR"
+ln -sf "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+
 # Install boot script (from repo)
 chmod +x "$DEPLOY_DIR/physicar.sh"
 
@@ -456,13 +461,18 @@ ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar.service" /etc/systemd/system/phy
 ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-code.service" /etc/systemd/system/physicar-code.service
 ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-myapp.service" /etc/systemd/system/physicar-myapp.service
 
-mkdir -p /home/physicar/physicar_ws/userdata/myapp
-chown -R physicar:physicar /home/physicar/physicar_ws/userdata
+# /opt/physicar symlink (services reference this path)
+if [[ "$PHYSICAR_WS" != "/opt/physicar" ]]; then
+  ln -sfn "$PHYSICAR_WS" /opt/physicar
+fi
+
+mkdir -p "$PHYSICAR_WS/userdata/myapp"
+chown -R physicar:physicar "$PHYSICAR_WS/userdata"
 
 # ── Seed ~/.bashrc for physicar user ──
 sudo -u physicar bash -c 'cat "$1" >> /home/physicar/.bashrc' -- "$DEPLOY_DIR/home/physicar/bashrc-append"
 
-# echo "DEV=true" | tee /home/physicar/physicar_ws/userdata/.env
+# echo "DEV=true" | tee /opt/physicar/userdata/.env
 
 systemctl daemon-reload
 systemctl enable physicar.service

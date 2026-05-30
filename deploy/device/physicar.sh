@@ -6,7 +6,7 @@
 
 export HOME=/home/physicar
 
-PHYSICAR_WS="$HOME/physicar_ws"
+PHYSICAR_WS="/opt/physicar"
 PHYSICAR_ROS_DIR="$PHYSICAR_WS/src/physicar-ros"
 PHYSICAR_DIR="$PHYSICAR_WS/userdata"
 

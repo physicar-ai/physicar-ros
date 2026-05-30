@@ -125,7 +125,7 @@ async def list_tools(include_system: bool = False):
     """List all available tools."""
     response = await _call_tool_service('/agent/tool/list', {'include_system': include_system})
 
-    system_tool_names = ["tool_get", "tool_set", "tool_reload", "tool_reset"]
+    system_tool_names = ["tool_code", "tool_set"]
 
     try:
         tools = json.loads(response.tools_json)
@@ -201,22 +201,19 @@ async def set_tools(request: ToolSetRequest):
     }
 
 
-TOOLS_FILE = "/home/physicar/physicar_ws/userdata/agent/tools.py"
+TOOLS_FILE = "/opt/physicar/userdata/agent/tools.py"
 
 
 @router.get("/tool/file")
 async def get_tools_file():
-    """Get the entire tools.py source code."""
-    import aiofiles
-    import os
-    if not os.path.exists(TOOLS_FILE):
-        raise HTTPException(404, "tools.py not found")
+    """Get tools source code from last successful load."""
+    response = await _call_tool_service('/agent/tool/get', {'name': ''})
+    if not response.found:
+        raise HTTPException(404, "No tools loaded")
     try:
-        async with aiofiles.open(TOOLS_FILE, 'r') as f:
-            code = await f.read()
-        return {"code": code}
-    except Exception as e:
-        raise HTTPException(500, str(e))
+        return json.loads(response.info_json)
+    except json.JSONDecodeError:
+        raise HTTPException(500, "Failed to parse response")
 
 
 @router.post("/tool/reload")
@@ -230,9 +227,9 @@ async def reload_tools():
     }
 
 
-@router.post("/tool/reset")
-async def reset_tools():
-    """Reset tools.py to builtin defaults and reload."""
+@router.post("/tool/init")
+async def init_tools():
+    """Reset tools to builtin defaults."""
     response = await _call_tool_service('/agent/tool/reset', {})
 
     return {

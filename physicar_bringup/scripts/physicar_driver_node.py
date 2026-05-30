@@ -137,7 +137,7 @@ class CalibrationData:
 
 class PhysicarDriverNode(Node):
     # Default calibration file path (can be overridden by parameter)
-    DEFAULT_CALIBRATION_FILE = '/home/physicar/physicar_ws/userdata/calibration.json'
+    DEFAULT_CALIBRATION_FILE = '/opt/physicar/userdata/calibration.json'
     
     # Servo center angle (standard for RC servos)
     SERVO_CENTER = 90.0
@@ -225,15 +225,6 @@ class PhysicarDriverNode(Node):
         self._prev_actual_speed = 0.0      # previous actual speed for acceleration
         self._prev_odom_time = 0.0         # previous odom timestamp
         self._brake_active = False         # True while actively braking to stop
-
-        # Speed mapping data logger (DEV mode)
-        self._speed_log_file = None
-        self._speed_log_target_time = 0.0       # when current target was set
-        self._speed_log_last_target = 0.0       # last target speed value
-        self._speed_log_written = False          # already logged for this target?
-        if self._dev_mode:
-            self._speed_log_file = self._open_speed_log()
-            self.get_logger().info('DEV mode: speed mapping logger enabled')
 
         # Connect to board
         if not self.board.connect():
@@ -382,51 +373,6 @@ class PhysicarDriverNode(Node):
         adjusted_speed = self._get_adjusted_speed()
         self.servo.set_throttle_speed(adjusted_speed, self.current_voltage)
 
-        # Speed mapping data logger (DEV mode)
-        self._log_speed_mapping(now, actual)
-
-    def _open_speed_log(self):
-        """Open (or append to) boot-scoped CSV log file for speed mapping."""
-        log_dir = os.path.join(os.path.dirname(self.CALIBRATION_FILE), 'speed_log')
-        os.makedirs(log_dir, exist_ok=True)
-        try:
-            boot_id = open('/proc/sys/kernel/random/boot_id').read().strip()
-        except Exception:
-            boot_id = f'{int(time.time())}'
-        filepath = os.path.join(log_dir, f'speed_map_{boot_id}.csv')
-        is_new = not os.path.exists(filepath)
-        f = open(filepath, 'a')
-        if is_new:
-            f.write('timestamp,target_speed,duty_cycle_ns,actual_speed,voltage\n')
-            f.flush()
-        self.get_logger().info(f'Speed log: {filepath}')
-        return f
-
-    def _log_speed_mapping(self, now: float, actual_speed: float):
-        """Log duty cycle vs actual speed when target has been stable for 1+ second."""
-        if not self._speed_log_file:
-            return
-        if self._speed_log_written:
-            return
-        if abs(self._target_speed) < self.SPEED_DEADZONE:
-            return
-        if self._speed_log_target_time <= 0:
-            return
-        if now - self._speed_log_target_time < 1.0:
-            return
-        try:
-            duty_ns = int(open('/sys/class/pwm/pwmchip0/pwm1/duty_cycle').read().strip())
-            self._speed_log_file.write(
-                f'{now:.3f},{self._target_speed:.4f},{duty_ns},{actual_speed:.4f},{self.current_voltage:.2f}\n'
-            )
-            self._speed_log_file.flush()
-            self._speed_log_written = True
-            self.get_logger().debug(
-                f'Speed log: target={self._target_speed:.3f} duty={duty_ns} actual={actual_speed:.3f}'
-            )
-        except Exception as e:
-            self.get_logger().warning(f'Speed log write failed: {e}')
-
     def _get_adjusted_speed(self) -> float:
         """Get target speed with feedback adjustment applied.
 
@@ -571,12 +517,6 @@ class PhysicarDriverNode(Node):
             
             self._target_speed = speed_mps
 
-            # Track target changes for speed logger (DEV mode)
-            if self._dev_mode and abs(speed_mps - self._speed_log_last_target) > 0.001:
-                self._speed_log_target_time = time.time()
-                self._speed_log_last_target = speed_mps
-                self._speed_log_written = False
-            
             # Update joint state
             self.current_throttle = speed_mps
             

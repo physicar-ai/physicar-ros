@@ -305,7 +305,7 @@ _BOOL_KEYS = {
 }
 _ALL_KEYS = _INT_KEYS | _FLOAT_KEYS | _BOOL_KEYS
 
-MAPPING_FILE = '/home/physicar/physicar_ws/userdata/joy_mapping.json'
+MAPPING_FILE = '/opt/physicar/userdata/joy_mapping.json'
 
 
 class JoyMappingUpdateRequest(BaseModel):
@@ -313,7 +313,7 @@ class JoyMappingUpdateRequest(BaseModel):
 
     Either ``key`` + ``value`` (single update) or ``mapping`` (bulk) must
     be supplied.  Setting ``save=true`` persists the result to
-    /home/physicar/physicar_ws/userdata/joy_mapping.json so it survives reboots.
+    /opt/physicar/userdata/joy_mapping.json so it survives reboots.
     """
     key: Optional[str] = Field(default=None, description="Mapping key to update")
     value: Optional[Any] = Field(
@@ -322,7 +322,7 @@ class JoyMappingUpdateRequest(BaseModel):
     mapping: Optional[Dict[str, Any]] = Field(
         default=None, description="Bulk update; merged with current mapping"
     )
-    save: bool = Field(default=False, description="Persist to /home/physicar/physicar_ws/userdata/joy_mapping.json")
+    save: bool = Field(default=False, description="Persist to /opt/physicar/userdata/joy_mapping.json")
 
 
 @router.get("/mapping")
@@ -418,7 +418,7 @@ async def reset_joy_mapping():
     """Delete the persisted JSON file and restart the joy node so the
     yaml defaults take effect immediately.
 
-    The teleop node loads /home/physicar/physicar_ws/userdata/joy_mapping.json at startup; if
+    The teleop node loads /opt/physicar/userdata/joy_mapping.json at startup; if
     we just delete the file the running node keeps its in-memory mapping
     until the next reboot.  To make the reset take effect immediately we
     also send SIGTERM to physicar_joy_teleop — robot.launch.py /

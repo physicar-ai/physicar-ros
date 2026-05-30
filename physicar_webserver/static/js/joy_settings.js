@@ -483,7 +483,7 @@ window.createJoyPanel = function createJoyPanel(opts) {
   }
 
   async function reset() {
-    if (!confirm('Reset joystick mapping to defaults?\n(Defaults apply within ~2 seconds.)')) return;
+    if (!await confirmModal('Reset joystick mapping to defaults?\nDefaults apply within ~2 seconds.')) return;
     try {
       const r = await fetch('/teleop/joy/mapping/reset', { method: 'POST' });
       const d = await r.json().catch(() => ({}));

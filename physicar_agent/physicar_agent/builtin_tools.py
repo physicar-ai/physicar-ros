@@ -18,88 +18,25 @@ from pydantic import Field
 from physicar_agent import api, text, image
 
 
-# =====================================================================
-# battery
-# =====================================================================
-
-def battery() -> list:
-    """Read the robot's battery level.
-
-    Returns percentage (0–100%) and voltage.
-    Only available on real robot hardware.
-
-    Examples:
-        battery()
-    """
-    try:
-        b = api.get('/state/battery')
-    except Exception:
-        return [text("battery: unavailable")]
-
-    parts = []
-    if 'percentage' in b:
-        try:
-            parts.append(f"{round(float(b['percentage']), 1)}%")
-        except Exception:
-            pass
-    if 'voltage' in b:
-        try:
-            parts.append(f"{round(float(b['voltage']), 2)}V")
-        except Exception:
-            pass
-
-    if not parts:
-        return [text("battery: unavailable")]
-
-    return [text("battery: " + " / ".join(parts))]
-
-
-# =====================================================================
-# camera
-# =====================================================================
-
 def camera() -> list:
-    """Capture the latest camera frame as a JPEG image.
-
-    Resolution: 480x360. Returns a single JPEG image.
-    The camera is mounted on a pan/tilt gimbal controlled via
-    the control tool (pan: ±30°, tilt: ±30°).
-
-    Examples:
-        camera()
-    """
-    try:
-        jpeg = api.get('/state/camera')
-    except Exception:
-        return [text("camera: unavailable")]
-
-    if not jpeg or not isinstance(jpeg, bytes):
-        return [text("camera: unavailable")]
-
-    b64 = base64.b64encode(jpeg).decode('ascii')
-    return [image(b64)]
+    """Capture a camera frame (JPEG)."""
+    return image(base64.b64encode(api.get('/state/camera')).decode())
 
 
-# =====================================================================
-# control
-# =====================================================================
+def battery() -> dict:
+    """Read battery percentage and voltage."""
+    b = api.get('/state/battery')
+    return {"percentage": b.get("percentage"), "voltage": b.get("voltage")}
+
 
 def control(
-    speed: Annotated[Optional[float], Field(description="Speed in m/s (-2.0..2.0, positive=forward)")] = None,
-    steering: Annotated[Optional[float], Field(description="Steering in degrees (-26..26, positive=left)")] = None,
-    pan: Annotated[Optional[float], Field(description="Camera pan in degrees (-30..30, positive=left)")] = None,
-    tilt: Annotated[Optional[float], Field(description="Camera tilt in degrees (-30..30, positive=up)")] = None,
-    duration: Annotated[float, Field(description="Duration in seconds")] = 3.0,
-) -> dict:
-    """Drive the robot or move the camera.
-
-    Examples:
-        control(speed=0.3, duration=2)              # forward 2s
-        control(speed=0.3, steering=20, duration=1)  # forward + turn left
-        control(pan=30)                               # look left
-        control(tilt=20)                              # look up
-        control(speed=0, steering=0)                  # stop
-    """
+    speed: Annotated[Optional[float], Field(description="m/s (-2..2, +=forward)")] = None,
+    steering: Annotated[Optional[float], Field(description="degrees (-26..26, +=left)")] = None,
+    pan: Annotated[Optional[float], Field(description="camera pan degrees (-30..30, +=left)")] = None,
+    tilt: Annotated[Optional[float], Field(description="camera tilt degrees (-30..30, +=up)")] = None,
+    duration: Annotated[float, Field(description="seconds")] = 3.0,
+) -> str:
+    """Drive the robot or move the camera."""
     if pan is not None:
         api.post('/control/camera/pan', value=math.radians(float(pan)))
     if tilt is not None:
@@ -107,7 +44,7 @@ def control(
 
     if speed is None and steering is None:
         time.sleep(duration if duration > 0 else 0.3)
-        return text("done")
+        return "done"
 
     spd = float(speed or 0.0)
     steer = float(steering or 0.0)
@@ -117,40 +54,15 @@ def control(
     api.post('/control/steering', value=math.radians(steer))
     time.sleep(duration)
     api.post('/control/speed', value=0.0)
-
-    return text("done")
-
-
-# =====================================================================
-# deepracer
-# =====================================================================
+    return "done"
 
 def deepracer(
-    action: Annotated[str, Field(description="One of: status, load, unload, start, stop")],
-    model_name: Annotated[Optional[str], Field(description="Model name (for action=load or unload)")] = None,
+    action: Annotated[str, Field(description="status / load / unload / start / stop")],
+    model_name: Annotated[Optional[str], Field(description="model name (for load/unload)")] = None,
 ) -> dict:
-    """Manage DeepRacer reinforcement-learning models and autonomous driving.
-
-    Models are stored in /home/physicar/physicar_ws/userdata/deepracer/models/<model_name>/.
-
-    Examples:
-        deepracer("status")
-        deepracer("load", model_name="my-model")
-        deepracer("start")
-        deepracer("stop")
-        deepracer("unload", model_name="my-model")
-    """
+    """Manage DeepRacer models and autonomous driving."""
     if action == "status":
-        resp = api.get('/deepracer/status')
-        return {
-            "model_loaded": resp.get("model_loaded", False),
-            "inference_running": resp.get("inference_running", False),
-            "model_name": resp.get("model_name", ""),
-            "action_count": resp.get("action_count", 0),
-            "inference_rate_hz": resp.get("inference_rate", 0.0),
-            "inference_count": resp.get("inference_count", 0),
-            "speed_percent": resp.get("speed_percent", 1.0),
-        }
+        return api.get('/deepracer/status')
 
     if action == "load":
         if not model_name:
@@ -162,163 +74,61 @@ def deepracer(
         return result
 
     if action == "unload":
-        resp = api.post('/deepracer/unload_model', model_name=model_name or "")
-        return {"success": resp.get("success", False), "message": resp.get("message", "")}
+        return api.post('/deepracer/unload_model', model_name=model_name or "")
 
     if action == "start":
-        resp = api.post('/deepracer/control', start=True)
-        return {"success": resp.get("success", False), "message": resp.get("message", "")}
+        return api.post('/deepracer/control', start=True)
 
     if action == "stop":
-        resp = api.post('/deepracer/control', start=False)
-        return {"success": resp.get("success", False), "message": resp.get("message", "")}
+        return api.post('/deepracer/control', start=False)
 
     return {"success": False, "message": f"Unknown action: {action}. Use: status, load, unload, start, stop"}
 
-
-# =====================================================================
-# lidar
-# =====================================================================
-
 def lidar(
-    step: Annotated[float, Field(
-        description="Angular step in degrees (0.5~30). Default 5 gives ~72 points.",
-        ge=0.5, le=30,
-    )] = 5.0,
-) -> list:
-    """Read the latest 360 LiDAR scan.
+    step: Annotated[float, Field(description="angular step in degrees (0.5~30)", ge=0.5, le=30)] = 5.0,
+) -> dict:
+    """Read 360° LiDAR scan. 0°=front, +90°=left, -90°=right, 180°=rear."""
+    return api.get("/state/lidar", step=step)
 
-    Orientation: 0=front, +90=left, -90=right, 180=rear.
-    Range: 0.15-16 m.
+def motion() -> dict:
+    """Read current velocity, steering, heading, acceleration, and camera angles."""
+    odom = api.get('/state/odom')
+    state = api.get('/state')
+    imu = api.get('/state/imu')
+    pan_data = api.get('/state/camera/pan')
+    tilt_data = api.get('/state/camera/tilt')
 
-    Examples:
-        lidar()              # 5 step, ~72 points
-        lidar(step=1)        # 1 step, ~360 points
-        lidar(step=10)       # 10 step, ~36 points
-    """
-    try:
-        data = api.get("/state/lidar", step=step)
-    except Exception:
-        return [text("lidar: unavailable")]
+    vel = odom.get('velocity', {})
+    cmd = state.get('cmd', {})
+    o = imu.get('orientation', {})
+    x, y, z, w = o.get('x', 0), o.get('y', 0), o.get('z', 0), o.get('w', 1)
+    yaw = math.degrees(math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
+    la = imu.get('acceleration', {})
 
-    if not data or "ranges" not in data:
-        return [text("lidar: no data")]
-
-    ranges = data["ranges"]
-    range_min = data.get("range_min", 0.15)
-    range_max = data.get("range_max", 12.0)
-    count = data.get("count", len(ranges))
-
-    out = []
-    for angle_str, dist in ranges.items():
-        if dist is None:
-            out.append(f"{angle_str}=null")
-        else:
-            out.append(f"{angle_str}={round(dist, 3)}m")
-
-    header = f"lidar (step={step}, range={range_min}~{range_max}m, points={count}):"
-    return [text(header + "\n  " + ", ".join(out))]
-
-
-# =====================================================================
-# motion
-# =====================================================================
-
-def motion() -> list:
-    """Read the robot's current motion and IMU state.
-
-    Returns:
-        linear    - forward velocity in m/s (from odometry)
-        angular   - yaw rate in rad/s (from odometry)
-        steering  - front wheel angle in degrees
-        heading   - IMU yaw in degrees
-        accel     - IMU linear acceleration x/y/z in m/s²
-        pan/tilt  - camera gimbal angles in degrees
-
-    Examples:
-        motion()
-    """
-    lines = []
-
-    try:
-        odom = api.get('/state/odom')
-        vel = odom.get('velocity', {})
-        lines.append(f"linear: {vel.get('linear', 0)} m/s")
-        lines.append(f"angular: {vel.get('angular', 0)} rad/s")
-    except Exception:
-        lines.append("linear: unavailable")
-        lines.append("angular: unavailable")
-
-    try:
-        state = api.get('/state')
-        cmd = state.get('cmd', {})
-        st_rad = cmd.get('steering', 0)
-        lines.append(f"steering: {round(math.degrees(st_rad), 1)}°")
-    except Exception:
-        lines.append("steering: unavailable")
-
-    try:
-        imu = api.get('/state/imu')
-        o = imu.get('orientation', {})
-        x, y, z, w = o.get('x', 0), o.get('y', 0), o.get('z', 0), o.get('w', 1)
-        siny = 2.0 * (w * z + x * y)
-        cosy = 1.0 - 2.0 * (y * y + z * z)
-        yaw = math.degrees(math.atan2(siny, cosy))
-        lines.append(f"heading: {round(yaw, 1)}°")
-
-        la = imu.get('acceleration', {})
-        ax = round(float(la.get('x', 0)), 2)
-        ay = round(float(la.get('y', 0)), 2)
-        az = round(float(la.get('z', 0)), 2)
-        lines.append(f"accel: x={ax} y={ay} z={az} m/s²")
-    except Exception:
-        lines.append("heading: unavailable")
-        lines.append("accel: unavailable")
-
-    try:
-        pan_data = api.get('/state/camera/pan')
-        lines.append(f"pan: {round(math.degrees(pan_data.get('value', 0)), 1)}°")
-    except Exception:
-        lines.append("pan: unavailable")
-
-    try:
-        tilt_data = api.get('/state/camera/tilt')
-        lines.append(f"tilt: {round(math.degrees(tilt_data.get('value', 0)), 1)}°")
-    except Exception:
-        lines.append("tilt: unavailable")
-
-    return [text("\n".join(lines))]
-
-
-# =====================================================================
-# music
-# =====================================================================
+    return {
+        "linear_m_s": vel.get('linear', 0),
+        "angular_rad_s": vel.get('angular', 0),
+        "steering_deg": round(math.degrees(cmd.get('steering', 0)), 1),
+        "heading_deg": round(yaw, 1),
+        "accel": {
+            "x": round(float(la.get('x', 0)), 2),
+            "y": round(float(la.get('y', 0)), 2),
+            "z": round(float(la.get('z', 0)), 2),
+        },
+        "pan_deg": round(math.degrees(pan_data.get('value', 0)), 1),
+        "tilt_deg": round(math.degrees(tilt_data.get('value', 0)), 1),
+    }
 
 _stop_event = threading.Event()
 _MUSIC_CHANNEL = "music"
 _ATTRIBUTION = "Preview provided courtesy of iTunes."
-
-
 def music(
-    action: Annotated[str, Field(description="One of: search, play, stop, volume")],
-    query: Annotated[Optional[str], Field(description="Search query (for action=search or play)")] = None,
-    url: Annotated[Optional[str], Field(description="Preview URL (for action=play)")] = None,
-    volume: Annotated[float, Field(description="Volume from 0.0 to 1.0")] = 0.5
+    action: Annotated[str, Field(description="search / play / stop / volume")],
+    query: Annotated[Optional[str], Field(description="search query (for search/play)")] = None,
+    url: Annotated[Optional[str], Field(description="preview URL (for play)")] = None,
+    volume: Annotated[float, Field(description="0.0 to 1.0")] = 0.5
 ) -> dict:
-    """Search for songs and play their 30-second iTunes previews.
-
-    Uses the Apple iTunes Search API. When presenting preview results to the
-    user, you MUST also surface the iTunes Store link (`view_url`) and the
-    `attribution` text so the user can purchase or listen to the full song
-    on iTunes (required by Apple's terms of use).
-
-    Examples:
-        music("search", query="BTS SWIM")
-        music("play", query="BTS SWIM")
-        music("play", url="https://audio-ssl.itunes.apple.com/...")
-        music("stop")
-        music("volume", volume=0.8)
-    """
+    """Search and play 30s iTunes previews. Include view_url in responses."""
     if action == "stop":
         _stop_event.set()
         api.post('/control/audio', channel=_MUSIC_CHANNEL, stop=True)
@@ -409,8 +219,6 @@ def music(
         }
 
     return {"success": False, "message": f"Unknown action: {action}"}
-
-
 def _music_search(query: str, limit: int = 5) -> dict:
     """Search iTunes for music tracks."""
     import urllib.request

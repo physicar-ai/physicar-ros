@@ -6,10 +6,10 @@ import os
 from enum import Enum
 
 # Model storage location
-MODELS_BASE_PATH = "/home/physicar/physicar_ws/userdata/deepracer/models"
+MODELS_BASE_PATH = "/opt/physicar/userdata/deepracer/models"
 
 # Config file (JSON, 1st priority)
-CONFIG_FILE_PATH = "/home/physicar/physicar_ws/userdata/deepracer/config.json"
+CONFIG_FILE_PATH = "/opt/physicar/userdata/deepracer/config.json"
 
 # Default config values
 DEFAULT_CONFIG = {
@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
 
 # Model file names
 MODEL_METADATA_FILE = "model_metadata.json"
-MODEL_FILE = "agent/model.pb"
+MODEL_FILE = "model.pb"
 
 # Supported sensor configurations
 # Camera is always required. LiDAR is optional.

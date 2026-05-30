@@ -7,12 +7,13 @@ Wants=network-online.target
 Type=simple
 User=physicar
 Group=physicar
-WorkingDirectory=/home/physicar/physicar_ws
+WorkingDirectory=/opt/physicar
 Environment=PORT=5000 PYTHONUNBUFFERED=1
-StandardOutput=append:/home/physicar/physicar_ws/userdata/myapp/log
-StandardError=append:/home/physicar/physicar_ws/userdata/myapp/log
-ExecStart=/bin/bash -ic '[ -f /home/physicar/physicar_ws/userdata/myapp/run.sh ] || exit 0; exec bash /home/physicar/physicar_ws/userdata/myapp/run.sh'
-Restart=always
+StandardOutput=append:/opt/physicar/userdata/myapp/log
+StandardError=append:/opt/physicar/userdata/myapp/log
+ExecStartPre=/bin/bash -c '> /opt/physicar/userdata/myapp/log'
+ExecStart=/bin/bash -ic '[ -f /opt/physicar/userdata/myapp/run.sh ] || exit 0; exec bash /opt/physicar/userdata/myapp/run.sh'
+Restart=on-failure
 RestartSec=2
 KillMode=control-group
 
