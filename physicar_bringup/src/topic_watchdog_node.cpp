@@ -193,9 +193,22 @@ private:
     }
   }
 
+  static bool exe_matches(pid_t pid, const std::string & pattern)
+  {
+    // Resolve /proc/PID/exe to get the real binary path
+    char buf[512];
+    std::string link = "/proc/" + std::to_string(pid) + "/exe";
+    ssize_t len = ::readlink(link.c_str(), buf, sizeof(buf) - 1);
+    if (len <= 0) return false;
+    buf[len] = '\0';
+    std::string exe(buf);
+    // Check if the executable path contains the kill_pattern
+    return exe.find(pattern) != std::string::npos;
+  }
+
   bool kill_process(const std::string & pattern)
   {
-    // Use pgrep to find matching PIDs
+    // Use pgrep to find candidate PIDs, then verify via /proc/PID/exe
     std::string cmd = "pgrep -f '" + pattern + "' 2>/dev/null";
     FILE * fp = popen(cmd.c_str(), "r");
     if (!fp) return false;
@@ -204,7 +217,7 @@ private:
     char buf[32];
     while (fgets(buf, sizeof(buf), fp)) {
       pid_t pid = static_cast<pid_t>(std::atoi(buf));
-      if (pid > 0 && pid != my_pid_) {
+      if (pid > 0 && pid != my_pid_ && exe_matches(pid, pattern)) {
         pids.push_back(pid);
       }
     }

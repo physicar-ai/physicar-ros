@@ -99,7 +99,7 @@ def generate_launch_description():
     # PhysiCar Base Driver
     physicar_driver = Node(
         package='physicar_bringup',
-        executable='physicar_driver_node.py',
+        executable='physicar_driver_node',
         name='physicar_driver',
         output='screen',
         parameters=[

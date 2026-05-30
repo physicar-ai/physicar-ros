@@ -7,6 +7,12 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(rosgraph_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+
+# Optional: custom interfaces
+find_package(physicar_interfaces QUIET)
 
 # ── C++ nodes ──
 add_executable(scan_filter_node src/scan_filter_node.cpp)
@@ -15,9 +21,17 @@ ament_target_dependencies(scan_filter_node rclcpp sensor_msgs)
 add_executable(topic_watchdog_node src/topic_watchdog_node.cpp)
 ament_target_dependencies(topic_watchdog_node rclcpp sensor_msgs nav_msgs rosgraph_msgs)
 
+add_executable(physicar_driver_node src/physicar_driver_node.cpp)
+ament_target_dependencies(physicar_driver_node
+  rclcpp sensor_msgs nav_msgs geometry_msgs std_msgs std_srvs)
+if(physicar_interfaces_FOUND)
+  ament_target_dependencies(physicar_driver_node physicar_interfaces)
+endif()
+
 install(TARGETS
   scan_filter_node
   topic_watchdog_node
+  physicar_driver_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
