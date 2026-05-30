@@ -28,7 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ToolGet.srv"
   "srv/ToolCall.srv"
   "srv/ToolSet.srv"
-  "srv/ToolDelete.srv"
+  "srv/ToolReload.srv"
   "srv/ToolReset.srv"
   "srv/GetJoyMapping.srv"
   "srv/SetJoyMapping.srv"

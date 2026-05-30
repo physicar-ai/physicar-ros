@@ -859,10 +859,44 @@ const AGENT = {
 
   toggleTool(name, on) { if (on) this.enabledTools.add(name); else this.enabledTools.delete(name); this.saveConfig(); },
 
-  async deleteTool(name) {
-    if (!confirm('Delete "' + name + '"?')) return;
-    try { await api('/agent/tool/delete/' + name, { method: 'POST' }); this.enabledTools.delete(name); this.knownTools.delete(name); this.refreshTools(); }
-    catch (e) { showToast(e.message, true); }
+  async editToolsFile() {
+    let code = '';
+    try {
+      const res = await api('/agent/tool/file');
+      const data = await res.json();
+      code = data.code || '';
+    } catch (e) { showToast('Failed to load tools.py: ' + e.message, true); return; }
+    const modal = document.createElement('div');
+    modal.className = 'tool-modal-overlay';
+    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
+    modal.innerHTML = `
+      <div class="tool-modal tool-modal-wide">
+        <div class="tool-modal-header">
+          <span class="tool-modal-title">tools.py</span>
+          <div style="flex:1"></div>
+          <button class="tool-modal-close" onclick="AGENT.closeToolModal()">&times;</button>
+        </div>
+        <div class="tool-modal-body">
+          <div id="ace-file-container" class="ace-editor-host" style="height:100%"></div>
+        </div>
+        <div class="tool-modal-footer">
+          <button class="btn-primary tool-file-save-btn" disabled onclick="AGENT.saveToolsFile()">Save</button>
+          <div style="flex:1"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
+    document.addEventListener('keydown', this._modalEsc);
+    this._initAceEditor('ace-file-container', code, false, 'python');
+    this._aceCodeEditor = this._aceLastEditor;
+    if (this._aceCodeEditor) {
+      const origCode = code;
+      this._aceCodeEditor.session.on('change', () => {
+        const dirty = this._aceCodeEditor.getValue() !== origCode;
+        const btn = document.querySelector('.tool-file-save-btn');
+        if (btn) btn.disabled = !dirty;
+      });
+    }
   },
 
   async resetTools() {
@@ -926,17 +960,15 @@ const AGENT = {
   // Code tab: editable for non-system tools; disabled for system tools.
   async showToolDetail(name) {
     const isSystem = this.systemToolNames.has(name);
-    let code = '', definition = {};
+    let definition = {};
     try {
-      const res = await api('/agent/tool/get/' + name + '?include_code=true');
+      const res = await api('/agent/tool/get/' + name + '?include_code=false');
       const data = await res.json();
-      code = (data && (data.code || (data.tool && data.tool.code))) || '';
       definition = { name: data.name, description: data.description, properties: data.properties };
     } catch (e) {
       showToast('Failed to load tool: ' + e.message, true);
       return;
     }
-    if (!code) code = isSystem ? '# Source not available for system tools' : '# No code available';
     const defHtml = this._buildDefHtml(definition);
     const modal = document.createElement('div');
     modal.className = 'tool-modal-overlay';
@@ -948,42 +980,13 @@ const AGENT = {
           <div style="flex:1"></div>
           <button class="tool-modal-close" onclick="AGENT.closeToolModal()">&times;</button>
         </div>
-        <div class="tool-modal-tabs">
-          <button class="tool-tab active" data-tab="definition" onclick="AGENT._switchToolTab('definition')">Definition</button>
-          <button class="tool-tab${isSystem ? ' disabled' : ''}" data-tab="code" onclick="AGENT._switchToolTab('code')"${isSystem ? ' disabled' : ''}>Code</button>
-        </div>
         <div class="tool-modal-body">
-          <div class="tool-tab-content active" data-tab="definition">
-            ${defHtml}
-          </div>
-          <div class="tool-tab-content" data-tab="code">
-            <div id="ace-code-container" class="ace-editor-host"></div>
-          </div>
-        </div>
-        <div class="tool-modal-footer">
-          ${!isSystem ? `<button class="btn-primary tool-save-btn" disabled style="display:none" onclick="AGENT.saveTool('${name}')">Save</button>` : ''}
-          <div style="flex:1"></div>
-          ${!isSystem ? `<button class="btn-icon tool-delete-btn" onclick="AGENT.deleteToolFromModal('${name}')" title="Delete">🗑</button>` : ''}
+          ${defHtml}
         </div>
       </div>`;
     document.body.appendChild(modal);
     this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
     document.addEventListener('keydown', this._modalEsc);
-    this._toolModalDirty = false;
-    if (!isSystem) {
-      this._initAceEditor('ace-code-container', code, false, 'python');
-      this._aceCodeEditor = this._aceLastEditor;
-      // Track changes to show Save button
-      if (this._aceCodeEditor) {
-        const origCode = code;
-        this._aceCodeEditor.session.on('change', () => {
-          const dirty = this._aceCodeEditor.getValue() !== origCode;
-          this._toolModalDirty = dirty;
-          const saveBtn = document.querySelector('.tool-save-btn');
-          if (saveBtn) saveBtn.disabled = !dirty;
-        });
-      }
-    }
   },
 
   _escHtml(s) {
@@ -1011,12 +1014,8 @@ const AGENT = {
     }
     return `<div class="def-card">
       <div class="def-section">
-        <div class="def-label">Name</div>
-        <div class="def-value" style="font-family:var(--mono,ui-monospace,monospace);font-weight:600">${esc(def.name || '')}</div>
-      </div>
-      <div class="def-section">
         <div class="def-label">Description</div>
-        <div class="def-value" style="white-space:pre-line">${def.description ? esc(def.description) : '<span class="def-empty">No description</span>'}</div>
+        <div class="def-value-card" style="white-space:pre-line">${def.description ? esc(def.description) : '<span class="def-empty">No description</span>'}</div>
       </div>
       <div class="def-section">
         <div class="def-label">Parameters</div>
@@ -1037,102 +1036,26 @@ const AGENT = {
     }
   },
 
-  async deleteToolFromModal(name) {
-    if (!confirm('Delete "' + name + '"?')) return;
-    try {
-      await api('/agent/tool/delete/' + name, { method: 'POST' });
-      this.enabledTools.delete(name);
-      this.knownTools.delete(name);
-      this.closeToolModal();
-      this.refreshTools();
-      showToast('Deleted "' + name + '"');
-    } catch (e) { showToast(e.message, true); }
-  },
-
-  showAddToolDialog() {
-    const tmpl = `"""New tool description"""
-
-from typing import Annotated
-from pydantic import Field
-
-
-def tool(
-    param1: Annotated[str, Field(description="Parameter description")]
-) -> dict:
-    """Tool description.
-
-    Args:
-        param1: Parameter description.
-    """
-    return {"result": param1}
-`;
-    const modal = document.createElement('div');
-    modal.className = 'tool-modal-overlay';
-    modal.onclick = (e) => { if (e.target === modal) this.closeToolModal(); };
-    modal.innerHTML = `
-      <div class="tool-modal">
-        <div class="tool-modal-header">
-          <span class="tool-modal-title">New tool</span>
-          <div style="flex:1"></div>
-          <button class="tool-modal-close" onclick="AGENT.closeToolModal()">&times;</button>
-        </div>
-        <div class="tool-modal-body">
-          <label>Tool name</label>
-          <input type="text" id="new-tool-name" placeholder="my_tool" autocomplete="off" />
-          <div style="height:0.6rem"></div>
-          <div id="ace-new-container" class="ace-editor-host"></div>
-        </div>
-        <div class="tool-modal-footer">
-          <div style="flex:1"></div>
-          <button class="btn-primary" onclick="AGENT.addTool()">Add</button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-    this._modalEsc = (ev) => { if (ev.key === 'Escape') this.closeToolModal(); };
-    document.addEventListener('keydown', this._modalEsc);
-    this._initAceEditor('ace-new-container', tmpl, false, 'python');
-    this._aceCodeEditor = this._aceLastEditor;
-    setTimeout(() => $('new-tool-name')?.focus(), 50);
-  },
-
-  async addTool() {
-    const nameEl = $('new-tool-name');
-    const name = (nameEl?.value || '').trim();
-    if (!name) { showToast('Please enter a tool name', true); return; }
-    if (!/^[a-z_][a-z0-9_]*$/.test(name)) {
-      showToast('Lowercase letters, digits, and underscores only', true); return;
-    }
-    if (this.tools.some(t => t.name === name)) {
-      showToast('A tool named "' + name + '" already exists', true); return;
-    }
-    const code = this._aceCodeEditor ? this._aceCodeEditor.getValue() : '';
-    if (!code.trim()) { showToast('Code is empty', true); return; }
-    try {
-      const res = await api('/agent/tool/set/' + name, { method: 'POST', body: { code } });
-      const data = await res.json().catch(() => ({}));
-      if (data && data.success === false) throw new Error(data.message || 'Failed to add');
-      this.closeToolModal();
-      this.enabledTools.add(name);
-      await this.refreshTools();
-      showToast('Tool "' + name + '" added');
-    } catch (e) { showToast(e.message, true); }
-  },
-
-  async saveTool(name) {
-    if (!this._aceCodeEditor) {
-      showToast('Switch to the Code tab to edit', true); return;
-    }
+  async saveToolsFile() {
+    if (!this._aceCodeEditor) return;
     const code = this._aceCodeEditor.getValue();
     if (!code.trim()) { showToast('Code is empty', true); return; }
     try {
-      const res = await api('/agent/tool/set/' + name, { method: 'POST', body: { code } });
+      const res = await api('/agent/tool/set', { method: 'POST', body: { code } });
       const data = await res.json().catch(() => ({}));
       if (data && data.success === false) throw new Error(data.message || 'Failed to save');
       this.closeToolModal();
+      this.knownTools.clear();
       await this.refreshTools();
-      showToast('Saved');
+      showToast('Saved ' + (data.tool_count || '') + ' tools');
     } catch (e) { showToast(e.message, true); }
   },
+
+  showAddToolDialog() { this.editToolsFile(); },
+
+  addTool() { this.editToolsFile(); },
+
+  saveTool() { this.editToolsFile(); },
 
   closeToolModal() {
     document.querySelectorAll('.tool-modal-overlay').forEach(m => m.remove());

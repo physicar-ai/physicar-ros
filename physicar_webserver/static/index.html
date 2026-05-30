@@ -242,7 +242,7 @@
               <div class="cfg-body">
                 <div class="tool-list" id="agent-tools-list"><span class="cfg-label">Loading...</span></div>
                 <div class="tool-actions">
-                  <button onclick="AGENT.showAddToolDialog()">+ Add</button>
+                  <button onclick="AGENT.editToolsFile()">Edit</button>
                   <button onclick="AGENT.refreshTools()">Refresh</button>
                   <button onclick="AGENT.resetTools()">Reset</button>
                 </div>
@@ -654,6 +654,8 @@ if (typeof marked !== 'undefined') {
 <script src="/static/js/deepracer.js"></script>
 <script src="/static/js/control.js"></script>
 <script src="/static/vendor/ace/ace.min.js"></script>
+<script src="/static/vendor/ace/theme-monokai.js"></script>
+<script src="/static/vendor/ace/mode-python.js"></script>
 <script>if (typeof ace !== 'undefined') ace.config.set('basePath', '/static/vendor/ace');</script>
 <script src="/static/js/agent.js"></script>
 <script>window.PHYSICAR_TURNSTILE_SITE_KEY = '0x4AAAAAACyt2ghifxe9dVMG';</script>

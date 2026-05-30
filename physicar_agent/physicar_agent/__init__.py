@@ -1,19 +1,13 @@
-"""PhysiCar Agent - ROS2-style Tool API for LLM agents"""
+"""PhysiCar Agent — HTTP-backed Tool API for LLM agents"""
 
 from .core import (
-    topic,      # topic['/odom'], topic.get(), topic.pub(), topic.list()
-    service,    # service(name, req), service.list()
-    action,     # action(name, goal), action.list()
-    node,       # Direct ROS2 node access
-    text,
-    image,
+    api,        # api.get('/state/odom'), api.post('/control/speed', value=0.5)
+    text,       # text(content) → {"type": "text", "text": "..."}
+    image,      # image(data) → {"type": "image", "mime": "...", "base64": "..."}
 )
 
 __all__ = [
-    'topic',
-    'service',
-    'action',
-    'node',
+    'api',
     'text',
     'image',
 ]

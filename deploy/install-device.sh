@@ -453,6 +453,7 @@ chmod 440 /etc/sudoers.d/physicar
 
 # systemd services
 ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar.service" /etc/systemd/system/physicar.service
+ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-code.service" /etc/systemd/system/physicar-code.service
 ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-myapp.service" /etc/systemd/system/physicar-myapp.service
 
 mkdir -p /home/physicar/physicar_ws/userdata/myapp
@@ -465,6 +466,7 @@ sudo -u physicar bash -c 'cat "$1" >> /home/physicar/.bashrc' -- "$DEPLOY_DIR/ho
 
 systemctl daemon-reload
 systemctl enable physicar.service
+systemctl enable physicar-code.service
 systemctl enable physicar-myapp.service
 
 # Initial ROS 2 workspace build

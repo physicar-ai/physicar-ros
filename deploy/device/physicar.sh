@@ -487,15 +487,7 @@ cat > "$CODE_USER_DIR/settings.json" <<'CODE_SETTINGS'
 CODE_SETTINGS
 fi
 
-if ! ss -tlnp 2>/dev/null | grep -q ':8080 '; then
-  /usr/local/bin/code-server \
-    --bind-addr 127.0.0.1:8080 \
-    --auth none \
-    --disable-telemetry \
-    --disable-update-check \
-    --proxy-domain preview.physicar.ai \
-    "$PHYSICAR_WS" &>/dev/null &
-fi
+# code-server is managed by physicar-code.service
 
 # Pre-install extensions on first boot
 EXT_MARKER="$HOME/.local/share/code-server/.physicar-ext-installed"
@@ -672,15 +664,6 @@ fi
     fi
     if ! pgrep -f "novnc_proxy" > /dev/null 2>&1; then
       /usr/share/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 6080 &>/dev/null &
-    fi
-    if ! ss -tlnp 2>/dev/null | grep -q ':8080 '; then
-      /usr/local/bin/code-server \
-        --bind-addr 127.0.0.1:8080 \
-        --auth none \
-        --disable-telemetry \
-        --disable-update-check \
-        --proxy-domain preview.physicar.ai \
-        "$PHYSICAR_WS" &>/dev/null &
     fi
   done
 ) &

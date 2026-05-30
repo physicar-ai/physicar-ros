@@ -6,18 +6,15 @@ Services:
 - /agent/tool/list   : List tools
 - /agent/tool/get    : Get tool details / source code
 - /agent/tool/call   : Run a tool
-- /agent/tool/set    : Add or update a tool
-- /agent/tool/delete : Delete a tool
+- /agent/tool/set    : Save entire tools.py and reload
+- /agent/tool/reload : Reload tools.py from disk
 - /agent/tool/reset  : Reset (restore builtins)
 
-Topics:
-- /agent/tool/reload : Tool-reload trigger (Empty)
-
-System tools (reserved, cannot be registered):
+System tools (reserved, cannot be used as function names):
 - tool_list   : List tools
 - tool_get    : Get tool details / source code
-- tool_set    : Register or update a tool
-- tool_delete : Delete a tool
+- tool_set    : Save entire tools.py
+- tool_reload : Reload tools from disk
 - tool_reset  : Reset
 """
 
@@ -25,41 +22,28 @@ import json
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
-from std_msgs.msg import Empty
 
 from physicar_interfaces.srv import (
     ToolList,
     ToolGet,
     ToolCall,
     ToolSet,
-    ToolDelete,
+    ToolReload,
     ToolReset,
 )
 
 from physicar_agent import registry
-from physicar_agent.core import _AgentCore
 
 
 class AgentNode(Node):
     def __init__(self):
         super().__init__('agent_node')
 
-        # Bind AgentCore subscriptions to THIS node so rclpy.spin(self) ticks
-        # all topic callbacks (otherwise the core's internal node is never spun
-        # and `topic.raw()` returns the very first frame forever).
-        _AgentCore(external_node=self)
-
-        # Initialise and load tools
         tool_count = registry.init_tools()
         self.get_logger().info(f"Loaded {tool_count} tools into cache")
-        
-        # ReentrantCallbackGroup lets service callbacks run concurrently
-        # with topic subscription callbacks.  Without this, a long-running
-        # tool call (e.g. control loop with time.sleep) blocks all topic
-        # updates and topic.get('/odom') returns stale data.
+
         self._srv_cb_group = ReentrantCallbackGroup()
-        
-        # Create services
+
         self.list_srv = self.create_service(
             ToolList, '/agent/tool/list', self.handle_list,
             callback_group=self._srv_cb_group
@@ -76,24 +60,18 @@ class AgentNode(Node):
             ToolSet, '/agent/tool/set', self.handle_set,
             callback_group=self._srv_cb_group
         )
-        self.delete_srv = self.create_service(
-            ToolDelete, '/agent/tool/delete', self.handle_delete,
+        self.reload_srv = self.create_service(
+            ToolReload, '/agent/tool/reload', self.handle_reload,
             callback_group=self._srv_cb_group
         )
         self.reset_srv = self.create_service(
             ToolReset, '/agent/tool/reset', self.handle_reset,
             callback_group=self._srv_cb_group
         )
-        
-        # Subscribe to reload topic
-        self.reload_sub = self.create_subscription(
-            Empty, '/agent/tool/reload', self.handle_reload, 10
-        )
-        
+
         self.get_logger().info("Agent services ready")
-    
+
     def handle_list(self, request, response):
-        """Return tool list"""
         try:
             tools = registry.list_tools(include_system=request.include_system)
             response.tools_json = json.dumps(tools, ensure_ascii=False)
@@ -101,9 +79,8 @@ class AgentNode(Node):
             self.get_logger().error(f"List error: {e}")
             response.tools_json = json.dumps([])
         return response
-    
+
     def handle_get(self, request, response):
-        """Return tool details"""
         try:
             info = registry.get_tool_info(request.name)
             if info is None:
@@ -111,7 +88,6 @@ class AgentNode(Node):
                 response.info_json = json.dumps({"error": f"Tool '{request.name}' not found"})
             else:
                 response.found = True
-                # If include_code is False and 'code' exists, drop it
                 if not request.include_code and 'code' in info:
                     info = info.copy()
                     del info['code']
@@ -121,22 +97,13 @@ class AgentNode(Node):
             response.found = False
             response.info_json = json.dumps({"error": str(e)})
         return response
-    
-    def handle_reload(self, msg):
-        """Reload tools"""
-        try:
-            count = registry.reload_tools()
-            self.get_logger().info(f"Reloaded {count} tools")
-        except Exception as e:
-            self.get_logger().error(f"Reload error: {e}")
-    
+
     def _call_system_tool(self, name: str, args: dict) -> list:
-        """Run a system tool"""
         if name == "tool_list":
             include_system = args.get("include_system", False)
             tools = registry.list_tools(include_system=include_system)
             return [{"type": "text", "text": json.dumps(tools, ensure_ascii=False)}]
-        
+
         elif name == "tool_get":
             tool_name = args.get("name")
             if not tool_name:
@@ -145,45 +112,34 @@ class AgentNode(Node):
             if info is None:
                 return [{"type": "text", "text": json.dumps({"error": f"Tool '{tool_name}' not found"}, ensure_ascii=False)}]
             return [{"type": "text", "text": json.dumps(info, ensure_ascii=False)}]
-        
+
         elif name == "tool_set":
-            tool_name = args.get("name")
             code = args.get("code")
-            if not tool_name or not code:
-                return [{"type": "text", "text": "Error: 'name' and 'code' are required"}]
-            result = registry.set_tool(tool_name, code)
-            msg = result.message
-            if result.warnings:
-                msg += f"\nWarnings: {', '.join(result.warnings)}"
-            return [{"type": "text", "text": json.dumps({"success": result.success, "message": msg}, ensure_ascii=False)}]
-        
-        elif name == "tool_delete":
-            tool_name = args.get("name")
-            if not tool_name:
-                return [{"type": "text", "text": "Error: 'name' is required"}]
-            success = registry.delete_tool(tool_name)
-            msg = f"Tool '{tool_name}' deleted" if success else f"Tool '{tool_name}' not found"
-            return [{"type": "text", "text": json.dumps({"success": success, "message": msg}, ensure_ascii=False)}]
-        
+            if not code:
+                return [{"type": "text", "text": "Error: 'code' is required"}]
+            result = registry.set_tools(code)
+            return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
+
+        elif name == "tool_reload":
+            count = registry.reload_tools()
+            return [{"type": "text", "text": json.dumps({"success": True, "tool_count": count}, ensure_ascii=False)}]
+
         elif name == "tool_reset":
             count = registry.reset_tools()
             return [{"type": "text", "text": json.dumps({"success": True, "tool_count": count}, ensure_ascii=False)}]
-        
+
         else:
             return [{"type": "text", "text": f"Unknown system tool: {name}"}]
-    
+
     def handle_call(self, request, response):
-        """Run a tool"""
         try:
             args = json.loads(request.args_json) if request.args_json else {}
-            
-            # System tool
+
             if registry.is_system_tool(request.name):
                 result = self._call_system_tool(request.name, args)
                 response.success = True
                 response.result_json = json.dumps(result, ensure_ascii=False)
             else:
-                # Regular tool
                 result = registry.call_tool(request.name, args)
                 response.success = True
                 response.result_json = json.dumps(result, ensure_ascii=False)
@@ -193,44 +149,38 @@ class AgentNode(Node):
             response.success = False
             response.result_json = json.dumps([{"type": "text", "text": f"Error: {e}\n{traceback.format_exc()}"}])
         return response
-    
+
     def handle_set(self, request, response):
-        """Add or update a tool"""
         try:
-            result = registry.set_tool(request.name, request.code)
+            result = registry.set_tools(request.code)
             response.success = result.success
             response.message = result.message
-            if result.warnings:
-                response.message += f"\nWarnings: {', '.join(result.warnings)}"
+            response.tool_count = result.tool_count
             if result.success:
-                self.get_logger().info(f"Tool '{request.name}' set successfully")
+                self.get_logger().info(f"tools.py saved: {result.tool_count} tools loaded")
             else:
-                self.get_logger().warn(f"Tool '{request.name}' set failed: {result.message}")
+                self.get_logger().warn(f"tools.py save failed: {result.message}")
         except Exception as e:
             import traceback
             self.get_logger().error(f"Set error: {e}")
             response.success = False
             response.message = f"Internal error: {e}\n{traceback.format_exc()}"
+            response.tool_count = 0
         return response
-    
-    def handle_delete(self, request, response):
-        """Delete a tool"""
+
+    def handle_reload(self, request, response):
         try:
-            if registry.delete_tool(request.name):
-                response.success = True
-                response.message = f"Tool '{request.name}' deleted"
-                self.get_logger().info(response.message)
-            else:
-                response.success = False
-                response.message = f"Tool '{request.name}' not found"
+            count = registry.reload_tools()
+            response.success = True
+            response.tool_count = count
+            self.get_logger().info(f"Reloaded {count} tools")
         except Exception as e:
-            self.get_logger().error(f"Delete error: {e}")
+            self.get_logger().error(f"Reload error: {e}")
             response.success = False
-            response.message = str(e)
+            response.tool_count = 0
         return response
-    
+
     def handle_reset(self, request, response):
-        """Reset"""
         try:
             count = registry.reset_tools()
             response.success = True
@@ -246,14 +196,11 @@ class AgentNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = AgentNode()
-    
-    # MultiThreadedExecutor allows topic callbacks to fire while a
-    # service callback (e.g. control tool's blocking loop) is running.
-    # Without this, topic.get('/odom') never updates during tool execution.
+
     from rclpy.executors import MultiThreadedExecutor
     executor = MultiThreadedExecutor()
     executor.add_node(node)
-    
+
     try:
         executor.spin()
     except KeyboardInterrupt:

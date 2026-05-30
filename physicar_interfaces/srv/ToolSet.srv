@@ -1,6 +1,6 @@
-# Set (add/overwrite) a tool
-string name             # Tool name (filename without .py)
-string code             # Python source code
+# Set (overwrite) the entire tools.py file and reload
+string code             # Full Python source code for tools.py
 ---
 bool success
 string message
+int32 tool_count        # Number of tools loaded after reload
