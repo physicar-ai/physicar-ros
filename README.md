@@ -248,7 +248,7 @@ Routers (mounted in `main.py`):
 | `/state`, `/state/{odom,battery,imu,camera,camera/{pan,tilt},lidar,audio}` | `state` | JSON snapshot or SSE (`?stream=true` / `Accept: text/event-stream`). `/state/camera/image` returns JPEG (or MJPEG with `?stream=true`, optional `?width=&height=`). `/state/lidar?step=N` decimates the scan. |
 | `/control/{speed,steering,camera/pan,camera/tilt,audio}` | `control` | Posts a single value to the matching ROS 2 topic |
 | `/agent/tool/{list,get,call,set,delete,reset}` | `agent` | Manage and invoke agent tools (Python source + PEP 723 deps) |
-| `/calibration`, `/calibration/{steering,pan,tilt,reverse,speed_gain}` | `calibration` | Read / write `/home/physicar/physicar_ws/userdata/calibration.json` |
+| `/calibration`, `/calibration/{steering,pan,tilt,reverse,speed_gain}` | `calibration` | Read / write `/opt/physicar/userdata/calibration.json` |
 | `/teleop/joy`, `/teleop/joy/mapping` | `joy` | Joystick mapping CRUD |
 | `/teleop` | `teleop` | Source-agnostic teleop status / lock |
 | `/network`, `/network/bluetooth` | `network`, `bluetooth` | WiFi / BT pairing |
@@ -274,7 +274,7 @@ curl http://<host>/settings/myapp
 # Register a script (starts immediately)
 curl -X PUT http://<host>/settings/myapp \
      -H 'Content-Type: application/json' \
-     -d '{"path": "/home/physicar/physicar_ws/userdata/myapp/main.py"}'
+     -d '{"path": "/opt/physicar/userdata/myapp/main.py"}'
 
 # Tail logs
 curl 'http://<host>/settings/myapp/log?tail=200'
@@ -308,7 +308,7 @@ subscriptions and clients. New topics are picked up on `topic.refresh()`.
 Tool storage:
 
 ```
-/home/physicar/physicar_ws/userdata/agent/
+/opt/physicar/userdata/agent/
 ├── tools/         # one .py file per tool, must define def tool(...)
 ├── venv/          # isolated venv with system-site-packages
 └── deps.json      # PEP 723 reference counts; uninstalls when refcount→0
@@ -325,7 +325,7 @@ fails.
 `deepracer_node` always runs but is idle until a model is loaded.
 
 ```
-/home/physicar/physicar_ws/userdata/deepracer/
+/opt/physicar/userdata/deepracer/
 ├── models/<name>/{model.onnx, model_metadata.json}
 └── config.json     # {"action_selection": "greedy"|"stochastic", "speed_scale": 1.0, "pan": 0.0, "tilt": 0.0}
 ```
@@ -418,7 +418,7 @@ rf2o_laser_odometry:
     freq: 20.0
 ```
 
-Calibration overrides at runtime live in `/home/physicar/physicar_ws/userdata/calibration.json`
+Calibration overrides at runtime live in `/opt/physicar/userdata/calibration.json`
 and are merged on top of the YAML values; `CalibrationStatus.source`
 tells you which one is currently active.
 
@@ -428,13 +428,13 @@ tells you which one is currently active.
 
 | Path | Used for |
 |---|---|
-| `/home/physicar/physicar_ws/src/physicar-ros/` | Repository (source of truth) |
-| `/home/physicar/physicar_ws/userdata/.env` | `DEV=true`, ... |
-| `/home/physicar/physicar_ws/userdata/password` | Web auth password (falls back to serial hash if absent) |
-| `/home/physicar/physicar_ws/userdata/calibration.json` | Calibration overrides (latched) |
-| `/home/physicar/physicar_ws/userdata/agent/{tools,venv,deps.json}` | Agent tools sandbox |
-| `/home/physicar/physicar_ws/userdata/deepracer/{models,config.json}` | DeepRacer models + inference config |
-| `/home/physicar/physicar_ws/userdata/myapp/{run.sh,log}` | Student web app + log |
+| `/opt/physicar/src/physicar-ros/` | Repository (source of truth) |
+| `/opt/physicar/userdata/.env` | `DEV=true`, ... |
+| `/opt/physicar/userdata/password` | Web auth password (falls back to serial hash if absent) |
+| `/opt/physicar/userdata/calibration.json` | Calibration overrides (latched) |
+| `/opt/physicar/userdata/agent/{tools,venv,deps.json}` | Agent tools sandbox |
+| `/opt/physicar/userdata/deepracer/{models,config.json}` | DeepRacer models + inference config |
+| `/opt/physicar/userdata/myapp/{run.sh,log}` | Student web app + log |
 | `/etc/nginx/sites-available/physicar` | TLS-terminating reverse proxy (symlink → deploy/device/) |
 | `/etc/systemd/system/physicar.service` | Service unit (symlink → deploy/device/) |
 
@@ -478,7 +478,7 @@ Workflow when using
 1. **`onCreate`** — installs ROS 2 Jazzy, Gazebo Harmonic, `ros-jazzy-ros-gz`,
    nginx, noVNC, supervisor; pulls the `physicar-sim` and `physicar-ros`
    submodules; writes `SIM=true` into
-   `/home/physicar/physicar_ws/userdata/.env`.
+   `/opt/physicar/userdata/.env`.
 2. **`postStart`** — boots `supervisord` from
    `.devcontainer/supervisord.conf`. The supervised programs include
    `xvfb` + `openbox` + `x11vnc` + `novnc` (browser desktop), `nginx`

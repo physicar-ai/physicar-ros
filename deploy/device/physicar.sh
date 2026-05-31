@@ -465,7 +465,7 @@ echo "[physicar] Root initialization complete."
 
 # ────────────────── code-server ──────────────────
 
-APP_FILE="$PHYSICAR_WS/app.physicar"
+APP_FILE="$HOME/physicar_ws/app.physicar"
 sudo chattr -i "$APP_FILE" 2>/dev/null || true
 echo "https://device.physicar.ai/studio" > "$APP_FILE"
 chmod 444 "$APP_FILE"

@@ -12,8 +12,8 @@ Raspberry Pi 5 + Ubuntu 24.04 (Noble) arm64
 
 ```bash
 sudo apt-get update && sudo apt-get install -y git
-sudo -u physicar mkdir -p /home/physicar/physicar_ws/src
-sudo -u physicar git clone https://github.com/physicar-ai/physicar-ros.git /home/physicar/physicar_ws/src/physicar-ros
-sudo bash /home/physicar/physicar_ws/src/physicar-ros/deploy/install-device.sh
+sudo mkdir -p /opt/physicar/src && sudo chown -R physicar:physicar /opt/physicar
+sudo -u physicar git clone https://github.com/physicar-ai/physicar-ros.git /opt/physicar/src/physicar-ros
+sudo bash /opt/physicar/src/physicar-ros/deploy/install-device.sh
 sudo reboot
 ```

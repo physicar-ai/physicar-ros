@@ -467,7 +467,10 @@ if [[ "$PHYSICAR_WS" != "/opt/physicar" ]]; then
 fi
 
 mkdir -p "$PHYSICAR_WS/userdata/myapp"
-chown -R physicar:physicar "$PHYSICAR_WS/userdata"
+chown -R physicar:physicar "$PHYSICAR_WS"
+
+# Student workspace (separate from firmware)
+sudo -u physicar mkdir -p /home/physicar/physicar_ws
 
 # ── Seed ~/.bashrc for physicar user ──
 sudo -u physicar bash -c 'cat "$1" >> /home/physicar/.bashrc' -- "$DEPLOY_DIR/home/physicar/bashrc-append"

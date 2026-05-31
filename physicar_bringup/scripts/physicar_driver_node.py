@@ -181,7 +181,7 @@ class PhysicarDriverNode(Node):
         self.declare_parameter('wheelbase', 0.18)
         self.declare_parameter('track_width', 0.16)
         self.declare_parameter('calibration_file',
-                               os.path.expanduser('~/physicar_ws/userdata/calibration.json'))
+                               '/opt/physicar/userdata/calibration.json')
 
         # Get parameters
         serial_port = self.get_parameter('serial_port').value

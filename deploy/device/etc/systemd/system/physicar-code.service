@@ -14,7 +14,7 @@ ExecStart=/usr/local/bin/code-server \
     --disable-telemetry \
     --disable-update-check \
     --proxy-domain preview.physicar.ai \
-    /opt/physicar
+    /home/physicar/physicar_ws
 Restart=on-failure
 RestartSec=3
 
