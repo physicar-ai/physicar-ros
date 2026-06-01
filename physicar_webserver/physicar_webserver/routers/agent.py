@@ -23,8 +23,8 @@ GET  /agent/tool/list           - List tools (/agent/tool/list)
 GET  /agent/tool/get/{name}     - Tool details (/agent/tool/get)
 POST /agent/tool/call/{name}    - Run a tool (/agent/tool/call)
 POST /agent/tool/set            - Save entire tools.py (/agent/tool/set)
-POST /agent/tool/reload         - Reload tools from disk (/agent/tool/reload)
-POST /agent/tool/reset          - Reset (/agent/tool/reset)
+POST /agent/tool/load           - Load tools from disk (/agent/tool/load)
+POST /agent/tool/init           - Init (/agent/tool/init)
 """
 
 import asyncio
@@ -51,7 +51,7 @@ def _check_tool_services():
     if _tool_services_available is None:
         try:
             from physicar_interfaces.srv import (
-                ToolList, ToolCall, ToolSet, ToolReload, ToolReset
+                ToolList, ToolCall, ToolSet, ToolLoad, ToolInit
             )
             _tool_services_available = True
         except ImportError:
@@ -67,15 +67,15 @@ async def _call_tool_service(service_name: str, request_data: dict, timeout: flo
     if not _check_tool_services():
         raise HTTPException(503, "Tool services not available")
 
-    from physicar_interfaces.srv import ToolList, ToolGet, ToolCall, ToolSet, ToolReload, ToolReset
+    from physicar_interfaces.srv import ToolList, ToolGet, ToolCall, ToolSet, ToolLoad, ToolInit
 
     service_types = {
         '/agent/tool/list': ToolList,
         '/agent/tool/get': ToolGet,
         '/agent/tool/call': ToolCall,
         '/agent/tool/set': ToolSet,
-        '/agent/tool/reload': ToolReload,
-        '/agent/tool/reset': ToolReset,
+        '/agent/tool/load': ToolLoad,
+        '/agent/tool/init': ToolInit,
     }
 
     srv_type = service_types.get(service_name)
@@ -216,10 +216,10 @@ async def get_tools_file():
         raise HTTPException(500, "Failed to parse response")
 
 
-@router.post("/tool/reload")
-async def reload_tools():
-    """Reload tools from disk (reimport tools.py after external edits)."""
-    response = await _call_tool_service('/agent/tool/reload', {})
+@router.post("/tool/load")
+async def load_tools():
+    """Load tools from disk (reimport tools.py after external edits)."""
+    response = await _call_tool_service('/agent/tool/load', {})
 
     return {
         "success": response.success,
@@ -229,8 +229,8 @@ async def reload_tools():
 
 @router.post("/tool/init")
 async def init_tools():
-    """Reset tools to builtin defaults."""
-    response = await _call_tool_service('/agent/tool/reset', {})
+    """Init tools to builtin defaults."""
+    response = await _call_tool_service('/agent/tool/init', {})
 
     return {
         "success": response.success,

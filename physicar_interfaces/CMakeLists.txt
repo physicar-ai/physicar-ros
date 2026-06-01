@@ -28,8 +28,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ToolGet.srv"
   "srv/ToolCall.srv"
   "srv/ToolSet.srv"
-  "srv/ToolReload.srv"
-  "srv/ToolReset.srv"
+  "srv/ToolLoad.srv"
+  "srv/ToolInit.srv"
   "srv/GetJoyMapping.srv"
   "srv/SetJoyMapping.srv"
   DEPENDENCIES std_msgs action_msgs builtin_interfaces

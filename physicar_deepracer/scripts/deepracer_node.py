@@ -219,7 +219,7 @@ class DeepracerNode(Node):
         
         self._scan_sub = self.create_subscription(
             LaserScan,
-            '/scan',
+            '/scan_filtered',
             self._scan_callback,
             sensor_qos,
             callback_group=self._sensor_cb_group

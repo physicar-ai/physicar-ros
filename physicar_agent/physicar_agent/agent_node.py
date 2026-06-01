@@ -7,15 +7,15 @@ Services:
 - /agent/tool/get    : Get tool details / source code
 - /agent/tool/call   : Run a tool
 - /agent/tool/set    : Save entire tools.py and load
-- /agent/tool/reload : Load tools from disk
-- /agent/tool/reset  : Delete tools.py, load builtin
+- /agent/tool/load   : Load tools from disk
+- /agent/tool/init   : Delete tools.py, load builtin
 
 System tools (reserved, cannot be used as function names):
 - tool_list  : List tools
 - tool_get   : Get tool details / source code
 - tool_set   : Save entire tools.py
 - tool_load  : Load tools from disk
-- tool_reset : Reset to builtin
+- tool_init  : Init to builtin
 """
 
 import json
@@ -28,8 +28,8 @@ from physicar_interfaces.srv import (
     ToolGet,
     ToolCall,
     ToolSet,
-    ToolReload,
-    ToolReset,
+    ToolLoad,
+    ToolInit,
 )
 
 from physicar_agent import registry
@@ -60,12 +60,12 @@ class AgentNode(Node):
             ToolSet, '/agent/tool/set', self.handle_set,
             callback_group=self._srv_cb_group
         )
-        self.reload_srv = self.create_service(
-            ToolReload, '/agent/tool/reload', self.handle_reload,
+        self.load_srv = self.create_service(
+            ToolLoad, '/agent/tool/load', self.handle_load,
             callback_group=self._srv_cb_group
         )
-        self.reset_srv = self.create_service(
-            ToolReset, '/agent/tool/reset', self.handle_reset,
+        self.init_srv = self.create_service(
+            ToolInit, '/agent/tool/init', self.handle_init,
             callback_group=self._srv_cb_group
         )
 
@@ -175,7 +175,7 @@ class AgentNode(Node):
             response.tool_count = 0
         return response
 
-    def handle_reload(self, request, response):
+    def handle_load(self, request, response):
         try:
             result = registry.load_tools()
             response.success = result.success
@@ -190,17 +190,17 @@ class AgentNode(Node):
             response.tool_count = 0
         return response
 
-    def handle_reset(self, request, response):
+    def handle_init(self, request, response):
         try:
             result = registry.init_tools()
             response.success = result.success
             response.tool_count = result.tool_count
             if result.success:
-                self.get_logger().info(f"Reset: {result.tool_count} tools loaded")
+                self.get_logger().info(f"Init: {result.tool_count} tools loaded")
             else:
-                self.get_logger().warn(f"Reset failed: {result.message}")
+                self.get_logger().warn(f"Init failed: {result.message}")
         except Exception as e:
-            self.get_logger().error(f"Reset error: {e}")
+            self.get_logger().error(f"Init error: {e}")
             response.success = False
             response.tool_count = 0
         return response

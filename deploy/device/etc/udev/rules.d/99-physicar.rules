@@ -19,3 +19,8 @@ SUBSYSTEM=="sound", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", MODE="0666"
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Keyboard", ATTR{inhibited}="1"
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Mouse", ATTR{inhibited}="1"
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Consumer Control", ATTR{inhibited}="1"
+
+# USB WiFi — auto-bind unknown Realtek adapters (interface class ff:ff:ff)
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", \
+  ATTR{bInterfaceClass}=="ff", ATTR{bInterfaceSubClass}=="ff", ATTR{bInterfaceProtocol}=="ff", \
+  RUN+="/usr/local/bin/physicar-wifi-usb-autobind.sh $devpath"

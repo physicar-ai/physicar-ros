@@ -18,9 +18,11 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$SCRIPT_DIR"
-INTERVAL="${PHYSICAR_UPDATE_INTERVAL:-300}"  # default: 5 minutes
+WORKSPACE_DIR="$(cd "$REPO_DIR/../.." && pwd)"  # /opt/physicar
+INTERVAL="${PHYSICAR_UPDATE_INTERVAL:-60}"  # default: 1 minute
 SIGNAL_FILE="/tmp/.physicar-update-ready"
 PENDING_UPDATE_FILE="/tmp/.physicar-update-pending"
+PENDING_BUILD_FILE="/tmp/.physicar-build-pending"
 REPO_REMOTE="https://github.com/PhysiCar/physicar-ros.git"
 MIN_DISK_MB=200  # minimum free disk space to proceed with update
 
@@ -270,23 +272,13 @@ safe_update() {
     # 3) Disk space check
     check_disk_space || return 1
 
-    # 4) Check for local modifications (student work protection)
-    if ! git -C "$REPO_DIR" diff --quiet 2>/dev/null; then
-        log "local modifications detected, skipping update"
-        return 1
-    fi
-    if ! git -C "$REPO_DIR" diff --cached --quiet 2>/dev/null; then
-        log "staged changes detected, skipping update"
-        return 1
-    fi
-
-    # 5) Fetch tags with timeout (network failure = skip)
+    # 4) Fetch tags with timeout (network failure = skip)
     if ! timeout 30 git -c gc.auto=0 -C "$REPO_DIR" fetch --tags 2>/dev/null; then
         log "fetch failed (network unavailable?)"
         return 1
     fi
 
-    # 6) Find latest matching tag
+    # 5) Find latest matching tag
     local tag_pattern
     tag_pattern="$(detect_tag_pattern)"
     local latest
@@ -295,7 +287,7 @@ safe_update() {
         return 1
     fi
 
-    # 7) Check if update is needed
+    # 6) Check if update is needed
     local current_rev target_rev
     current_rev=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)
     target_rev=$(git -C "$REPO_DIR" rev-parse "$latest^{}" 2>/dev/null)
@@ -303,12 +295,12 @@ safe_update() {
         return 1  # up to date
     fi
 
-    # 8) Don't roll back if HEAD is ahead of latest tag
+    # 7) Don't roll back if HEAD is ahead of latest tag
     if git -C "$REPO_DIR" merge-base --is-ancestor "$target_rev" "$current_rev" 2>/dev/null; then
         return 1  # HEAD is ahead of latest tag
     fi
 
-    # 9) Checkout with verification
+    # 8) Checkout with verification (force — overwrite local changes)
     local current_tag
     current_tag=$(git -C "$REPO_DIR" describe --tags --exact-match HEAD 2>/dev/null || echo "${current_rev:0:8}")
     log "updating: $current_tag → $latest"
@@ -318,6 +310,67 @@ safe_update() {
     fi
     log "updated to $latest"
     return 0
+}
+
+# ── safe_build ───────────────────────────────────────────
+# Build with symlink-install. Backs up install/ so a failed or
+# interrupted build can be rolled back on next boot.
+safe_build() {
+    local install_dir="$WORKSPACE_DIR/install"
+    local backup_dir="$WORKSPACE_DIR/install.bak"
+    local build_dir="$WORKSPACE_DIR/build"
+
+    check_disk_space || return 1
+
+    # Mark build in progress
+    echo "$(date +%s)" > "$PENDING_BUILD_FILE"
+    sync
+
+    # Backup current install (atomic rename)
+    if [[ -d "$install_dir" ]]; then
+        rm -rf "$backup_dir" 2>/dev/null
+        mv "$install_dir" "$backup_dir"
+    fi
+
+    log "building (symlink-install)..."
+    if (cd "$WORKSPACE_DIR" && \
+        source /opt/ros/jazzy/setup.bash && \
+        colcon build --symlink-install \
+            --base-paths src/physicar-ros \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5); then
+        # Build succeeded — remove backup and pending marker
+        rm -rf "$backup_dir" 2>/dev/null
+        rm -f "$PENDING_BUILD_FILE"
+        log "build successful"
+        return 0
+    else
+        # Build failed — restore backup
+        log "build FAILED, restoring previous install"
+        rm -rf "$install_dir" 2>/dev/null
+        if [[ -d "$backup_dir" ]]; then
+            mv "$backup_dir" "$install_dir"
+        fi
+        rm -f "$PENDING_BUILD_FILE"
+        return 1
+    fi
+}
+
+# ── recover_install ──────────────────────────────────────
+# Called at startup: if a build was interrupted (power loss),
+# restore install/ from backup.
+recover_install() {
+    local install_dir="$WORKSPACE_DIR/install"
+    local backup_dir="$WORKSPACE_DIR/install.bak"
+
+    if [[ -f "$PENDING_BUILD_FILE" ]] || [[ -d "$backup_dir" ]]; then
+        log "detected interrupted build, recovering..."
+        rm -rf "$install_dir" 2>/dev/null
+        if [[ -d "$backup_dir" ]]; then
+            mv "$backup_dir" "$install_dir"
+            log "restored install from backup"
+        fi
+        rm -f "$PENDING_BUILD_FILE"
+    fi
 }
 
 # ── safe_pip_upgrade ─────────────────────────────────────
@@ -346,17 +399,18 @@ maybe_reexec "$@"
 
 log "started (interval=${INTERVAL}s)"
 
+# Recover from interrupted build (power loss during colcon build)
+recover_install
+
 # Initial delay: let build + launch stabilize first
 sleep 120
 
 while true; do
     if safe_update; then
-        # Signal physicar.sh to rebuild + relaunch
-        touch "$SIGNAL_FILE"
-        log "signaling rebuild..."
-
-        # Kill the ros2 launch process (physicar.sh loop will restart)
-        pkill -f 'ros2 launch physicar_bringup' 2>/dev/null || true
+        # Build after update
+        if safe_build; then
+            log "update ready — will apply on next restart"
+        fi
 
         # Re-exec self in case updater.sh was part of the update
         maybe_reexec "$@"

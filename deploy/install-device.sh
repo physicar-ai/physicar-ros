@@ -165,6 +165,25 @@ if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo"; then
   rm -rf "$TMPD"
 fi
 
+# ── Realtek USB WiFi drivers (8852au / 8852bu) ──
+echo "Installing Realtek USB WiFi drivers..."
+for repo in rtl8852au rtl8852bu; do
+  KMOD="${repo#rtl}"   # 8852au or 8852bu
+  if modinfo "$KMOD" &>/dev/null; then
+    echo "  $KMOD already installed, skipping."
+  else
+    TMPD=$(mktemp -d)
+    git clone --depth 1 "https://github.com/lwfinger/${repo}.git" "$TMPD/$repo"
+    ( cd "$TMPD/$repo" && make ARCH=arm64 -j"$(nproc)" && make install ARCH=arm64 )
+    rm -rf "$TMPD"
+  fi
+done
+depmod -a
+
+# WiFi USB auto-bind script + modules auto-load
+install -m 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-usb-autobind.sh" /usr/local/bin/physicar-wifi-usb-autobind.sh
+ln -sf "$DEPLOY_DIR/etc/modules-load.d/physicar-wifi.conf" /etc/modules-load.d/physicar-wifi.conf
+
 # noVNC symlink
 [ -d /usr/share/novnc ] && ln -sf vnc_lite.html /usr/share/novnc/index.html
 

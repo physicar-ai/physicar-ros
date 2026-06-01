@@ -31,6 +31,26 @@ if [ -z "$(swapon --show)" ]; then
   grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null
 fi
 
+# Auto-register unbound USB WiFi adapters with Realtek drivers
+# Scans for USB interfaces with vendor-specific class (ff:ff:ff) that have no
+# driver bound — covers adapters plugged in before boot completed.
+for _iface in /sys/bus/usb/devices/*/bInterfaceClass; do
+  [ -f "$_iface" ] || continue
+  _dir=$(dirname "$_iface")
+  [ "$(cat "$_dir/bInterfaceClass")" = "ff" ] || continue
+  [ "$(cat "$_dir/bInterfaceSubClass")" = "ff" ] || continue
+  [ "$(cat "$_dir/bInterfaceProtocol")" = "ff" ] || continue
+  [ -L "$_dir/driver" ] && continue  # already bound
+  _parent=$(dirname "$_dir")
+  [ -f "$_parent/idVendor" ] || continue
+  _vid=$(cat "$_parent/idVendor")
+  _pid=$(cat "$_parent/idProduct")
+  [ "$_vid:$_pid" = "0bda:1a2b" ] && continue  # USB modeswitch
+  for drv in rtl8852au rtl8852bu; do
+    sudo sh -c "echo '$_vid $_pid' > /sys/bus/usb/drivers/$drv/new_id" 2>/dev/null || true
+  done
+done
+
 # Disable WiFi power save (connection stability)
 sudo iw wlan0 set power_save off 2>/dev/null || true
 

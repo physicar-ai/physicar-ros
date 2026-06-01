@@ -349,7 +349,7 @@ TOPIC_CONFIGS: Dict[str, TopicConfig] = {
         processor=process_joints,
     ),
     "lidar": TopicConfig(
-        topic="/scan",
+        topic="/scan_filtered",
         msg_type=LaserScan,
         qos=QOS_SENSOR_BEST_EFFORT,
         processor=lambda msg: process_laser_scan(msg, 1.0),

@@ -900,9 +900,9 @@ const AGENT = {
 
   async reloadTools() {
     const list = $('agent-tools-list');
-    if (list) list.innerHTML = '<span class="cfg-label">Reloading...</span>';
+    if (list) list.innerHTML = '<span class="cfg-label">Loading...</span>';
     try {
-      const res = await api('/agent/tool/reload', { method: 'POST' });
+      const res = await api('/agent/tool/load', { method: 'POST' });
       const data = await res.json();
       if (!data.success) { showToast('Load failed', true); }
       else { showToast(`Loaded ${data.tool_count} tools`); }
