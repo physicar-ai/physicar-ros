@@ -1,0 +1,23 @@
+# PhysiCar SIM bashrc additions
+export GZ_PARTITION=physicar
+export GZ_CONFIG_PATH=/usr/share/gz
+export GALLIUM_DRIVER=llvmpipe
+export MESA_GL_VERSION_OVERRIDE=3.3
+export DISPLAY=:1
+
+export PHYSICAR_WS=/opt/physicar
+export PHYSICAR_ROS_DIR=/opt/physicar/src/physicar-ros
+export PHYSICAR_SIM_DIR=/opt/physicar/src/physicar-sim
+
+source /opt/ros/jazzy/setup.bash 2>/dev/null || true
+[ -f /opt/physicar/install/setup.bash ] && source /opt/physicar/install/setup.bash
+
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml
+export NAV2_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/nav2_params.yaml
+
+eval "$(register-python-argcomplete ros2)"
+eval "$(register-python-argcomplete colcon)"
+
+alias cb='cd /opt/physicar && colcon build --symlink-install'
+alias ss='source /opt/physicar/install/setup.bash'
