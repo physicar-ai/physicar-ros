@@ -52,6 +52,12 @@ ln -sf "$DEPLOY_DIR/etc/X11/xorg.conf.d/10-no-dpms.conf" /etc/X11/xorg.conf.d/10
 
 ln -sf "$DEPLOY_DIR/etc/udev/rules.d/99-physicar.rules" /etc/udev/rules.d/99-physicar.rules
 
+# USB modeswitch configs
+mkdir -p /etc/usb_modeswitch.d
+for f in "$DEPLOY_DIR"/etc/usb_modeswitch.d/*; do
+  [ -f "$f" ] && ln -sf "$f" /etc/usb_modeswitch.d/"$(basename "$f")"
+done
+
 udevadm control --reload-rules
 udevadm trigger
 
@@ -165,20 +171,54 @@ if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo"; then
   rm -rf "$TMPD"
 fi
 
-# ── Realtek USB WiFi drivers (8852au / 8852bu) ──
-echo "Installing Realtek USB WiFi drivers..."
-for repo in rtl8852au rtl8852bu; do
-  KMOD="${repo#rtl}"   # 8852au or 8852bu
-  if modinfo "$KMOD" &>/dev/null; then
-    echo "  $KMOD already installed, skipping."
-  else
-    TMPD=$(mktemp -d)
-    git clone --depth 1 "https://github.com/lwfinger/${repo}.git" "$TMPD/$repo"
-    ( cd "$TMPD/$repo" && make ARCH=arm64 -j"$(nproc)" && make install ARCH=arm64 )
-    rm -rf "$TMPD"
+# ── Realtek USB WiFi drivers (DKMS) ──
+echo "Installing Realtek USB WiFi drivers (DKMS)..."
+
+declare -A WIFI_DRIVERS=(
+  [rtl8852au]="https://github.com/lwfinger/rtl8852au.git"
+  [rtl8852bu]="https://github.com/lwfinger/rtl8852bu.git"
+  [rtl8852cu]="https://github.com/morrownr/rtl8852cu-20251113.git"
+)
+
+for repo in "${!WIFI_DRIVERS[@]}"; do
+  KMOD="${repo#rtl}"   # 8852au, 8852bu, or 8852cu
+  if dkms status 2>/dev/null | grep -q "^${repo}.*installed"; then
+    echo "  $KMOD (DKMS) already installed, skipping."
+    continue
   fi
+  TMPD=$(mktemp -d)
+  git clone --depth 1 "${WIFI_DRIVERS[$repo]}" "$TMPD/$repo"
+  # Patch USB ID table: add known adapters whose VID:PID is not upstream yet.
+  # This ensures driver_info (chip type) is set correctly at compile time.
+  _intf="$TMPD/$repo/os_dep/linux/usb_intf.c"
+  if [ -f "$_intf" ] && [ "$repo" = "rtl8852bu" ]; then
+    grep -q "0x35bc.*0x0108" "$_intf" || \
+      sed -i '/CONFIG_RTL8852B \*\//i\\t/*=== TP-Link TX20U Nano ===*/\n\t{USB_DEVICE_AND_INTERFACE_INFO(0x35bc, 0x0108, 0xff, 0xff, 0xff), .driver_info = RTL8852B},' "$_intf"
+  fi
+  # Ensure dkms.conf exists with ARCH=arm64
+  if [ ! -f "$TMPD/$repo/dkms.conf" ]; then
+    VER="1.0.0"
+    cat > "$TMPD/$repo/dkms.conf" <<DKMS
+PACKAGE_NAME="$repo"
+PACKAGE_VERSION="$VER"
+MAKE="'make' ARCH=arm64 -j\$(nproc) KVER=\$kernelver KSRC=/lib/modules/\$kernelver/build"
+CLEAN="'make' clean"
+BUILT_MODULE_NAME[0]="$KMOD"
+DEST_MODULE_LOCATION[0]="/updates/dkms"
+AUTOINSTALL="YES"
+DKMS
+  else
+    VER=$(grep PACKAGE_VERSION "$TMPD/$repo/dkms.conf" | head -1 | sed 's/.*="\(.*\)"/\1/')
+    # Fix ARCH for arm64 in dkms build scripts
+    if [ -f "$TMPD/$repo/dkms-make.sh" ]; then
+      sed -i 's|^make |make ARCH=arm64 |' "$TMPD/$repo/dkms-make.sh"
+    fi
+  fi
+  sudo cp -r "$TMPD/$repo" "/usr/src/${repo}-${VER}"
+  sudo dkms add "${repo}/${VER}" 2>/dev/null || true
+  sudo dkms build "${repo}/${VER}" && sudo dkms install "${repo}/${VER}"
+  rm -rf "$TMPD"
 done
-depmod -a
 
 # WiFi USB auto-bind script + modules auto-load
 install -m 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-usb-autobind.sh" /usr/local/bin/physicar-wifi-usb-autobind.sh

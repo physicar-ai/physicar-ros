@@ -34,6 +34,7 @@ fi
 # Auto-register unbound USB WiFi adapters with Realtek drivers
 # Scans for USB interfaces with vendor-specific class (ff:ff:ff) that have no
 # driver bound — covers adapters plugged in before boot completed.
+# Uses ref-ID so driver_info (chip type) is passed correctly.
 for _iface in /sys/bus/usb/devices/*/bInterfaceClass; do
   [ -f "$_iface" ] || continue
   _dir=$(dirname "$_iface")
@@ -46,9 +47,17 @@ for _iface in /sys/bus/usb/devices/*/bInterfaceClass; do
   _vid=$(cat "$_parent/idVendor")
   _pid=$(cat "$_parent/idProduct")
   [ "$_vid:$_pid" = "0bda:1a2b" ] && continue  # USB modeswitch
-  for drv in rtl8852au rtl8852bu; do
-    sudo sh -c "echo '$_vid $_pid' > /sys/bus/usb/drivers/$drv/new_id" 2>/dev/null || true
+  # Skip devices that still have a mass storage interface (needs modeswitch first)
+  _has_ms=0
+  for _sib in "$_parent"/*/bInterfaceClass; do
+    [ -f "$_sib" ] || continue
+    [ "$(cat "$_sib")" = "08" ] && { _has_ms=1; break; }
   done
+  [ "$_has_ms" = "1" ] && continue
+  # ref-ID: inherit driver_info from known table entry
+  sudo sh -c "echo '$_vid $_pid ff 0bda 8832' > /sys/bus/usb/drivers/rtl8852au/new_id" 2>/dev/null || true
+  sudo sh -c "echo '$_vid $_pid ff 0bda b832' > /sys/bus/usb/drivers/rtl8852bu/new_id" 2>/dev/null || true
+  sudo sh -c "echo '$_vid $_pid ff 0bda 8832' > /sys/bus/usb/drivers/rtl8852cu/new_id" 2>/dev/null || true
 done
 
 # Disable WiFi power save (connection stability)
