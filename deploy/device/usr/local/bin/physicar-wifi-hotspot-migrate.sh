@@ -203,6 +203,8 @@ sleep 1
 # ── Start hotspot on new interface ──
 if nmcli connection up physicar-hotspot 2>/dev/null; then
   log "Hotspot started on $_new_iface"
+  # Disable power save on the AP interface
+  iw dev "$_new_iface" set power_save off 2>/dev/null || true
 else
   log "ERROR: Hotspot failed on $_new_iface"
   if [ "$_new_iface" != "ap0" ]; then

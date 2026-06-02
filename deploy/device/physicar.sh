@@ -136,6 +136,12 @@ fi
 
 # ────────────────── WiFi Hotspot (AP+STA) ──────────────────
 
+# ── Disable WiFi power save & USB autosuspend (prevents latency/disconnects) ──
+iw dev wlan0 set power_save off 2>/dev/null || true
+for _usbpwr in /sys/bus/usb/devices/*/power/control; do
+  [ -f "$_usbpwr" ] && echo "on" > "$_usbpwr" 2>/dev/null || true
+done
+
 # Run in background — nothing below depends on hotspot being ready
 (
   # ── Purge ghost netplan passthrough files (physicar-hotspot only) ──
