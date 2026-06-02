@@ -24,3 +24,7 @@ SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller
 ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", \
   ATTR{bInterfaceClass}=="ff", ATTR{bInterfaceSubClass}=="ff", ATTR{bInterfaceProtocol}=="ff", \
   RUN+="/usr/local/bin/physicar-wifi-usb-autobind.sh $devpath"
+
+# USB WiFi removed — migrate hotspot back to internal ap0
+ACTION=="remove", SUBSYSTEM=="net", KERNEL=="wlx*", \
+  RUN+="/bin/systemd-run --no-block /usr/local/bin/physicar-wifi-hotspot-migrate.sh"

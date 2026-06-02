@@ -134,35 +134,11 @@ if [ "$_CURRENT_HOSTNAME" != "$DEVICE_HOSTNAME" ]; then
   echo "127.0.1.1	$DEVICE_HOSTNAME" | sudo tee -a /etc/hosts > /dev/null
 fi
 
-# Restrict avahi/mDNS to ap0 only
-AVAHI_CHANGED=0
-sudo mkdir -p /etc/avahi
-if [ -f /etc/avahi/avahi-daemon.conf ]; then
-  if ! grep -q '^allow-interfaces=ap0' /etc/avahi/avahi-daemon.conf; then
-    sudo sed -i \
-      -e 's/^#*allow-interfaces=.*/allow-interfaces=ap0/' \
-      -e 's/^#*deny-interfaces=.*/deny-interfaces=wlan0,eth0/' \
-      /etc/avahi/avahi-daemon.conf
-    grep -q '^allow-interfaces=' /etc/avahi/avahi-daemon.conf || \
-      sudo sed -i '/^\[server\]/a allow-interfaces=ap0' /etc/avahi/avahi-daemon.conf
-    grep -q '^deny-interfaces=' /etc/avahi/avahi-daemon.conf || \
-      sudo sed -i '/^\[server\]/a deny-interfaces=wlan0,eth0' /etc/avahi/avahi-daemon.conf
-    AVAHI_CHANGED=1
-  fi
-fi
-if [ "$_CURRENT_HOSTNAME" != "$DEVICE_HOSTNAME" ] || [ "$AVAHI_CHANGED" = "1" ]; then
-  sudo systemctl restart avahi-daemon &>/dev/null || true
-fi
-
 # ────────────────── WiFi Hotspot (AP+STA) ──────────────────
 
 # Run in background — nothing below depends on hotspot being ready
 (
   # ── Purge ghost netplan passthrough files (physicar-hotspot only) ──
-  # nmcli connection add creates /etc/netplan/90-NM-*.yaml passthrough files.
-  # If netplan can't clean them (read-only FS at early boot), ghosts accumulate
-  # and make subsequent boots extremely slow. We now write a NM keyfile directly
-  # to /etc/NetworkManager/system-connections/ to bypass netplan entirely.
   _ghost_files=$(find /etc/netplan -maxdepth 1 -name '90-NM-*-physicar-*.yaml' 2>/dev/null)
   if [ -n "$_ghost_files" ]; then
     _ghost_count=$(echo "$_ghost_files" | wc -l)
@@ -173,11 +149,31 @@ fi
     sleep 1
   fi
 
-  if ! iw dev ap0 info &>/dev/null; then
-    sudo iw dev wlan0 interface add ap0 type __ap 2>/dev/null || true
+  # ── 1. Detect AP interface: USB WiFi preferred, else virtual ap0 ──
+  _AP_IFACE=""
+  _AP_IP="10.42.0.1"
+  _AP_INDEPENDENT=0
+  for _net in /sys/class/net/wlx*; do
+    [ -e "$_net" ] || continue
+    _candidate=$(basename "$_net")
+    # Verify it's a real WiFi device (has wireless/phy80211)
+    [ -d "/sys/class/net/$_candidate/wireless" ] || continue
+    _AP_IFACE="$_candidate"
+    _AP_INDEPENDENT=1
+    break
+  done
+
+  if [ -z "$_AP_IFACE" ]; then
+    _AP_IFACE="ap0"
+    if ! iw dev ap0 info &>/dev/null; then
+      sudo iw dev wlan0 interface add ap0 type __ap 2>/dev/null || true
+    fi
+    echo "[physicar] AP interface: ap0 (internal, shared phy with STA)"
+  else
+    echo "[physicar] AP interface: $_AP_IFACE (USB WiFi, independent phy)"
   fi
 
-  # Try STA autoconnect first so we know which band we'll be on.
+  # ── 2. STA autoconnect check ──
   _sta_connected=0
   _sta_freq=0
   if sudo nmcli -t -f NAME,TYPE connection show 2>/dev/null | grep -q '802-11-wireless'; then
@@ -193,39 +189,131 @@ fi
     done
   fi
 
+  # ── 3. Country estimation from nearby AP beacons ──
+  _country=$(sudo iw dev wlan0 scan 2>/dev/null \
+    | grep -oP 'Country: \K[A-Z]{2}' \
+    | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
+  : "${_country:=00}"
+  echo "[physicar] Estimated country: $_country"
+
+  # ── 4. Channel selection ──
   _ap_band_kf=""
   _ap_channel_kf=""
-  if [ "$_sta_connected" = "1" ]; then
+
+  if [ "$_AP_INDEPENDENT" = "0" ] && [ "$_sta_connected" = "1" ]; then
+    # Internal AP (ap0) + STA connected → must follow STA channel (same phy)
     echo "[physicar] STA on ${_sta_freq} MHz; hotspot follows STA channel"
   else
-    _best_channel=$(sudo iw dev wlan0 scan 2>/dev/null \
-      | awk '/freq:/{f=$2} /signal:/{s=$2;
-        if(f>=2402&&f<=2422)c1+=10^(s/10);
-        else if(f>=2427&&f<=2447)c6+=10^(s/10);
-        else if(f>=2452&&f<=2472)c11+=10^(s/10)}
-        END{if(c11<=c1&&c11<=c6)print 11;
-            else if(c1<=c6)print 1;
-            else print 6}')
-    : "${_best_channel:=6}"
-    _ap_band_kf="band=bg"
+    # Independent USB WiFi, or internal with no STA → pick least congested channel
+    # Priority: 5GHz > 2.4GHz.  Within 5GHz: non-DFS channels only.
+
+    # Determine which phy the AP interface uses
+    _ap_phy=""
+    if [ "$_AP_IFACE" != "ap0" ]; then
+      _ap_phy=$(cat "/sys/class/net/${_AP_IFACE}/phy80211/name" 2>/dev/null)
+    fi
+    : "${_ap_phy:=phy0}"
+
+    # Query AP phy's supported non-DFS frequencies → build candidate list
+    # Only include channels that are: enabled, no-radar, and in our allowed set
+    _supported_5g=""
+    _supported_24g=""
+    while IFS= read -r _line; do
+      # Parse lines like: "* 5180.0 MHz [36] (23.0 dBm)"
+      # Skip disabled or radar lines
+      echo "$_line" | grep -qE 'disabled|radar' && continue
+      _freq=$(echo "$_line" | grep -oP '\d{4,5}(?=\.0 MHz)')
+      [ -z "$_freq" ] && continue
+      case "$_freq" in
+        5180|5200|5220|5240)               _supported_5g="$_supported_5g ${_freq}" ;;  # UNII-1
+        5745|5765|5785|5805|5825)           _supported_5g="$_supported_5g ${_freq}" ;;  # UNII-3
+        2412|2437|2462)                     _supported_24g="$_supported_24g ${_freq}" ;; # ch 1,6,11
+      esac
+    done < <(sudo iw phy "$_ap_phy" info 2>/dev/null | grep "MHz")
+
+    # Map frequencies to channels
+    _freq_to_ch() {
+      case "$1" in
+        5180) echo 36;; 5200) echo 40;; 5220) echo 44;; 5240) echo 48;;
+        5745) echo 149;; 5765) echo 153;; 5785) echo 157;; 5805) echo 161;; 5825) echo 165;;
+        2412) echo 1;; 2437) echo 6;; 2462) echo 11;;
+      esac
+    }
+
+    # Filter by country (UNII-3 restricted in JP/unknown)
+    _cand_5g=""
+    for _f in $_supported_5g; do
+      _ch=$(_freq_to_ch "$_f")
+      case "$_country" in
+        JP|00) [ "$_ch" -le 48 ] && _cand_5g="$_cand_5g $_ch" ;;  # UNII-1 only
+        *)     _cand_5g="$_cand_5g $_ch" ;;
+      esac
+    done
+    _cand_24g=""
+    for _f in $_supported_24g; do
+      _cand_24g="$_cand_24g $(_freq_to_ch "$_f")"
+    done
+    _cand_5g=$(echo $_cand_5g)    # trim
+    _cand_24g=$(echo $_cand_24g)  # trim
+
+    # Scan interference and pick least congested channel (5GHz preferred)
+    # 2.4GHz gets a penalty (+0.01 ≈ -20dBm equivalent) to prefer 5GHz
+    _best_channel=$(sudo iw dev wlan0 scan 2>/dev/null | awk -v cands5="$_cand_5g" -v cands24="$_cand_24g" '
+      BEGIN {
+        n5=split(cands5,c5); for(i=1;i<=n5;i++) energy[c5[i]]=0
+        n24=split(cands24,c24); for(i=1;i<=n24;i++) energy[c24[i]]=0.01
+      }
+      /freq:/ { f=int($2) }
+      /signal:/ {
+        s=$2
+        if      (f==5180) energy[36]  += 10^(s/10)
+        else if (f==5200) energy[40]  += 10^(s/10)
+        else if (f==5220) energy[44]  += 10^(s/10)
+        else if (f==5240) energy[48]  += 10^(s/10)
+        else if (f==5745) energy[149] += 10^(s/10)
+        else if (f==5765) energy[153] += 10^(s/10)
+        else if (f==5785) energy[157] += 10^(s/10)
+        else if (f==5805) energy[161] += 10^(s/10)
+        else if (f==5825) energy[165] += 10^(s/10)
+        else if (f>=2402 && f<=2422) energy[1]  += 10^(s/10)
+        else if (f>=2427 && f<=2447) energy[6]  += 10^(s/10)
+        else if (f>=2452 && f<=2472) energy[11] += 10^(s/10)
+      }
+      END {
+        ntot=n5+n24
+        min_e=-1; min_ch=36
+        for(i=1;i<=n5;i++){c=c5[i]; if(min_e<0||energy[c]<min_e){min_e=energy[c];min_ch=c}}
+        for(i=1;i<=n24;i++){c=c24[i]; if(min_e<0||energy[c]<min_e){min_e=energy[c];min_ch=c}}
+        print min_ch
+      }')
+    : "${_best_channel:=36}"
+
+    # Determine band from selected channel
+    if [ "$_best_channel" -ge 36 ]; then
+      _ap_band_kf="band=a"
+      echo "[physicar] Hotspot channel: ${_best_channel} (5 GHz, country=${_country})"
+    else
+      _ap_band_kf="band=bg"
+      echo "[physicar] Hotspot channel: ${_best_channel} (2.4 GHz, country=${_country})"
+    fi
     _ap_channel_kf="channel=${_best_channel}"
-    echo "[physicar] Hotspot channel: ${_best_channel} (2.4 GHz)"
   fi
 
+  # ── 5. dnsmasq captive-portal DNS ──
   sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
   {
-    echo "address=/$DEVICE_HOSTNAME.local/10.42.0.1"
-    [ "$DEVICE_HOSTNAME" != "physicar" ] && echo "address=/physicar.local/10.42.0.1"
-    echo "address=/device.physicar.ai/10.42.0.1"
-    echo "address=/preview.physicar.ai/10.42.0.1"
+    echo "address=/$DEVICE_HOSTNAME.local/${_AP_IP}"
+    [ "$DEVICE_HOSTNAME" != "physicar" ] && echo "address=/physicar.local/${_AP_IP}"
+    echo "address=/device.physicar.ai/${_AP_IP}"
+    echo "address=/preview.physicar.ai/${_AP_IP}"
     echo ""
-    echo "address=/www.msftconnecttest.com/10.42.0.1"
-    echo "address=/msftconnecttest.com/10.42.0.1"
-    echo "address=/captive.apple.com/10.42.0.1"
-    echo "address=/connectivitycheck.gstatic.com/10.42.0.1"
-    echo "address=/clients3.google.com/10.42.0.1"
-    echo "address=/detectportal.firefox.com/10.42.0.1"
-    echo "address=/connectivity-check.ubuntu.com/10.42.0.1"
+    echo "address=/www.msftconnecttest.com/${_AP_IP}"
+    echo "address=/msftconnecttest.com/${_AP_IP}"
+    echo "address=/captive.apple.com/${_AP_IP}"
+    echo "address=/connectivitycheck.gstatic.com/${_AP_IP}"
+    echo "address=/clients3.google.com/${_AP_IP}"
+    echo "address=/detectportal.firefox.com/${_AP_IP}"
+    echo "address=/connectivity-check.ubuntu.com/${_AP_IP}"
     echo ""
     echo "no-resolv"
     echo "server=1.1.1.1"
@@ -233,20 +321,23 @@ fi
     echo "server=8.8.4.4"
   } | sudo tee /etc/NetworkManager/dnsmasq-shared.d/physicar.conf > /dev/null
 
-  # ── Hotspot connection via NM keyfile (bypasses netplan passthrough) ──
+  # ── 6. Hotspot NM keyfile (bypasses netplan passthrough) ──
   _HOTSPOT_FILE="/etc/NetworkManager/system-connections/physicar-hotspot.nmconnection"
   _need_write=1
 
   if [ -f "$_HOTSPOT_FILE" ]; then
     _file_ssid=$(sudo grep -m1 '^ssid=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     _file_psk=$(sudo grep -m1 '^psk=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
-    if [ "$_file_ssid" = "$DEVICE_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ]; then
+    _file_iface=$(sudo grep -m1 '^interface-name=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
+    if [ "$_file_ssid" = "$DEVICE_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ] \
+       && [ "$_file_iface" = "$_AP_IFACE" ]; then
       _need_write=0
     fi
   fi
 
   if [ "$_need_write" = "1" ]; then
-    if ! iw dev ap0 info &>/dev/null; then
+    # Verify AP interface exists
+    if [ "$_AP_IFACE" = "ap0" ] && ! iw dev ap0 info &>/dev/null; then
       echo "[physicar] WARNING: Could not create AP interface" >&2
       exit 1
     fi
@@ -255,7 +346,7 @@ fi
 id=physicar-hotspot
 uuid=$(cat /proc/sys/kernel/random/uuid)
 type=wifi
-interface-name=ap0
+interface-name=${_AP_IFACE}
 autoconnect=false
 
 [wifi]
@@ -266,12 +357,15 @@ ${_ap_channel_kf}
 
 [wifi-security]
 key-mgmt=wpa-psk
+proto=rsn
+pairwise=ccmp
+group=ccmp
+pmf=1
 psk=${PASSWORD}
-wps-method=1
 
 [ipv4]
 method=shared
-address1=10.42.0.1/24
+address1=${_AP_IP}/24
 
 [ipv6]
 method=auto
@@ -282,15 +376,34 @@ HOTSPOT_KF
     sudo chmod 600 "$_HOTSPOT_FILE"
     sudo nmcli connection reload 2>/dev/null
     sleep 1
-    echo "[physicar] Hotspot keyfile written"
+    echo "[physicar] Hotspot keyfile written (iface=${_AP_IFACE})"
   fi
 
+  # ── 7. Start hotspot ──
   if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
     sudo nmcli connection up physicar-hotspot &>/dev/null && \
-      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (ap0, 10.42.0.1)" || \
+      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (${_AP_IFACE}, ${_AP_IP})" || \
       echo "[physicar] WARNING: Hotspot failed to start" >&2
   else
     echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
+  fi
+
+  # ── 8. Update avahi/mDNS to use correct AP interface ──
+  sudo mkdir -p /etc/avahi
+  if [ -f /etc/avahi/avahi-daemon.conf ]; then
+    _avahi_iface=$(grep -m1 '^allow-interfaces=' /etc/avahi/avahi-daemon.conf 2>/dev/null | cut -d= -f2)
+    if [ "$_avahi_iface" != "$_AP_IFACE" ]; then
+      sudo sed -i \
+        -e "s/^#*allow-interfaces=.*/allow-interfaces=${_AP_IFACE}/" \
+        -e 's/^#*deny-interfaces=.*/deny-interfaces=wlan0,eth0/' \
+        /etc/avahi/avahi-daemon.conf
+      grep -q '^allow-interfaces=' /etc/avahi/avahi-daemon.conf || \
+        sudo sed -i "/^\[server\]/a allow-interfaces=${_AP_IFACE}" /etc/avahi/avahi-daemon.conf
+      grep -q '^deny-interfaces=' /etc/avahi/avahi-daemon.conf || \
+        sudo sed -i '/^\[server\]/a deny-interfaces=wlan0,eth0' /etc/avahi/avahi-daemon.conf
+      sudo systemctl restart avahi-daemon &>/dev/null || true
+      echo "[physicar] Avahi updated: allow-interfaces=${_AP_IFACE}"
+    fi
   fi
 ) &
 
