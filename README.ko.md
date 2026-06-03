@@ -35,7 +35,7 @@
 
 ## 실행 모드
 
-`.env` 파일로 설정 (`/opt/physicar/src/physicar-ros/.env`).
+`.env` 파일로 설정 (`/opt/physicar/userdata/.env`).
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|

@@ -207,9 +207,10 @@ chmod +x "$DEPLOY_DIR/physicar.sh"
 
 echo "[5/7] Workspace setup..."
 
-# /opt/physicar .env
-echo "SIM=true" | tee "$PHYSICAR_WS/.env" > /dev/null
-chown physicar:physicar "$PHYSICAR_WS/.env"
+# /opt/physicar/userdata .env (same path as device)
+mkdir -p "$PHYSICAR_WS/userdata"
+echo "SIM=true" | tee "$PHYSICAR_WS/userdata/.env" > /dev/null
+chown physicar:physicar "$PHYSICAR_WS/userdata/.env"
 
 # COLCON_IGNORE for device-only packages
 touch "$PHYSICAR_ROS_DIR/camera_ros/COLCON_IGNORE" 2>/dev/null || true

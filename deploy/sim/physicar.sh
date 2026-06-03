@@ -7,8 +7,15 @@
 PHYSICAR_WS="/opt/physicar"
 PHYSICAR_ROS_DIR="$PHYSICAR_WS/src/physicar-ros"
 PHYSICAR_SIM_DIR="$PHYSICAR_WS/src/physicar-sim"
+PHYSICAR_DIR="$PHYSICAR_WS/userdata"
 
-source "$PHYSICAR_WS/.env" 2>/dev/null || true
+# Load environment (.env)
+ENV_FILE="$PHYSICAR_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+    if bash -n "$ENV_FILE" 2>/dev/null; then
+        set -a; . "$ENV_FILE"; set +a
+    fi
+fi
 
 # ────────────────── ROS2 Launch ──────────────────
 
