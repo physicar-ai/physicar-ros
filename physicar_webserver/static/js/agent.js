@@ -538,7 +538,7 @@ const PlatformAuth = {
     if (needsCodeCli) {
       // VS Code Simple Browser — open via server-side $BROWSER (code CLI)
       if (btn) { btn.textContent = 'Opening...'; btn.disabled = true; btn.style.opacity = '0.6'; }
-      fetch('/api/host/open-external?url=' + encodeURIComponent(ghUrl))
+      fetch('/api/codespaces/open-external?url=' + encodeURIComponent(ghUrl))
         .then(r => { if (!r.ok) throw 0; return r.json(); })
         .then(d => {
           if (d.ok && btn) {

@@ -7,6 +7,8 @@ import subprocess
 from datetime import datetime
 from fastapi import APIRouter
 
+from physicar_webserver.sim import is_sim_mode
+
 router = APIRouter()
 
 
@@ -26,12 +28,14 @@ async def health_check():
 
 @router.post("/api/restart")
 async def restart_ros():
-    """Restart the physicar systemd service (rebuilds + relaunches ROS)."""
+    """Restart the physicar service (rebuilds + relaunches ROS)."""
     try:
-        subprocess.Popen(
-            ["sudo", "systemctl", "restart", "physicar.service"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        if is_sim_mode():
+            cmd = ["supervisorctl", "-s", "unix:///tmp/supervisor.sock",
+                   "restart", "physicar"]
+        else:
+            cmd = ["sudo", "systemctl", "restart", "physicar.service"]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}

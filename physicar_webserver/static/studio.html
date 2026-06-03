@@ -371,7 +371,7 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
 
   async function loadMachines(){
     try {
-      const r = await fetch('/api/host/machines');
+      const r = await fetch('/api/codespaces/machines');
       if(!r.ok) return;
       machineData = await r.json();
       machineCpu.textContent = machineData.cpus + ' CPUs';
@@ -459,7 +459,7 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
       '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
 
     try {
-      const r = await fetch('/api/host/machine', {
+      const r = await fetch('/api/codespaces/machine', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({machine: name}),

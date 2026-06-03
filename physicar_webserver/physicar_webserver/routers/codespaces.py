@@ -17,7 +17,7 @@
 """
 Sim Router — GitHub Codespaces machine management + open-external.
 
-Endpoints live at ``/api/host/`` to match existing frontend calls.
+Endpoints live at ``/api/codespaces/`` to match existing frontend calls.
 Only functional when ``CODESPACE_NAME`` env var is set (i.e. running in
 GitHub Codespaces).  On device they return 400.
 """
@@ -31,7 +31,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/host", tags=["sim"])
+router = APIRouter(prefix="/api/codespaces", tags=["sim"])
 
 CODESPACE_NAME = os.environ.get("CODESPACE_NAME", "")
 
