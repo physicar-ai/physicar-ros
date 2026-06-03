@@ -130,7 +130,7 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
     { id: 'myapp', label: 'MyApp',  path: '/myapp/',  port: 5000, desc: 'Flask'   },
   ];
 
-  const DEF_LEFT = 'home', DEF_RIGHT = 'gz', DEF_RATIO = 0.7;
+  const DEF_LEFT = 'home', DEF_RIGHT = 'vnc', DEF_RATIO = 0.7;
   let leftId = DEF_LEFT;
   let rightId = DEF_RIGHT;
   let splitRatio = DEF_RATIO;
@@ -353,6 +353,25 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
       }
     }catch(e){}
   }
+
+  /* ── Hide Gazebo on real robot ── */
+  (async function(){
+    try {
+      const r = await fetch('/info');
+      if(!r.ok) return;
+      const info = await r.json();
+      if(info.mode !== 'sim'){
+        const idx = MONITORS.findIndex(m => m.id === 'gz');
+        if(idx !== -1) MONITORS.splice(idx, 1);
+        if(leftId === 'gz') leftId = DEF_LEFT;
+        if(rightId === 'gz') rightId = DEF_RIGHT;
+        buildOptions(selLeft);
+        buildOptions(selRight);
+        render();
+        updateInfo();
+      }
+    } catch(e){}
+  })();
 
   loadState();
   render();

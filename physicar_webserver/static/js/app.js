@@ -264,7 +264,7 @@ function updateState(d) {
     fill.className = 'battery-fill' + (pct > 60 ? '' : pct > 20 ? ' medium' : ' low');
   }
   if (d.odom) {
-    const spd = (d.odom.velocity?.linear || 0).toFixed(1);
+    const spd = Math.abs(d.odom.velocity?.linear || 0) < 0.05 ? '0.0' : (d.odom.velocity?.linear || 0).toFixed(1);
     $('p-speed').textContent = spd + ' m/s';
   }
   if (d.cmd) {
@@ -272,8 +272,8 @@ function updateState(d) {
     $('p-pantilt').textContent = toDeg(d.cmd.pan || 0).toFixed(0) + '\u00b0 / ' + toDeg(d.cmd.tilt || 0).toFixed(0) + '\u00b0';
   }
   if (d.imu && d.imu.acceleration) {
-    const a = d.imu.acceleration;
-    $('p-accel').textContent = (a.x||0).toFixed(2) + ' m/s²';
+    const ax = (a => Math.abs(a) < 0.05 ? '0.0' : a.toFixed(1))(d.imu.acceleration.x || 0);
+    $('p-accel').textContent = ax + ' m/s²';
   }
 }
 
