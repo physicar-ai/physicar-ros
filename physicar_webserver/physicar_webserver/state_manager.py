@@ -68,11 +68,19 @@ class TopicConfig:
 
 @dataclass
 class StateBuffer:
-    """Thread-safe buffer for state data with condition notification."""
+    """Thread-safe buffer for state data with condition notification.
+
+    Supports lazy processing: callbacks store only the raw message
+    (update_raw), and dict conversion happens on first read via
+    _ensure_processed().  This avoids wasting CPU on high-frequency
+    topics when no client is reading.
+    """
     data: Optional[dict] = None
     raw_msg: Optional[Any] = None
     seq: int = 0
+    _data_seq: int = -1  # seq at which data was last computed
     last_ts: float = 0.0  # monotonic time of last update; 0 = never
+    processor: Optional[Callable[[Any], dict]] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
     condition: threading.Condition = field(default=None)
     
@@ -81,17 +89,33 @@ class StateBuffer:
             self.condition = threading.Condition(self.lock)
     
     def update(self, data: dict, raw_msg: Any = None):
-        """Update buffer and notify waiters."""
+        """Update buffer with pre-processed data and notify waiters."""
         with self.condition:
             self.data = data
             self.raw_msg = raw_msg
             self.seq += 1
+            self._data_seq = self.seq
             self.last_ts = time.monotonic()
             self.condition.notify_all()
-    
+
+    def update_raw(self, raw_msg: Any):
+        """Store raw message without processing. Dict computed lazily on read."""
+        with self.condition:
+            self.raw_msg = raw_msg
+            self.seq += 1
+            self.last_ts = time.monotonic()
+            self.condition.notify_all()
+
+    def _ensure_processed(self):
+        """Compute data from raw_msg if stale. Must be called with lock held."""
+        if self._data_seq != self.seq and self.processor and self.raw_msg is not None:
+            self.data = self.processor(self.raw_msg)
+            self._data_seq = self.seq
+
     def get(self) -> Optional[dict]:
-        """Get current data (non-blocking)."""
+        """Get current processed data (non-blocking, lazy)."""
         with self.lock:
+            self._ensure_processed()
             return self.data
 
     def age(self) -> Optional[float]:
@@ -107,6 +131,7 @@ class StateBuffer:
             if self.seq == last_seq:
                 self.condition.wait(timeout)
             if self.seq != last_seq:
+                self._ensure_processed()
                 return self.data, self.seq
             return None, last_seq
 
@@ -460,10 +485,10 @@ class StateManager:
             return False
         
         buffer = self._buffers[key]
+        buffer.processor = config.processor
 
         def callback(msg):
-            data = config.processor(msg) if config.processor else {"raw": str(msg)}
-            buffer.update(data, msg)
+            buffer.update_raw(msg)
         
         self._subscriptions[key] = self._node.create_subscription(
             config.msg_type,
@@ -802,6 +827,7 @@ class StateManager:
                             if buffer.seq != last_seqs[key]:
                                 last_seqs[key] = buffer.seq
                                 changed = True
+                                buffer._ensure_processed()
                             if buffer.data is not None:
                                 result[key] = buffer.data
             

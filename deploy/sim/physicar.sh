@@ -66,6 +66,9 @@ else
     source "$PHYSICAR_WS/install/setup.bash"
 fi
 
+LAUNCH_PID=""
+trap 'kill -TERM -$$ 2>/dev/null; exit 0' TERM INT
+
 while true; do
     echo "[physicar] Launching sim..."
     ros2 launch physicar_bringup sim.launch.py &

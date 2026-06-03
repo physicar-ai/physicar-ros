@@ -102,7 +102,7 @@ def generate_launch_description():
     # DeepRacer inference node (always runs — same as real robot)
     deepracer_node = Node(
         package='physicar_deepracer',
-        executable='deepracer_node.py',
+        executable='deepracer_node',
         name='deepracer',
         output='screen',
         parameters=[{'use_sim_time': True}],
@@ -121,7 +121,7 @@ def generate_launch_description():
             'autorepeat_rate': 20.0,
             'deadzone': 0.05,
             'sticky_buttons': False,
-            'use_sim_time': True,
+            'use_sim_time': False,
         }],
         additional_env={'SDL_JOYSTICK_HIDAPI': '0'},
         respawn=True,
@@ -134,7 +134,7 @@ def generate_launch_description():
         executable='joy_teleop_node',
         name='physicar_joy_teleop',
         output='screen',
-        parameters=[teleop_config, {'use_sim_time': True}],
+        parameters=[teleop_config, {'use_sim_time': False}],
         respawn=True,
         respawn_delay=2.0,
     )
@@ -161,7 +161,7 @@ def generate_launch_description():
         executable='cmd_vel_adapter_node.py',
         name='cmd_vel_adapter',
         output='screen',
-        parameters=[{'use_sim_time': True}],
+        parameters=[{'use_sim_time': False}],
         respawn=True,
         respawn_delay=2.0,
     )
@@ -175,7 +175,7 @@ def generate_launch_description():
                 executable='agent_node',
                 name='agent_node',
                 output='screen',
-                parameters=[{'use_sim_time': True}],
+                parameters=[{'use_sim_time': False}],
                 respawn=True,
                 respawn_delay=2.0,
             )
@@ -191,7 +191,7 @@ def generate_launch_description():
                 executable='webserver_node.py',
                 name='webserver',
                 output='screen',
-                parameters=[{'use_sim_time': True, 'sim_mode': True}],
+                parameters=[{'use_sim_time': False, 'sim_mode': True}],
                 respawn=True,
                 respawn_delay=2.0,
             )

@@ -210,12 +210,8 @@ def main(args=None):
     rclpy.init(args=args)
     node = AgentNode()
 
-    from rclpy.executors import MultiThreadedExecutor
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
-
     try:
-        executor.spin()
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:

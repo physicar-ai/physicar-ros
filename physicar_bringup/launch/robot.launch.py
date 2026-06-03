@@ -211,7 +211,7 @@ def generate_launch_description():
     # DeepRacer inference node (always runs)
     deepracer_node = Node(
         package='physicar_deepracer',
-        executable='deepracer_node.py',
+        executable='deepracer_node',
         name='deepracer',
         output='screen',
         respawn=True,

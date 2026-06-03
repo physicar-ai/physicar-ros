@@ -177,6 +177,47 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'tensorflow>=2.17,<3' \
   setuptools==70.0.0
 
+# ── TFLite C++ headers & library (for physicar_deepracer C++ node) ──
+echo "  Installing TFLite C++ headers..."
+
+TF_VER=$(sudo -u physicar python3 -c "import tensorflow; print(tensorflow.__version__)" 2>/dev/null || echo "2.17.1")
+TF_LIB=$(sudo -u physicar python3 -c "import tensorflow, os; print(os.path.dirname(tensorflow.__file__))" 2>/dev/null)
+
+# 1) TFLite C++ headers from tensorflow source (sparse checkout, arch-independent)
+if [ ! -f /usr/local/include/tensorflow/lite/interpreter.h ]; then
+  TMPD=$(mktemp -d)
+  cd "$TMPD"
+  git init -q
+  git remote add origin https://github.com/tensorflow/tensorflow.git
+  git config core.sparseCheckout true
+  echo "tensorflow/lite/" > .git/info/sparse-checkout
+  git fetch --depth 1 origin "v${TF_VER}" 2>/dev/null
+  git checkout FETCH_HEAD -- tensorflow/lite/ 2>/dev/null
+  cp -r tensorflow /usr/local/include/
+  chmod -R a+rX /usr/local/include/tensorflow/
+  rm -rf "$TMPD"
+  cd /
+fi
+
+# 2) flatbuffers headers (required by TFLite schema)
+if [ ! -f /usr/local/include/flatbuffers/flatbuffers.h ]; then
+  FLATBUF_VER="24.3.25"
+  TMPD=$(mktemp -d)
+  curl -sL "https://github.com/google/flatbuffers/archive/refs/tags/v${FLATBUF_VER}.tar.gz" | tar xz -C "$TMPD"
+  cp -r "$TMPD/flatbuffers-${FLATBUF_VER}/include/flatbuffers" /usr/local/include/
+  chmod -R a+rX /usr/local/include/flatbuffers/
+  rm -rf "$TMPD"
+fi
+
+# 3) Symlink pip tensorflow's libtensorflow_cc.so.2 → /usr/local/lib
+#    (contains all TFLite symbols; SONAME is libtensorflow_cc.so.2)
+if [ -n "$TF_LIB" ] && [ -f "$TF_LIB/libtensorflow_cc.so.2" ]; then
+  ln -sf "$TF_LIB/libtensorflow_cc.so.2" /usr/local/lib/libtensorflowlite.so
+  ln -sf "$TF_LIB/libtensorflow_cc.so.2" /usr/local/lib/libtensorflow_cc.so.2
+  ln -sf "$TF_LIB/libtensorflow_framework.so.2" /usr/local/lib/libtensorflow_framework.so.2
+  ldconfig
+fi
+
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  4. Config Deployment (symlinks)                                           │
 # └─────────────────────────────────────────────────────────────────────────────┘

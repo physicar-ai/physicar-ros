@@ -195,15 +195,23 @@ private:
 
   static bool exe_matches(pid_t pid, const std::string & pattern)
   {
-    // Resolve /proc/PID/exe to get the real binary path
+    // Check /proc/PID/exe (binary path)
     char buf[512];
     std::string link = "/proc/" + std::to_string(pid) + "/exe";
     ssize_t len = ::readlink(link.c_str(), buf, sizeof(buf) - 1);
-    if (len <= 0) return false;
-    buf[len] = '\0';
-    std::string exe(buf);
-    // Check if the executable path contains the kill_pattern
-    return exe.find(pattern) != std::string::npos;
+    if (len > 0) {
+      buf[len] = '\0';
+      if (std::string(buf).find(pattern) != std::string::npos) return true;
+    }
+    // Fallback: check /proc/PID/cmdline (includes node name remapping etc.)
+    std::string cmdline_path = "/proc/" + std::to_string(pid) + "/cmdline";
+    std::ifstream ifs(cmdline_path);
+    if (ifs) {
+      std::string cmdline((std::istreambuf_iterator<char>(ifs)),
+                           std::istreambuf_iterator<char>());
+      if (cmdline.find(pattern) != std::string::npos) return true;
+    }
+    return false;
   }
 
   bool kill_process(const std::string & pattern)
