@@ -174,6 +174,7 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   opencv-python-headless==4.9.0.80 \
   websockets aiohttp edge-tts av \
   python-multipart watchdog pydantic starlette \
+  'tensorflow>=2.17,<3' \
   setuptools==70.0.0
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
