@@ -35,7 +35,10 @@ async def restart_ros():
                    "restart", "physicar"]
         else:
             cmd = ["sudo", "systemctl", "restart", "physicar.service"]
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
