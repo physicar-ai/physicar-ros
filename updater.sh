@@ -375,6 +375,8 @@ recover_install() {
 
 # ── safe_pip_upgrade ─────────────────────────────────────
 safe_pip_upgrade() {
+    # Skip in DEV mode — editable install should not be overwritten
+    [[ "${DEV:-}" == "true" ]] && return 0
     check_disk_space || return 1
     timeout 60 pip3 install --upgrade --timeout 15 physicar 2>/dev/null || true
 }

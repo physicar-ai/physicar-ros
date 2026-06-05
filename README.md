@@ -78,7 +78,7 @@ physicar-ros/
 │       ├── main.py                 # FastAPI app
 │       ├── ros_bridge.py           # rclpy ↔ FastAPI bridge
 │       ├── state_manager.py        # Topic snapshot cache + SSE fan-out
-│       ├── routers/                # /state /control /agent /calibration ...
+│       ├── routers/                # /states /agent /calibration ...
 │       └── static/                 # Kiosk + studio web UI + login page
 ├── camera_ros/                   # [submodule] libcamera-based camera driver
 ├── rplidar_ros/                  # [submodule] RPLidar SDK driver
@@ -245,8 +245,7 @@ Routers (mounted in `main.py`):
 | `/health` | `health` | Liveness probe |
 | `/auth`   | `auth`   | Token issuance / login page |
 | `/info`   | `info`   | System info; reports `mode: "real"` or `"sim"` |
-| `/state`, `/state/{odom,battery,imu,camera,camera/{pan,tilt},lidar,audio}` | `state` | JSON snapshot or SSE (`?stream=true` / `Accept: text/event-stream`). `/state/camera/image` returns JPEG (or MJPEG with `?stream=true`, optional `?width=&height=`). `/state/lidar?step=N` decimates the scan. |
-| `/control/{speed,steering,camera/pan,camera/tilt,audio}` | `control` | Posts a single value to the matching ROS 2 topic |
+| `/states`, `/{odom,battery,imu,camera,camera/{pan,tilt},lidar,speed,steering,audio}` | `hw` | GET: JSON snapshot or SSE (`?stream=true` / `Accept: text/event-stream`). `/camera` returns JPEG (or MJPEG with `?stream=true`, optional `?width=&height=`). `/lidar?step=N` decimates the scan. POST (`/speed,/steering,/camera/pan,/camera/tilt,/audio`): single value to the matching ROS 2 topic |
 | `/agent/tool/{list,get,call,set,delete,reset}` | `agent` | Manage and invoke agent tools (Python source + PEP 723 deps) |
 | `/calibration`, `/calibration/{steering,pan,tilt,reverse,speed_gain}` | `calibration` | Read / write `/opt/physicar/userdata/calibration.json` |
 | `/teleop/joy`, `/teleop/joy/mapping` | `joy` | Joystick mapping CRUD |

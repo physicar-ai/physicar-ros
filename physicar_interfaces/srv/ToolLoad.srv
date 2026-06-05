@@ -1,4 +1,5 @@
 # Load tools from disk (reimport tools.py)
 ---
 bool success
+string message
 int32 tool_count        # Number of tools loaded

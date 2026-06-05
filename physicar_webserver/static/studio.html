@@ -56,12 +56,6 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
 .toolbar select:hover{border-color:#666}
 .toolbar select:focus{border-color:#1a73e8}
 .toolbar .info{color:#fff;font-size:12px;font-family:monospace;min-width:80px}
-.toolbar .btn-reload{
-  background:none;border:1px solid #444;border-radius:3px;color:#fff;
-  font-size:14px;width:22px;height:22px;cursor:pointer;display:flex;
-  align-items:center;justify-content:center;padding:0;line-height:1;
-}
-.toolbar .btn-reload:hover{border-color:#666;color:#fff}
 
 /* ── Panels Container ── */
 .panels{display:flex;flex:1;position:relative;overflow:hidden;height:calc(100vh - 34px)}
@@ -92,7 +86,6 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
   <div class="group">
     <label>Left</label>
     <select id="sel-left"></select>
-    <button class="btn-reload" id="reload-left" title="Reload">&#8635;</button>
     <span class="info" id="info-left"></span>
   </div>
   <div class="center-group">
@@ -106,7 +99,6 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
   <div class="group">
     <label>Right</label>
     <select id="sel-right"></select>
-    <button class="btn-reload" id="reload-right" title="Reload">&#8635;</button>
     <span class="info" id="info-right"></span>
   </div>
 </div>
@@ -139,16 +131,9 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
   const selRight = document.getElementById('sel-right');
   const panels   = document.getElementById('panels');
 
-  /* ── Info + Reload ── */
+  /* ── Info ── */
   const infoLeft  = document.getElementById('info-left');
   const infoRight = document.getElementById('info-right');
-
-  document.getElementById('reload-left').addEventListener('click', () => {
-    if(lpEl){ const f = lpEl.querySelector('iframe'); if(f) f.src = f.src; }
-  });
-  document.getElementById('reload-right').addEventListener('click', () => {
-    if(rpEl){ const f = rpEl.querySelector('iframe'); if(f) f.src = f.src; }
-  });
 
   function buildOptions(sel){
     sel.innerHTML = '<option value="">— None —</option>';
@@ -169,8 +154,31 @@ html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,Blin
   buildOptions(selLeft);
   buildOptions(selRight);
 
-  selLeft.addEventListener('change', () => { leftId = selLeft.value; saveState(); render(); updateInfo(); });
-  selRight.addEventListener('change', () => { rightId = selRight.value; saveState(); render(); updateInfo(); });
+  let _lastLeftClick = 0, _lastRightClick = 0;
+  selLeft.addEventListener('change', () => {
+    const newVal = selLeft.value;
+    if(newVal === leftId && lpEl){ const f = lpEl.querySelector('iframe'); if(f) f.src = f.src; return; }
+    leftId = newVal; saveState(); render(); updateInfo();
+  });
+  selLeft.addEventListener('click', () => {
+    const now = Date.now();
+    if(now - _lastLeftClick < 500 && selLeft.value === leftId && lpEl){
+      const f = lpEl.querySelector('iframe'); if(f) f.src = f.src;
+    }
+    _lastLeftClick = now;
+  });
+  selRight.addEventListener('change', () => {
+    const newVal = selRight.value;
+    if(newVal === rightId && rpEl){ const f = rpEl.querySelector('iframe'); if(f) f.src = f.src; return; }
+    rightId = newVal; saveState(); render(); updateInfo();
+  });
+  selRight.addEventListener('click', () => {
+    const now = Date.now();
+    if(now - _lastRightClick < 500 && selRight.value === rightId && rpEl){
+      const f = rpEl.querySelector('iframe'); if(f) f.src = f.src;
+    }
+    _lastRightClick = now;
+  });
 
   /* ── Track current iframe state to avoid unnecessary reloads ── */
   let curLeftId = null, curRightId = null;

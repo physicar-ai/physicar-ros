@@ -50,7 +50,7 @@ Host-side requirements:
 
 Audio in SIM:
   - No audio_node (no USB audio hardware)
-  - Webserver streams /audio topic via SSE at /state/audio
+  - Webserver streams /audio topic via SSE at /audio
   - gzweb plays audio in browser via Web Audio API
 
 Topic parity — ALL topics available in both real and SIM modes:

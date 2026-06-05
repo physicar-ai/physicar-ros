@@ -96,9 +96,8 @@ FastAPI `127.0.0.1:8000`, nginx 리버스 프록시 (80/443).
 | `/health` | 라이브니스 |
 | `/auth` | 토큰 발급 |
 | `/info` | 시스템 정보 (`mode: "real"` / `"sim"`) |
-| `/state/{odom,battery,imu,camera,lidar,...}` | 센서 스냅샷, `?stream=true` → SSE |
-| `/state/camera/image` | JPEG, `?stream=true` → MJPEG |
-| `/control/{speed,steering,camera/pan,camera/tilt,audio}` | 단일 값 퍼블리시 |
+| `/{odom,battery,imu,camera,lidar,speed,steering,audio,...}` | GET: 센서 스냅샷, `?stream=true` → SSE. POST: 값 퍼블리시 |
+| `/camera` | GET: JPEG, `?stream=true` → MJPEG |
 | `/calibration` | 캘리브레이션 읽기/쓰기 |
 | `/teleop/joy/mapping` | 조이스틱 매핑 CRUD |
 | `/agent/tool/{list,get,call,set,delete,reset}` | 에이전트 도구 |

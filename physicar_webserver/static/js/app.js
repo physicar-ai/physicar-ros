@@ -235,7 +235,7 @@ let _stateCount = 0, _lidarCount = 0;
 function startStateStream() {
   if (stateES) return;
   console.log('[SSE] State: connecting...');
-  stateES = new EventSource('/state?stream=true&include=cmd,odom,battery,imu');
+  stateES = new EventSource('/states?stream=true&include=cmd,odom,battery,imu');
   stateES.onopen = () => console.log('[SSE] State: connected');
   stateES.onmessage = (e) => {
     _stateCount++;
@@ -264,16 +264,10 @@ function updateState(d) {
     fill.className = 'battery-fill' + (pct > 60 ? '' : pct > 20 ? ' medium' : ' low');
   }
   if (d.odom) {
-    const spd = Math.abs(d.odom.velocity?.linear || 0) < 0.05 ? '0.0' : (d.odom.velocity?.linear || 0).toFixed(1);
-    $('p-speed').textContent = spd + ' m/s';
-  }
-  if (d.cmd) {
-    $('p-steering').textContent = toDeg(d.cmd.steering || 0).toFixed(0) + '\u00b0';
-    $('p-pantilt').textContent = toDeg(d.cmd.pan || 0).toFixed(0) + '\u00b0 / ' + toDeg(d.cmd.tilt || 0).toFixed(0) + '\u00b0';
-  }
-  if (d.imu && d.imu.acceleration) {
-    const ax = (a => Math.abs(a) < 0.05 ? '0.0' : a.toFixed(1))(d.imu.acceleration.x || 0);
-    $('p-accel').textContent = ax + ' m/s²';
+    const lin = Math.abs(d.odom.velocity?.linear || 0) < 0.01 ? '0.0' : (d.odom.velocity?.linear || 0).toFixed(1);
+    const ang = Math.abs(d.odom.velocity?.angular || 0) < 0.01 ? '0.0' : (d.odom.velocity?.angular || 0).toFixed(2);
+    $('p-linear').textContent = lin + ' m/s';
+    $('p-angular').textContent = ang + ' rad/s';
   }
 }
 
@@ -281,7 +275,7 @@ function startLidarStream() {
   if (lidarES) return;
   const step = $('lidar-step')?.value || 3;
   console.log('[SSE] Lidar: connecting, step=' + step);
-  lidarES = new EventSource('/state/lidar?stream=true&step=' + step);
+  lidarES = new EventSource('/lidar?stream=true&step=' + step);
   lidarES.onopen = () => console.log('[SSE] Lidar: connected');
   lidarES.onmessage = (e) => {
     _lidarCount++;
@@ -372,7 +366,7 @@ async function _startMjpegFetch(width) {
   _camAbort = controller;
 
   try {
-    const url = '/state/camera?stream=true&width=' + width + '&t=' + Date.now();
+    const url = '/camera?stream=true&width=' + width + '&t=' + Date.now();
     const res = await fetch(url, { signal: controller.signal });
     if (!res.ok || !res.body) throw new Error('status ' + res.status);
 

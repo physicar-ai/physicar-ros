@@ -23,6 +23,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
 
+from physicar.chat.types import TextContent
 from physicar_interfaces.srv import (
     ToolList,
     ToolGet,
@@ -112,49 +113,47 @@ class AgentNode(Node):
         if name == "tool_list":
             include_system = args.get("include_system", False)
             tools = registry.list_tools(include_system=include_system)
-            return [{"type": "text", "text": json.dumps(tools, ensure_ascii=False)}]
+            return [TextContent(text=json.dumps(tools, ensure_ascii=False))]
 
         elif name == "tool_code":
             code = registry.get_tool_code()
             if code is None:
-                return [{"type": "text", "text": "No tools loaded"}]
-            return [{"type": "text", "text": code}]
+                return [TextContent(text="No tools loaded")]
+            return [TextContent(text=code)]
 
         elif name == "tool_set":
             code = args.get("code")
             if not code:
-                return [{"type": "text", "text": "Error: 'code' is required"}]
+                return [TextContent(text="Error: 'code' is required")]
             result = registry.set_tools(code)
-            return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
+            return [TextContent(text=json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False))]
 
         elif name == "tool_load":
             result = registry.load_tools()
-            return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
+            return [TextContent(text=json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False))]
 
         elif name == "tool_init":
             result = registry.init_tools()
-            return [{"type": "text", "text": json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False)}]
+            return [TextContent(text=json.dumps({"success": result.success, "message": result.message, "tool_count": result.tool_count}, ensure_ascii=False))]
 
         else:
-            return [{"type": "text", "text": f"Unknown system tool: {name}"}]
+            return [TextContent(text=f"Unknown system tool: {name}")]
 
     def handle_call(self, request, response):
         try:
             args = json.loads(request.args_json) if request.args_json else {}
 
             if registry.is_system_tool(request.name):
-                result = self._call_system_tool(request.name, args)
-                response.success = True
-                response.result_json = json.dumps(result, ensure_ascii=False)
+                contents = self._call_system_tool(request.name, args)
             else:
-                result = registry.call_tool(request.name, args)
-                response.success = True
-                response.result_json = json.dumps(result, ensure_ascii=False)
+                contents = registry.call_tool(request.name, args)
+            response.success = True
+            response.result_json = json.dumps([c.to_dict() for c in contents], ensure_ascii=False)
         except Exception as e:
             import traceback
             self.get_logger().error(f"Call error: {e}")
             response.success = False
-            response.result_json = json.dumps([{"type": "text", "text": f"Error: {e}\n{traceback.format_exc()}"}])
+            response.result_json = json.dumps([TextContent(text=f"Error: {e}\n{traceback.format_exc()}").to_dict()], ensure_ascii=False)
         return response
 
     def handle_set(self, request, response):
@@ -179,6 +178,7 @@ class AgentNode(Node):
         try:
             result = registry.load_tools()
             response.success = result.success
+            response.message = result.message
             response.tool_count = result.tool_count
             if result.success:
                 self.get_logger().info(f"Loaded {result.tool_count} tools")
@@ -187,6 +187,7 @@ class AgentNode(Node):
         except Exception as e:
             self.get_logger().error(f"Load error: {e}")
             response.success = False
+            response.message = f"Internal error: {e}"
             response.tool_count = 0
         return response
 
@@ -194,6 +195,7 @@ class AgentNode(Node):
         try:
             result = registry.init_tools()
             response.success = result.success
+            response.message = result.message
             response.tool_count = result.tool_count
             if result.success:
                 self.get_logger().info(f"Init: {result.tool_count} tools loaded")
@@ -202,6 +204,7 @@ class AgentNode(Node):
         except Exception as e:
             self.get_logger().error(f"Init error: {e}")
             response.success = False
+            response.message = f"Internal error: {e}"
             response.tool_count = 0
         return response
 

@@ -4,8 +4,7 @@ from . import health
 from . import auth
 from . import info
 from . import kiosk
-from . import state
-from . import control
+from . import hw
 from . import agent
 from . import calibration
 from . import deepracer
@@ -15,8 +14,7 @@ __all__ = [
     "auth", 
     "info",
     "kiosk",
-    "state",
-    "control",
+    "hw",
     "agent",
     "calibration",
     "deepracer",

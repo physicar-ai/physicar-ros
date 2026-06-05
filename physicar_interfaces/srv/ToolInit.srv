@@ -1,4 +1,5 @@
 # Init tools to builtin defaults
 ---
 bool success
+string message
 int32 tool_count        # Number of tools after reset

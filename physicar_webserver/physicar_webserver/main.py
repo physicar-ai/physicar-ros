@@ -31,7 +31,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Authentication is handled by nginx (see deploy/).
 # FastAPI listens on 127.0.0.1:8000 and trusts every request that reaches it.
 from physicar_webserver.routers import health, kiosk, info, auth, deepracer
-from physicar_webserver.routers import state, agent, calibration, control, network, bluetooth, uistate, joy, teleop, myapp
+from physicar_webserver.routers import hw, agent, calibration, network, bluetooth, uistate, joy, teleop, myapp
 from physicar_webserver.routers import codespaces as codespaces_router
 from physicar_webserver.ros_bridge import get_ros_bridge
 from physicar_webserver.state_manager import state_manager
@@ -190,8 +190,7 @@ if not _is_sim_mode():
     app.include_router(kiosk.router, tags=["Kiosk"])
 
 # New API structure
-app.include_router(state.router)       # /state
-app.include_router(control.router)     # /control (low-level)
+app.include_router(hw.router)          # GET /states, /speed, /camera, ... + POST /speed, /audio, ...
 app.include_router(agent.router)       # /agent
 app.include_router(calibration.router) # /calibration
 app.include_router(joy.router)         # /joy/mapping

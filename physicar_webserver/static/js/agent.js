@@ -1286,7 +1286,7 @@ const AGENT = {
     this._setWaiting(true);
     this.stopTTS();
 
-    // Build contents (sensor state is now fetched on-demand via the get_state tool)
+    // Build contents (sensor state is now fetched on-demand via the states tool)
     const contents = [{ type: 'text', text }];
 
     // Prompt (change detection)
@@ -1526,7 +1526,7 @@ const AGENT = {
     }
     // Apply to device immediately (volume-only message)
     if (this.ttsTarget === 'kit' && vol) {
-      api('/control/audio', { method: 'POST', body: {
+      api('/audio', { method: 'POST', body: {
         channel: 'tts', volume: parseInt(vol.value) / 100
       }}).catch(() => {});
     }
@@ -1538,11 +1538,11 @@ const AGENT = {
       // Send initial volume on first chunk
       if (this.isFirstChunk) {
         const vol = (parseInt($('agent-volume')?.value) || 80) / 100;
-        api('/control/audio', { method: 'POST', body: {
+        api('/audio', { method: 'POST', body: {
           channel: 'tts', volume: vol
         }}).catch(() => {});
       }
-      api('/control/audio', { method: 'POST', body: {
+      api('/audio', { method: 'POST', body: {
         data: base64Data, format: 'pcm', channel: 'tts',
         sample_rate: 24000, audio_channels: 1, bits_per_sample: 16
       }}).catch(() => {});
@@ -1608,7 +1608,7 @@ const AGENT = {
     this.scheduledSources.forEach(s => { try { s.stop(); } catch {} });
     this.scheduledSources = [];
     this.isPlayingAudio = false; this.isFirstChunk = true; this.initialBufferingDone = false;
-    api('/control/audio', { method: 'POST', body: { channel: 'tts', stop: true } }).catch(() => {});
+    api('/audio', { method: 'POST', body: { channel: 'tts', stop: true } }).catch(() => {});
   },
 
   // ── Markdown ──

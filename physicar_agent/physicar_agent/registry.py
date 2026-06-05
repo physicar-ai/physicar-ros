@@ -12,11 +12,13 @@ parameters become the tool schema.
 
 import sys
 import ast
+import re
+import subprocess
 import types
 import inspect
 import linecache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, get_type_hints, get_origin, get_args
+from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints, get_origin, get_args
 
 try:
     from typing import Annotated
@@ -29,6 +31,8 @@ try:
 except ImportError:
     Field = None
     FieldInfo = None
+
+from physicar.chat.types import TextContent, ImageContent
 
 
 AGENT_PATH = Path("/opt/physicar/userdata/agent")
@@ -53,50 +57,101 @@ SYSTEM_TOOLS_METADATA = [
     },
     {
         "name": "tool_set",
-        "description": """Register or update tools by writing the entire tools.py file.
+        "description": """Register or update tools by writing a complete Python script.
+The code is overwritten completely, so include all functions you want to keep.
 
-## Code structure
+## Rules
+- Each public function (no leading `_`) becomes a tool
+- Function name : tool name
+- Docstring : tool description
+- Parameters use `Annotated[type, Field(description=...)]`
+- `_`-prefixed functions are not registered (internal helpers)
+
+## API
+`from physicar.robot import api`
+
+**api** — read sensors and send control commands
+
+Read (GET):
+- `api.get('/states')` : dict — full states (cmd, odom, battery, imu)
+- `api.get('/odom')` : dict — position, orientation, velocity
+- `api.get('/battery')` : dict — battery info
+- `api.get('/imu')` : dict — accelerometer, gyro, orientation
+- `api.get('/lidar')` : dict — 360° distance scan
+- `api.get('/camera')` : bytes — JPEG image
+- `api.get('/speed')` : float — current speed (m/s)
+- `api.get('/steering')` : float — steering angle (radians)
+- `api.get('/camera/pan')` : float — camera pan angle (radians)
+- `api.get('/camera/tilt')` : float — camera tilt angle (radians)
+
+Write (POST):
+- `api.post('/speed', value=0.5)` — set speed (m/s)
+- `api.post('/steering', value=0.1)` — set steering (radians)
+- `api.post('/camera/pan', value=0.0)` — set camera pan (radians)
+- `api.post('/camera/tilt', value=0.0)` — set camera tilt (radians)
+- `api.post('/audio', ...)` — play audio
+
+## Tool Call Output Contents
+`from physicar.chat.types import TextContent, ImageContent`
+
+Tool functions return `list[TextContent | ImageContent]`.
+
+**TextContent** — wraps a plain string (text, JSON, numbers, etc.)
+- `TextContent(text="hello")` — plain text
+- `TextContent(text=json.dumps(data))` — dict/list → JSON string
+- `TextContent(text=str(value))` — any value → string
+
+**ImageContent** — wraps a base64-encoded image
+- `mime` : MIME type string (`"image/jpeg"`, `"image/png"`, etc.)
+- `base64` : base64-encoded image data (str)
+- Camera JPEG example: `ImageContent(mime="image/jpeg", base64=base64.b64encode(jpeg).decode())`
+
+## Misc
+
+**File system** — Tool functions can freely access the local file system (standard Python `open`, `os`, `pathlib`, etc.).
+User workspace: `/home/physicar/physicar_ws/`
+
+**Dependencies** — Declare packages via PEP 723 inline metadata at the top of the script. Packages are auto-installed before loading:
 ```python
-\"\"\"Optional module docstring.\"\"\"
+# /// script
+# dependencies = ["requests", "pillow>=9.0"]
+# ///
+```
 
+## Example
+```python
 from typing import Annotated, Optional
 from pydantic import Field
-from physicar_agent import api, text, image
 import time, math, base64
 
-def my_tool(arg1: Annotated[str, Field(description="description")], ...) -> list:
-    \"\"\"Tool description (used as the tool description).\"\"\"
-    odom = api.get('/state/odom')
-    api.post('/control/speed', value=0.5)
-    time.sleep(0.1)
-    return [text("done")]
+from physicar.robot import api
+from physicar.chat.types import TextContent, ImageContent
+
+def my_tool(seconds: Annotated[float, Field(description="drive duration in seconds")]) -> list:
+    \"\"\"Drive forward for given seconds, then capture camera.\"\"\"
+    start = api.get('/odom')['position']
+    api.post('/speed', value=0.5)
+    time.sleep(seconds)
+    api.post('/speed', value=0.0)
+    end = api.get('/odom')['position']
+    dx, dy = end['x'] - start['x'], end['y'] - start['y']
+    moved = round(math.sqrt(dx*dx + dy*dy), 2)
+    jpeg = api.get('/camera')
+    tool_call_output_contents = [
+        TextContent(
+            text=f"{moved}m traveled",
+        ),
+        ImageContent(
+            mime="image/jpeg",
+            base64=base64.b64encode(jpeg).decode(),
+        ),
+    ]
+    return tool_call_output_contents
 
 def _helper():
     \"\"\"Private helper (underscore prefix = not registered as tool).\"\"\"
     pass
-```
-
-## Rules
-- Each public function (no leading ``_``) becomes a tool
-- Function name = tool name
-- Docstring = tool description
-- Parameters use ``Annotated[type, Field(description=...)]``
-- Private helpers start with ``_``
-- Return: list of text/image dicts, or str/dict/bytes (auto-converted)
-
-## Available API (from physicar_agent import ...)
-- api.get('/state/odom'): odometry (dict)
-- api.get('/state/battery'): battery info
-- api.get('/state/imu'): IMU data
-- api.get('/state/lidar'): LiDAR scan
-- api.get('/state/camera'): camera image (JPEG bytes)
-- api.post('/control/speed', value=0.5): set speed (m/s)
-- api.post('/control/steering', value=0.1): set steering (radians)
-- api.post('/control/camera/pan', value=0.0): camera pan (radians)
-- api.post('/control/camera/tilt', value=0.0): camera tilt (radians)
-- api.post('/control/audio', ...): play audio
-- text("content"): create text response
-- image(data, mime): create image response""",
+```""",
         "properties": [
             {"name": "code", "type": "string", "description": "Full Python source code for tools.py", "required": True}
         ]
@@ -216,6 +271,49 @@ def _extract_func_metadata(name: str, func: Callable) -> Optional[Dict]:
 _MODULE_NAME = "_physicar_agent_tools"
 
 
+# ============================================
+# PEP 723 inline script metadata
+# ============================================
+
+_PEP723_RE = re.compile(
+    r'^# /// script\s*\n((?:#[^\n]*\n)*?)# ///',
+    re.MULTILINE,
+)
+
+
+def _parse_pep723_deps(code: str) -> List[str]:
+    """Extract dependencies from PEP 723 inline metadata block."""
+    m = _PEP723_RE.search(code)
+    if not m:
+        return []
+    block = m.group(1)
+    # Strip leading '# ' from each line, parse as TOML-like
+    dep_match = re.search(
+        r'dependencies\s*=\s*\[(.*?)\]',
+        block.replace('\n', ' '),
+        re.DOTALL,
+    )
+    if not dep_match:
+        return []
+    return re.findall(r'["\']([^"\']+)["\']', dep_match.group(1))
+
+
+def _install_deps(deps: List[str]) -> Optional[str]:
+    """Install packages via system pip. Returns error message or None."""
+    if not deps:
+        return None
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-q"] + deps,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        return None
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors='replace').strip() if e.stderr else str(e)
+        return f"pip install failed: {stderr}"
+
+
 def _clear():
     global _loaded_source
     _tool_cache.clear()
@@ -237,18 +335,17 @@ def _try_load_code(code: str, source_path: str = "tools.py") -> LoadResult:
             if node.name in SYSTEM_TOOL_NAMES:
                 return LoadResult(False, f"Function '{node.name}' uses a reserved system tool name")
 
+    # ── PEP 723 dependency install ──
+    deps = _parse_pep723_deps(code)
+    if deps:
+        err = _install_deps(deps)
+        if err:
+            return LoadResult(False, err)
+
     try:
         compiled = compile(code, source_path, 'exec')
         module = types.ModuleType(_MODULE_NAME)
         module.__file__ = source_path
-
-        if 'physicar_agent.core' not in sys.modules:
-            try:
-                from physicar_agent import core
-                sys.modules['physicar_agent.core'] = core
-                sys.modules['physicar_agent'] = sys.modules[__name__.rsplit('.', 1)[0]]
-            except ImportError:
-                pass
 
         exec(compiled, module.__dict__)
     except SyntaxError as e:
@@ -408,87 +505,32 @@ def _is_image_object(obj) -> bool:
     return isinstance(obj, dict) and obj.get('type') == 'image' and 'base64' in obj
 
 
-def _normalize_text(obj) -> Dict:
-    return {"type": "text", "text": str(obj.get('text', ''))}
-
-
-def _normalize_image(obj) -> Dict:
-    return {
-        "type": "image",
-        "mime": str(obj.get('mime', 'image/jpeg')),
-        "base64": str(obj.get('base64', ''))
-    }
-
-
-def _to_image_object(data) -> Optional[Dict]:
-    import base64 as b64
-
-    if isinstance(data, bytes):
-        return {"type": "image", "mime": "image/jpeg", "base64": b64.b64encode(data).decode()}
-
-    if hasattr(data, 'data') and hasattr(data, 'format'):
-        fmt = data.format.lower() if data.format else 'jpeg'
-        return {"type": "image", "mime": f"image/{fmt}", "base64": b64.b64encode(bytes(data.data)).decode()}
-
-    try:
-        from PIL import Image as PILImage
-        if isinstance(data, PILImage.Image):
-            import io
-            buf = io.BytesIO()
-            fmt = 'PNG' if data.mode == 'RGBA' else 'JPEG'
-            data.save(buf, format=fmt)
-            return {"type": "image", "mime": f"image/{fmt.lower()}", "base64": b64.b64encode(buf.getvalue()).decode()}
-    except ImportError:
-        pass
-
-    try:
-        import numpy as np
-        if isinstance(data, np.ndarray):
-            from PIL import Image as PILImage
-            import io
-            img = PILImage.fromarray(data)
-            buf = io.BytesIO()
-            fmt = 'PNG' if len(data.shape) > 2 and data.shape[2] == 4 else 'JPEG'
-            img.save(buf, format=fmt)
-            return {"type": "image", "mime": f"image/{fmt.lower()}", "base64": b64.b64encode(buf.getvalue()).decode()}
-    except ImportError:
-        pass
-
-    return None
-
-
-def _to_text_object(data) -> Dict:
-    import json
-    if isinstance(data, str):
-        return {"type": "text", "text": data}
-    elif isinstance(data, dict):
-        return {"type": "text", "text": json.dumps(data, ensure_ascii=False)}
-    else:
-        return {"type": "text", "text": str(data)}
-
-
-def _normalize_item(item) -> Dict:
+def _normalize_item(item) -> Union[TextContent, ImageContent]:
+    if isinstance(item, (TextContent, ImageContent)):
+        return item
     if _is_text_object(item):
-        return _normalize_text(item)
+        return TextContent(text=str(item.get('text', '')))
     if _is_image_object(item):
-        return _normalize_image(item)
-    img = _to_image_object(item)
-    if img:
-        return img
-    return _to_text_object(item)
+        return ImageContent(mime=str(item.get('mime', 'image/jpeg')), base64=str(item.get('base64', '')))
+    if isinstance(item, str):
+        return TextContent(text=item)
+    if isinstance(item, dict):
+        import json
+        return TextContent(text=json.dumps(item, ensure_ascii=False))
+    return TextContent(text=str(item))
 
 
-def _wrap_result(result) -> List[Dict]:
+def _wrap_result(result) -> List[Union[TextContent, ImageContent]]:
     if result is None:
-        return [{"type": "text", "text": "null"}]
+        return [TextContent(text="null")]
     if isinstance(result, list):
         if not result:
-            return [{"type": "text", "text": "[]"}]
+            return [TextContent(text="[]")]
         return [_normalize_item(item) for item in result]
     return [_normalize_item(result)]
 
 
-def call_tool(name: str, args: Dict[str, Any]) -> List[Dict]:
+def call_tool(name: str, args: Dict[str, Any]) -> List[Union[TextContent, ImageContent]]:
     """Call a tool by name with given arguments.
 
     Raises ValueError if tool not found.

@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 from physicar_webserver.ros_bridge import get_ros_bridge
 from physicar_webserver.state_manager import get_state_manager
 
-router = APIRouter(tags=["state"])
+router = APIRouter(tags=["hw"])
 
 
 # =============================================================================
@@ -112,7 +112,7 @@ def _wants_stream(request: Request, stream: Optional[bool]) -> bool:
 # Summary Endpoint
 # =============================================================================
 
-@router.get("/state")
+@router.get("/states")
 async def get_state_summary(
     request: Request,
     stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
@@ -154,20 +154,17 @@ async def get_speed(
     request: Request,
     stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
 ):
-    """Get current measured speed from odometry (m/s)."""
+    """Get current speed (m/s)."""
     sm = get_state_manager()
 
     if _wants_stream(request, stream):
         return StreamingResponse(
-            sm.stream_sse("odom"),
+            sm.stream_cmd_state_sse("speed"),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    data = sm.get_once("odom")
-    if data is None:
-        return {"value": 0.0}
-    return {"value": data.get("velocity", {}).get("linear", 0.0)}
+    return sm.get_cmd_state()["speed"]
 
 
 @router.get("/steering")
@@ -185,7 +182,7 @@ async def get_steering(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    return {"value": sm.get_cmd_state()["steering"]}
+    return sm.get_cmd_state()["steering"]
 
 
 # =============================================================================
@@ -335,7 +332,7 @@ async def get_camera_pan(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     
-    return {"value": sm.get_cmd_state()["pan"]}
+    return sm.get_cmd_state()["pan"]
 
 
 @router.get("/camera/tilt")
@@ -357,7 +354,7 @@ async def get_camera_tilt(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     
-    return {"value": sm.get_cmd_state()["tilt"]}
+    return sm.get_cmd_state()["tilt"]
 
 
 # =============================================================================

@@ -223,6 +223,7 @@ async def load_tools():
 
     return {
         "success": response.success,
+        "message": response.message,
         "tool_count": response.tool_count,
     }
 
@@ -234,5 +235,6 @@ async def init_tools():
 
     return {
         "success": response.success,
+        "message": response.message,
         "tool_count": response.tool_count,
     }

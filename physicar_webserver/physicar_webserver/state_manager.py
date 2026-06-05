@@ -554,10 +554,10 @@ class StateManager:
             return self._get_camera_info()
         
         if key == "speed":
-            return {"value": self.get_cmd_state()["speed"]}
+            return self.get_cmd_state()["speed"]
         
         if key == "steering":
-            return {"value": self.get_cmd_state()["steering"]}
+            return self.get_cmd_state()["steering"]
         
         if key == "calibration":
             # Calibration needs service call, handled separately
@@ -880,8 +880,7 @@ class StateManager:
             current = self.get_cmd_state().get(key)
             if current != last_value:
                 last_value = current
-                data = {"value": current}
-                yield f"data: {json.dumps(data)}\n\n"
+                yield f"data: {current}\n\n"
 
     # -------------------------------------------------------------------------
     # Audio Streaming (queue-based — all messages matter, not just latest)

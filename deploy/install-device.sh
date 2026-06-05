@@ -319,7 +319,8 @@ runuser -u physicar -- python3 -m pip config set global.break-system-packages tr
 
 # Pin numpy<2 globally (cv_bridge C++ ABI requires numpy 1.x)
 mkdir -p /etc/pip
-echo 'numpy<2' | tee /etc/pip/constraints.txt > /dev/null
+ln -sf "$DEPLOY_DIR/etc/pip/constraints.txt" /etc/pip/constraints.txt
+ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip/pip.conf
 grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
   echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
 export PIP_CONSTRAINT=/etc/pip/constraints.txt
@@ -334,6 +335,7 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   smbus2 RPi.GPIO gpiozero adafruit-circuitpython-servokit \
   opencv-python-headless==4.9.0.80 \
   websockets aiohttp edge-tts av \
+  'ddgs~=9.14' \
   python-multipart watchdog pydantic starlette \
   'tensorflow>=2.17,<3' \
   setuptools==70.0.0

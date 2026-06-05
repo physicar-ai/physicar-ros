@@ -1386,7 +1386,7 @@
         
         async function updateBattery() {
             try {
-                const res = await fetch('/state/battery');
+                const res = await fetch('/battery');
                 if (!res.ok) return;
                 const data = await res.json();
                 
