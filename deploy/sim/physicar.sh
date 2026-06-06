@@ -87,38 +87,7 @@ while true; do
 done &
 ROS_LOOP_PID=$!
 
-# ────────────────── Updater (physicar-sim) ──────────────────
-
-(
-  sleep 60
-  while true; do
-    for repo_dir in "$PHYSICAR_SIM_DIR"; do
-      [ -d "$repo_dir/.git" ] || continue
-
-      # Clean stale git locks
-      for lock in "$repo_dir/.git/index.lock" "$repo_dir/.git/HEAD.lock"; do
-        if [ -f "$lock" ]; then
-          lock_age=$(( $(date +%s) - $(stat -c %Y "$lock" 2>/dev/null || echo 0) ))
-          (( lock_age > 300 )) && rm -f "$lock"
-        fi
-      done
-
-      timeout 30 git -c gc.auto=0 -C "$repo_dir" fetch --tags 2>/dev/null || continue
-      latest=$(git -C "$repo_dir" tag -l 'v1.*' --sort=-v:refname | head -1)
-      [ -z "$latest" ] && continue
-
-      current=$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null)
-      target=$(git -C "$repo_dir" rev-parse "$latest^{}" 2>/dev/null)
-      [ "$current" = "$target" ] && continue
-
-      echo "[physicar] Updating $(basename "$repo_dir") → $latest"
-      git -c gc.auto=0 -c advice.detachedHead=false -C "$repo_dir" checkout -f "$latest" 2>/dev/null
-    done
-    sleep 180
-  done
-) &
-
-# physicar-ros updater (triggers rebuild)
+# ────────────────── Updater (physicar-ros + physicar-sim) ──────────────────
 if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
   bash "$PHYSICAR_ROS_DIR/updater.sh" &
 fi
