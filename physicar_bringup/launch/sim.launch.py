@@ -20,7 +20,7 @@ PhysiCar Simulation Launch File
 Gazebo simulation mode — hardware drivers are NOT launched.
 Gazebo runs as a separate process; ros_gz_bridge connects via gz-transport.
 
-Compared to robot.launch.py, the following are EXCLUDED:
+Compared to device.launch.py, the following are EXCLUDED:
   - physicar_driver (serial/Yahboom board)
   - camera_ros (libcamera)
   - rplidar_ros (serial LiDAR)
@@ -97,7 +97,7 @@ def generate_launch_description():
         ],
     )
 
-    # ── Upper-layer nodes (identical to robot.launch.py) ──
+    # ── Upper-layer nodes (identical to device.launch.py) ──
 
     # DeepRacer inference node (always runs — same as real robot)
     deepracer_node = Node(
@@ -111,7 +111,7 @@ def generate_launch_description():
     )
 
     # Joystick driver (SDL2-based, normalises Xbox/PS/Switch controllers)
-    # SDL_JOYSTICK_HIDAPI=0: see robot.launch.py for rationale.
+    # SDL_JOYSTICK_HIDAPI=0: see device.launch.py for rationale.
     joy_node = Node(
         package='joy',
         executable='joy_node',

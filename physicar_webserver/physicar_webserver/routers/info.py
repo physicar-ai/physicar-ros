@@ -36,7 +36,7 @@ def _get_mode() -> str:
     """Determine running mode: 'sim' or 'real'.
     
     sim.launch.py sets sim_mode=True on the webserver node.
-    robot.launch.py does not set it, so it defaults to False.
+    device.launch.py does not set it, so it defaults to False.
     """
     try:
         bridge = get_ros_bridge()

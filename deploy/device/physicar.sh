@@ -704,7 +704,7 @@ fi
 
 while true; do
     echo "[physicar] Launching..."
-    ros2 launch physicar_bringup robot.launch.py &
+    ros2 launch physicar_bringup device.launch.py &
     LAUNCH_PID=$!
     wait $LAUNCH_PID 2>/dev/null
 

@@ -9,7 +9,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -60,15 +59,6 @@ ament_target_dependencies(deepracer_node
 )
 
 install(TARGETS deepracer_node
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-# Keep Python library installed (needed for model .pb -> .tflite conversion)
-ament_python_install_package(${PROJECT_NAME})
-
-# Keep Python scripts installed (converter utility + fallback node)
-install(PROGRAMS
-  scripts/deepracer_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

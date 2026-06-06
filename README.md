@@ -17,7 +17,7 @@ web API — the launch file determines the mode.
 
 | Mode | How it starts | Hardware | Where it runs |
 |---|---|---|---|
-| **Real robot** | `physicar.service` → `physicar.sh` → `robot.launch.py` | RPi 5 + Yahboom board + RPLidar + Pi Camera | Raspberry Pi 5 (native) |
+| **Real robot** | `physicar.service` → `physicar.sh` → `device.launch.py` | RPi 5 + Yahboom board + RPLidar + Pi Camera | Raspberry Pi 5 (native) |
 | **Simulation** | `sim.launch.py` | none | Codespaces / desktop + Gazebo Harmonic |
 
 ---
@@ -43,7 +43,7 @@ physicar-ros/
 ├── fastdds-lo.xml                # Loopback-only Fast DDS profile
 ├── physicar_bringup/             # System launch + drivers + utilities
 │   ├── launch/
-│   │   ├── robot.launch.py         # Real-robot launch
+│   │   ├── device.launch.py         # Real-robot launch
 │   │   └── sim.launch.py           # Gazebo (sim) launch
 │   ├── config/
 │   │   ├── driver_params.yaml       # Hardware driver parameters
@@ -104,7 +104,7 @@ the `physicar` user on every boot.
    background. Periodically `git fetch --tags`; on new tag, checks out
    and kills the launch to trigger a rebuild.
 9. **Build + launch loop**:
-   - `ros2 launch physicar_bringup robot.launch.py`
+   - `ros2 launch physicar_bringup device.launch.py`
    - On update signal, rebuilds and relaunches.
 
 Every ROS node has `respawn=True, respawn_delay≈2s`. Killing a node
@@ -112,7 +112,7 @@ Every ROS node has `respawn=True, respawn_delay≈2s`. Killing a node
 
 ---
 
-## Real-robot launch (`robot.launch.py`)
+## Real-robot launch (`device.launch.py`)
 
 All nodes are spawned with `respawn=True`.
 
@@ -498,7 +498,7 @@ End-user URLs (forwarded as port 80):
 
 ## SLAM & Navigation
 
-SLAM and Nav2 run as separate processes (not part of `robot.launch.py`
+SLAM and Nav2 run as separate processes (not part of `device.launch.py`
 or `sim.launch.py`). The robot-specific config files are referenced via
 environment variables set in `~/.bashrc`:
 

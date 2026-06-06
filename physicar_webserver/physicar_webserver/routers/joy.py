@@ -421,7 +421,7 @@ async def reset_joy_mapping():
     The teleop node loads /opt/physicar/userdata/joy_mapping.json at startup; if
     we just delete the file the running node keeps its in-memory mapping
     until the next reboot.  To make the reset take effect immediately we
-    also send SIGTERM to physicar_joy_teleop — robot.launch.py /
+    also send SIGTERM to physicar_joy_teleop — device.launch.py /
     sim.launch.py both run it with respawn=True, respawn_delay=2.0, so
     it comes back ~2s later loading the yaml defaults (no file present).
     """
