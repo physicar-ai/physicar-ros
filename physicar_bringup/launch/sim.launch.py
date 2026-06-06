@@ -42,7 +42,6 @@ SIM-only processes:
   - cmd_vel_adapter: replaces physicar_driver
     - /speed + /steering → /cmd_vel (inverse Ackermann)
     - /battery_state (always full: 8.4V, 100%, 1Hz)
-    - /physicar_driver/calibration_status (default values, transient_local)
     - /servo/commands subscriber (dummy — no hardware)
 
 Host-side requirements:
@@ -56,8 +55,7 @@ Audio in SIM:
 Topic parity — ALL topics available in both real and SIM modes:
   /speed, /steering, /camera/pan, /camera/tilt, /audio,
   /imu, /camera/image_raw/compressed, /scan, /scan_filtered, /odom, /clock,
-  /joint_states, /battery_state, /physicar_driver/calibration_status,
-  /servo/commands, /deepracer/inference
+  /joint_states, /battery_state, /servo/commands, /deepracer/inference
 """
 
 import os
@@ -73,12 +71,10 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     # Package directories
     pkg_description = get_package_share_directory('physicar_description')
-    pkg_teleop = get_package_share_directory('physicar_teleop')
     pkg_bringup = get_package_share_directory('physicar_bringup')
 
     # URDF file
     urdf_file = os.path.join(pkg_description, 'urdf', 'physicar.urdf.xacro')
-    teleop_config = os.path.join(pkg_teleop, 'config', 'joy_mapping.yaml')
     driver_config = os.path.join(pkg_bringup, 'config', 'driver_params.yaml')
 
     # ── Robot Description (same URDF as real robot) ──
@@ -106,35 +102,6 @@ def generate_launch_description():
         name='deepracer',
         output='screen',
         parameters=[{'use_sim_time': True}],
-        respawn=True,
-        respawn_delay=2.0,
-    )
-
-    # Joystick driver (SDL2-based, normalises Xbox/PS/Switch controllers)
-    # SDL_JOYSTICK_HIDAPI=0: see device.launch.py for rationale.
-    joy_node = Node(
-        package='joy',
-        executable='joy_node',
-        name='joy_node',
-        output='log',
-        parameters=[{
-            'autorepeat_rate': 20.0,
-            'deadzone': 0.05,
-            'sticky_buttons': False,
-            'use_sim_time': False,
-        }],
-        additional_env={'SDL_JOYSTICK_HIDAPI': '0'},
-        respawn=True,
-        respawn_delay=3.0,
-    )
-
-    # Gamepad teleop — publishes /speed, /steering, /camera/{pan,tilt}
-    teleop_node = Node(
-        package='physicar_teleop',
-        executable='joy_teleop_node',
-        name='physicar_joy_teleop',
-        output='screen',
-        parameters=[teleop_config, {'use_sim_time': False}],
         respawn=True,
         respawn_delay=2.0,
     )
@@ -192,6 +159,7 @@ def generate_launch_description():
                 name='webserver',
                 output='screen',
                 parameters=[{'use_sim_time': False, 'sim_mode': True}],
+                additional_env={'PHYSICAR_SIM': '1'},
                 respawn=True,
                 respawn_delay=2.0,
             )
@@ -299,8 +267,6 @@ def generate_launch_description():
         ekf_node,
         deepracer_node,
         agent_node,
-        joy_node,
-        teleop_node,
         webserver_node,
         topic_watchdog,
     ])

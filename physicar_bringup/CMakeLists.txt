@@ -41,7 +41,6 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Node executables (entry points)
 install(PROGRAMS
-  scripts/physicar_driver_node.py
   scripts/audio_node.py
   scripts/cmd_vel_adapter_node.py
   DESTINATION lib/${PROJECT_NAME}

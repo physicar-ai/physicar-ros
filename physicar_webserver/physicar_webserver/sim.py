@@ -7,11 +7,16 @@ hide them in the UI.
 `is_sim_mode()` reads the `sim_mode` ROS param set by `sim.launch.py`.
 """
 
+import os
+
 from fastapi import HTTPException
 
 
 def is_sim_mode() -> bool:
     """True when running under sim.launch.py (Gazebo simulation)."""
+    # Environment variable works at module-load time (before ROS node init)
+    if os.environ.get('PHYSICAR_SIM') == '1':
+        return True
     try:
         from physicar_webserver.ros_bridge import get_ros_bridge
         bridge = get_ros_bridge()

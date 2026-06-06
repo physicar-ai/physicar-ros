@@ -375,11 +375,22 @@ recover_install() {
 
 # ── safe_update_sim ───────────────────────────────────────
 # Update physicar-sim repo to latest tag. No build step needed.
+# Safety: disk check, stale lock cleanup, corruption detection,
+#          anti-rollback, checkout verification.
 safe_update_sim() {
     local sim_dir="$WORKSPACE_DIR/src/physicar-sim"
     [[ -d "$sim_dir/.git" ]] || return 1
 
-    # Clean stale locks
+    # 1) Disk space check
+    check_disk_space || return 1
+
+    # 2) Health check — verify HEAD is resolvable
+    if ! git -C "$sim_dir" rev-parse HEAD >/dev/null 2>&1; then
+        log "sim: repo corrupt, skipping (manual fix required)"
+        return 1
+    fi
+
+    # 3) Clean stale locks
     local git_dir
     git_dir=$(git -C "$sim_dir" rev-parse --absolute-git-dir 2>/dev/null) || return 1
     for lockfile in "$git_dir/index.lock" "$git_dir/HEAD.lock"; do
@@ -390,35 +401,51 @@ safe_update_sim() {
                 rm -f "$lockfile"
                 log "sim: removed stale lock $(basename "$lockfile")"
             else
+                log "sim: lock file exists (age=${age}s), skipping"
                 return 1
             fi
         fi
     done
 
-    # Fetch tags
+    # 4) Fetch tags with timeout
     if ! timeout 30 git -c gc.auto=0 -C "$sim_dir" fetch --tags 2>/dev/null; then
-        log "sim: fetch failed"
+        log "sim: fetch failed (network unavailable?)"
         return 1
     fi
 
-    # Find latest v1.* tag
+    # 5) Find latest v1.* tag
     local latest
     latest=$(git -C "$sim_dir" tag -l 'v1.*' --sort=-v:refname | head -1)
     [[ -z "$latest" ]] && return 1
 
-    # Check if already at target
+    # 6) Check if already at target
     local current target
     current=$(git -C "$sim_dir" rev-parse HEAD 2>/dev/null)
     target=$(git -C "$sim_dir" rev-parse "$latest^{}" 2>/dev/null)
     [[ "$current" == "$target" ]] && return 1
 
-    # Don't roll back if HEAD is ahead of latest tag
+    # 7) Don't roll back if HEAD is ahead of latest tag
     if git -C "$sim_dir" merge-base --is-ancestor "$target" "$current" 2>/dev/null; then
         return 1
     fi
 
+    # 8) Checkout with verification
     log "sim: updating → $latest"
-    git -c gc.auto=0 -c advice.detachedHead=false -C "$sim_dir" checkout -f "$latest" 2>/dev/null
+    if ! git -c gc.auto=0 -c advice.detachedHead=false -C "$sim_dir" checkout -f "$latest" 2>/dev/null; then
+        log "sim: checkout failed for $latest"
+        return 1
+    fi
+
+    # 9) Verify HEAD matches target
+    local head_rev
+    head_rev=$(git -C "$sim_dir" rev-parse HEAD 2>/dev/null)
+    if [[ "$head_rev" != "$target" ]]; then
+        log "sim: checkout verification failed (HEAD=$head_rev expected=$target)"
+        return 1
+    fi
+
+    log "sim: updated to $latest"
+    return 0
 }
 
 # ── safe_pip_upgrade ─────────────────────────────────────

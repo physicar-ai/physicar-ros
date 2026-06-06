@@ -14,7 +14,8 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Float64
-from builtin_interfaces.msg import Duration as DurationMsg
+
+from physicar_webserver.sim import is_sim_mode
 
 # Import calibration services
 try:
@@ -22,34 +23,6 @@ try:
     HAS_CALIBRATION_SERVICES = True
 except ImportError:
     HAS_CALIBRATION_SERVICES = False
-
-# Import joy teleop mapping services
-try:
-    from physicar_interfaces.srv import GetJoyMapping, SetJoyMapping
-    HAS_JOY_MAPPING_SERVICES = True
-except ImportError:
-    HAS_JOY_MAPPING_SERVICES = False
-
-# Import joy teleop status message
-try:
-    from physicar_interfaces.msg import JoyTeleopStatus
-    HAS_JOY_STATUS_MSG = True
-except ImportError:
-    HAS_JOY_STATUS_MSG = False
-
-try:
-    from physicar_interfaces.msg import TeleopStatus
-    HAS_TELEOP_STATUS_MSG = True
-except ImportError:
-    HAS_TELEOP_STATUS_MSG = False
-
-# rcl_interfaces SetParameters (used to toggle joy_teleop enabled flag at runtime)
-try:
-    from rcl_interfaces.srv import SetParameters
-    from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
-    HAS_RCL_PARAM_SERVICES = True
-except ImportError:
-    HAS_RCL_PARAM_SERVICES = False
 
 # Import audio interfaces
 try:
@@ -107,49 +80,7 @@ class ROSBridge:
         # Service clients
         self._get_calibration_client = None
         self._set_calibration_client = None
-        self._get_joy_mapping_client = None
-        self._set_joy_mapping_client = None
-        self._joy_set_params_client = None
 
-        # Web teleop publishers (created in init()).  Mirror joy_teleop's
-        # /teleop/{speed,steering,camera/pan,camera/tilt} + /teleop/status
-        # so REST clients can drive the robot through the same priority
-        # gate as the gamepad.
-        self._teleop_speed_pub = None
-        self._teleop_steering_pub = None
-        self._teleop_pan_pub = None
-        self._teleop_tilt_pub = None
-        self._teleop_status_pub = None
-
-        # Web teleop engagement state (drives the heartbeat below).
-        self._web_drive_engaged: bool = False
-        self._web_camera_engaged: bool = False
-        self._web_estop_latched: bool = False
-        # If no command/heartbeat call lands within this window the web
-        # source is auto-released, mirroring the joy "deadman" semantic.
-        self._web_teleop_timeout_sec: float = 0.5
-        self._web_last_activity: float = 0.0
-        self._web_state_lock = threading.Lock()
-        self._web_status_timer = None  # ROS timer @ 30 Hz
-
-        # Joy teleop status (joy-only fields, currently just `enabled`).
-        self._joy_status = {
-            'enabled': False,
-            'received': False,
-        }
-        # Generic teleop status (any source).  `received` flips true on the
-        # first message; `fresh` reflects whether the cached values are
-        # within the publisher-declared timeout window.
-        self._teleop_status = {
-            'source': '',
-            'drive_engaged': False,
-            'camera_engaged': False,
-            'estop_latched': False,
-            'timeout_sec': 0.5,
-            'received': False,
-            'last_time': 0.0,  # monotonic seconds (time.time())
-        }
-        
         # Audio publisher
         self._audio_pub = None
         
@@ -198,8 +129,8 @@ class ROSBridge:
             # High-level control (Ackermann conversion in driver)
             self._cmd_vel_pub = self._node.create_publisher(Twist, '/cmd_vel', qos)
             
-            # Service clients (calibration)
-            if HAS_CALIBRATION_SERVICES:
+            # Service clients (calibration) — device only (no servo in SIM)
+            if HAS_CALIBRATION_SERVICES and not is_sim_mode():
                 self._get_calibration_client = self._node.create_client(
                     GetCalibration, '/physicar_driver/get_calibration'
                 )
@@ -207,72 +138,9 @@ class ROSBridge:
                     SetCalibration, '/physicar_driver/set_calibration'
                 )
 
-            # Service clients (joy teleop mapping)
-            if HAS_JOY_MAPPING_SERVICES:
-                self._get_joy_mapping_client = self._node.create_client(
-                    GetJoyMapping, '/physicar_joy_teleop/get_mapping'
-                )
-                self._set_joy_mapping_client = self._node.create_client(
-                    SetJoyMapping, '/physicar_joy_teleop/set_mapping'
-                )
-
-            # Parameter client to toggle joy_teleop's `enabled` flag at runtime
-            if HAS_RCL_PARAM_SERVICES:
-                self._joy_set_params_client = self._node.create_client(
-                    SetParameters, '/physicar_joy_teleop/set_parameters'
-                )
-
-            # Joy teleop status subscription — carries sticky joy-specific
-            # config (currently just `enabled`).  Latched so this server
-            # learns the value immediately on (re)start.
-            if HAS_JOY_STATUS_MSG:
-                self._node.create_subscription(
-                    JoyTeleopStatus,
-                    '/physicar_joy_teleop/status',
-                    self._on_joy_status,
-                    QoSProfile(
-                        depth=1,
-                        reliability=ReliabilityPolicy.RELIABLE,
-                        durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                    ),
-                )
-
-            # Generic teleop status — source-agnostic lock state with
-            # publisher-declared freshness timeout.
-            if HAS_TELEOP_STATUS_MSG:
-                self._node.create_subscription(
-                    TeleopStatus,
-                    '/teleop/status',
-                    self._on_teleop_status,
-                    QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE),
-                )
-            
             # Audio publisher
             if HAS_AUDIO_INTERFACES:
                 self._audio_pub = self._node.create_publisher(Audio, '/audio', qos)
-            
-            # Web teleop publishers — same topic names as joy_teleop so the
-            # driver / cmd_vel_adapter consume them through the existing
-            # gate.  /teleop/status is published at 30 Hz by a timer below
-            # whenever any web engagement flag is held.
-            self._teleop_speed_pub    = self._node.create_publisher(Float64, '/teleop/speed', qos)
-            self._teleop_steering_pub = self._node.create_publisher(Float64, '/teleop/steering', qos)
-            self._teleop_pan_pub      = self._node.create_publisher(Float64, '/teleop/camera/pan', qos)
-            self._teleop_tilt_pub     = self._node.create_publisher(Float64, '/teleop/camera/tilt', qos)
-            if HAS_TELEOP_STATUS_MSG:
-                teleop_status_qos = QoSProfile(
-                    depth=1,
-                    reliability=ReliabilityPolicy.RELIABLE,
-                    durability=DurabilityPolicy.VOLATILE,
-                )
-                self._teleop_status_pub = self._node.create_publisher(
-                    TeleopStatus, '/teleop/status', teleop_status_qos
-                )
-                # 30 Hz heartbeat — only emits while engaged or for a
-                # one-shot "release" frame after disengagement.
-                self._web_status_timer = self._node.create_timer(
-                    1.0 / 30.0, self._tick_web_teleop_status
-                )
             
             # DeepRacer service clients
             if HAS_DEEPRACER_INTERFACES:
@@ -329,55 +197,6 @@ class ROSBridge:
     def is_ready(self) -> bool:
         """Check if ROS bridge is ready."""
         return self._node is not None and rclpy.ok()
-
-    # ========================================================================
-    # Teleop / Joy status (lock state cache for REST clients)
-    # ========================================================================
-
-    def _on_joy_status(self, msg) -> None:
-        """Cache the latest JoyTeleopStatus.  Joy-specific fields only."""
-        self._joy_status = {
-            'enabled': bool(msg.enabled),
-            'received': True,
-        }
-
-    def _on_teleop_status(self, msg) -> None:
-        """Cache the latest source-agnostic TeleopStatus."""
-        timeout_sec = float(msg.timeout.sec) + float(msg.timeout.nanosec) / 1e9
-        if timeout_sec <= 0.0:
-            timeout_sec = 0.5
-        self._teleop_status = {
-            'source': str(msg.source) if msg.source else '',
-            'drive_engaged': bool(msg.drive_engaged),
-            'camera_engaged': bool(msg.camera_engaged),
-            'estop_latched': bool(msg.estop_latched),
-            'timeout_sec': timeout_sec,
-            'received': True,
-            'last_time': time.time(),
-        }
-
-    def get_joy_status(self) -> Dict[str, Any]:
-        """Return the latest cached joy-specific status."""
-        return dict(self._joy_status)
-
-    def get_teleop_status(self) -> Dict[str, Any]:
-        """Return the latest cached generic teleop status, with a `fresh`
-        flag indicating whether the cached values are still within the
-        publisher-declared timeout window.  Stale status is treated as
-        "all locks released" by consumers (driver, cmd_vel_adapter)."""
-        snap = dict(self._teleop_status)
-        if snap['received']:
-            age = time.time() - snap['last_time']
-            snap['fresh'] = age < snap['timeout_sec']
-        else:
-            snap['fresh'] = False
-        # If stale, surface released locks to the client so the UI doesn't
-        # show a phantom lock from a dead publisher.
-        if not snap['fresh']:
-            snap['drive_engaged'] = False
-            snap['camera_engaged'] = False
-        snap.pop('last_time', None)
-        return snap
 
     # ========================================================================
     # Publishers - Low-level control
@@ -445,163 +264,6 @@ class ROSBridge:
             'time': time.time()
         }
         return True
-
-    # ========================================================================
-    # Web Teleop — publishes /teleop/{speed,steering,camera/pan,camera/tilt}
-    # plus the source-agnostic /teleop/status priority claim.
-    # ========================================================================
-
-    def _bump_web_activity(self) -> None:
-        with self._web_state_lock:
-            self._web_last_activity = time.time()
-
-    def _web_engaged_locked(self) -> bool:
-        """Caller must hold _web_state_lock."""
-        return (
-            self._web_drive_engaged
-            or self._web_camera_engaged
-            or self._web_estop_latched
-        )
-
-    def _tick_web_teleop_status(self) -> None:
-        """30 Hz callback: refresh /teleop/status while web is engaged.
-
-        Auto-releases drive / camera engagement if no command lands within
-        ``_web_teleop_timeout_sec`` (deadman semantic).  Once everything is
-        released we stop publishing so other sources (joy) regain the gate.
-        """
-        if not self._teleop_status_pub or not HAS_TELEOP_STATUS_MSG:
-            return
-        publish_release = False
-        with self._web_state_lock:
-            now = time.time()
-            stale = (now - self._web_last_activity) > self._web_teleop_timeout_sec
-            if stale and (self._web_drive_engaged or self._web_camera_engaged):
-                self._web_drive_engaged = False
-                self._web_camera_engaged = False
-                publish_release = True  # one final frame so consumers see it
-            engaged = self._web_engaged_locked()
-            drive = self._web_drive_engaged
-            camera = self._web_camera_engaged
-            estop = self._web_estop_latched
-            timeout = self._web_teleop_timeout_sec
-        if not engaged and not publish_release:
-            return
-        msg = TeleopStatus()
-        msg.source = 'web'
-        msg.drive_engaged = drive
-        msg.camera_engaged = camera
-        msg.estop_latched = estop
-        timeout_ns = int(timeout * 1e9)
-        msg.timeout = DurationMsg(
-            sec=timeout_ns // 1_000_000_000,
-            nanosec=timeout_ns % 1_000_000_000,
-        )
-        self._teleop_status_pub.publish(msg)
-
-    def publish_teleop_speed(self, speed: float) -> bool:
-        """Publish to /teleop/speed and auto-engage web drive."""
-        if not self._teleop_speed_pub:
-            return False
-        msg = Float64()
-        msg.data = float(speed)
-        self._teleop_speed_pub.publish(msg)
-        with self._web_state_lock:
-            self._web_drive_engaged = True
-            self._web_last_activity = time.time()
-        # Push status immediately so the very first command isn't gated
-        # by the up-to-33 ms wait until the next timer tick.
-        self._tick_web_teleop_status()
-        return True
-
-    def publish_teleop_steering(self, angle: float) -> bool:
-        """Publish to /teleop/steering and auto-engage web drive."""
-        if not self._teleop_steering_pub:
-            return False
-        msg = Float64()
-        msg.data = float(angle)
-        self._teleop_steering_pub.publish(msg)
-        with self._web_state_lock:
-            self._web_drive_engaged = True
-            self._web_last_activity = time.time()
-        self._tick_web_teleop_status()
-        return True
-
-    def publish_teleop_pan(self, angle: float) -> bool:
-        """Publish to /teleop/camera/pan and auto-engage web camera."""
-        if not self._teleop_pan_pub:
-            return False
-        msg = Float64()
-        msg.data = float(angle)
-        self._teleop_pan_pub.publish(msg)
-        with self._web_state_lock:
-            self._web_camera_engaged = True
-            self._web_last_activity = time.time()
-        self._tick_web_teleop_status()
-        return True
-
-    def publish_teleop_tilt(self, angle: float) -> bool:
-        """Publish to /teleop/camera/tilt and auto-engage web camera."""
-        if not self._teleop_tilt_pub:
-            return False
-        msg = Float64()
-        msg.data = float(angle)
-        self._teleop_tilt_pub.publish(msg)
-        with self._web_state_lock:
-            self._web_camera_engaged = True
-            self._web_last_activity = time.time()
-        self._tick_web_teleop_status()
-        return True
-
-    def engage_web_teleop(
-        self,
-        drive: Optional[bool] = None,
-        camera: Optional[bool] = None,
-        estop: Optional[bool] = None,
-    ) -> Dict[str, Any]:
-        """Manually claim/release individual web teleop locks."""
-        with self._web_state_lock:
-            if drive is not None:
-                self._web_drive_engaged = bool(drive)
-            if camera is not None:
-                self._web_camera_engaged = bool(camera)
-            if estop is not None:
-                self._web_estop_latched = bool(estop)
-            self._web_last_activity = time.time()
-            snap = {
-                'drive_engaged': self._web_drive_engaged,
-                'camera_engaged': self._web_camera_engaged,
-                'estop_latched': self._web_estop_latched,
-            }
-        self._tick_web_teleop_status()
-        return snap
-
-    def release_web_teleop(self) -> Dict[str, Any]:
-        """Release all web teleop locks immediately."""
-        with self._web_state_lock:
-            self._web_drive_engaged = False
-            self._web_camera_engaged = False
-            self._web_estop_latched = False
-            self._web_last_activity = time.time()
-        # Emit one release frame so consumers see drive/camera=false.
-        self._tick_web_teleop_status()
-        return {
-            'drive_engaged': False,
-            'camera_engaged': False,
-            'estop_latched': False,
-        }
-
-    def get_web_teleop_state(self) -> Dict[str, Any]:
-        """Snapshot of the local web teleop state (what we are publishing)."""
-        with self._web_state_lock:
-            now = time.time()
-            return {
-                'drive_engaged': self._web_drive_engaged,
-                'camera_engaged': self._web_camera_engaged,
-                'estop_latched': self._web_estop_latched,
-                'timeout_sec': self._web_teleop_timeout_sec,
-                'idle_sec': (now - self._web_last_activity) if self._web_last_activity else None,
-            }
 
     # ========================================================================
     # Audio Publisher
@@ -775,117 +437,6 @@ class ROSBridge:
             'message': response.message,
         }
     
-    # ========================================================================
-    # Joy Teleop Mapping Services
-    # ========================================================================
-
-    async def get_joy_mapping(self) -> Dict[str, Any]:
-        """Get current joystick teleop mapping."""
-        if not HAS_JOY_MAPPING_SERVICES or not self._get_joy_mapping_client:
-            raise Exception("Joy mapping services not available")
-
-        request = GetJoyMapping.Request()
-
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._get_joy_mapping_client,
-            request,
-        )
-
-        if response is None:
-            raise Exception("Service call failed or timeout")
-
-        import json as _json
-        try:
-            mapping = _json.loads(response.mapping_json) if response.mapping_json else {}
-        except _json.JSONDecodeError:
-            mapping = {}
-
-        return {
-            'success': response.success,
-            'message': response.message,
-            'source': response.source,
-            'mapping': mapping,
-        }
-
-    async def set_joy_mapping(
-        self,
-        key: str = '',
-        int_value: int = 0,
-        float_value: float = 0.0,
-        bool_value: bool = False,
-        mapping_json: str = '',
-        save: bool = False,
-    ) -> Dict[str, Any]:
-        """Set joystick teleop mapping (single key or bulk JSON)."""
-        if not HAS_JOY_MAPPING_SERVICES or not self._set_joy_mapping_client:
-            raise Exception("Joy mapping services not available")
-
-        request = SetJoyMapping.Request()
-        request.key = key
-        request.int_value = int(int_value)
-        request.float_value = float(float_value)
-        request.bool_value = bool(bool_value)
-        request.mapping_json = mapping_json
-        request.save_to_file = save
-
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._set_joy_mapping_client,
-            request,
-        )
-
-        if response is None:
-            raise Exception("Service call failed or timeout")
-
-        import json as _json
-        try:
-            mapping = _json.loads(response.mapping_json) if response.mapping_json else {}
-        except _json.JSONDecodeError:
-            mapping = {}
-
-        return {
-            'success': response.success,
-            'message': response.message,
-            'mapping': mapping,
-        }
-
-    async def set_joy_enabled(self, enabled: bool) -> Dict[str, Any]:
-        """Toggle joy_teleop's `enabled` parameter via /set_parameters.
-
-        When false, joy_teleop publishes nothing on /speed,/steering,/camera/*
-        and reports drive_engaged/camera_engaged=false in its status.  Other
-        publishers (deepracer, REST /control) regain the topics immediately.
-        """
-        if not HAS_RCL_PARAM_SERVICES or not self._joy_set_params_client:
-            raise Exception("Joy parameter service not available")
-
-        request = SetParameters.Request()
-        param = Parameter()
-        param.name = 'enabled'
-        param.value = ParameterValue(type=ParameterType.PARAMETER_BOOL, bool_value=bool(enabled))
-        request.parameters = [param]
-
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._joy_set_params_client,
-            request,
-        )
-
-        if response is None:
-            raise Exception("Service call failed or timeout")
-        if not response.results or not response.results[0].successful:
-            reason = response.results[0].reason if response.results else 'unknown'
-            return {'success': False, 'message': reason, 'enabled': None}
-
-        return {'success': True, 'message': 'ok', 'enabled': bool(enabled)}
-
     # ========================================================================
     # DeepRacer Services
     # ========================================================================
