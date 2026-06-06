@@ -70,20 +70,10 @@
 | `/deepracer/status` | service | [`DeepracerStatus`](physicar_interfaces/srv/DeepracerStatus.srv) | 상태 조회 |
 | `/imu` | topic | [`Imu`](https://docs.ros2.org/latest/api/sensor_msgs/msg/Imu.html) | IMU (50 Hz) |
 | `/odom` | topic | [`Odometry`](https://docs.ros2.org/latest/api/nav_msgs/msg/Odometry.html) | 오도메트리 |
-| `/physicar_driver/calibration_status` | topic | [`CalibrationStatus`](physicar_interfaces/msg/CalibrationStatus.msg) | 캘리브레이션 상태 |
-| `/physicar_driver/get_calibration` | service | [`GetCalibration`](physicar_interfaces/srv/GetCalibration.srv) | 캘리브레이션 조회 |
-| `/physicar_driver/set_calibration` | service | [`SetCalibration`](physicar_interfaces/srv/SetCalibration.srv) | 캘리브레이션 저장 |
-| `/physicar_joy_teleop/get_mapping` | service | [`GetJoyMapping`](physicar_interfaces/srv/GetJoyMapping.srv) | 조이스틱 매핑 조회 |
-| `/physicar_joy_teleop/set_mapping` | service | [`SetJoyMapping`](physicar_interfaces/srv/SetJoyMapping.srv) | 조이스틱 매핑 설정 |
 | `/scan` | topic | [`LaserScan`](https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html) | LiDAR 스캔 (원본) |
 | `/scan_filtered` | topic | [`LaserScan`](https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html) | LiDAR 스캔 (필터링) |
 | `/speed` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | 속도 (m/s) |
 | `/steering` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | 조향각 (rad) |
-| `/teleop/camera/pan` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | 텔레옵 팬 (우선순위 높음) |
-| `/teleop/camera/tilt` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | 텔레옵 틸트 (우선순위 높음) |
-| `/teleop/speed` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | 텔레옵 속도 (우선순위 높음) |
-| `/teleop/status` | topic | [`TeleopStatus`](physicar_interfaces/msg/TeleopStatus.msg) | 텔레옵 상태 |
-| `/teleop/steering` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | 텔레옵 조향 (우선순위 높음) |
 
 ---
 

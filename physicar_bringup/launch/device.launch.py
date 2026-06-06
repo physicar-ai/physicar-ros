@@ -123,7 +123,7 @@ def generate_launch_description():
         respawn_delay=2.0,
     )
 
-    # Scan Filter (filters invalid readings for rf2o)
+    # Scan Filter (filters invalid readings for laser odom)
     # Converts inf, nan, out-of-range values to 0 for proper handling
     scan_filter = Node(
         package='physicar_bringup',
@@ -160,24 +160,29 @@ def generate_launch_description():
     # Camera: camera_ros captures 640x480 → undistort+resize → publishes 480x360 image_raw
     # camera_ros publishes /camera/image_raw/compressed automatically (image_transport standard)
 
-    # RF2O Laser Odometry → /odom/laser (raw, no TF)
-    # EKF fuses this with IMU → /odom (final) + odom→base_footprint TF
-    rf2o_odometry = Node(
-        package='rf2o_laser_odometry',
-        executable='rf2o_laser_odometry_node',
-        name='rf2o_laser_odometry',
+    # Laser Odometry → /odom/laser (raw, no TF)
+    # Point-to-Line ICP scan matching. EKF fuses with IMU → /odom + TF.
+    laser_odom = Node(
+        package='physicar_laser_odom',
+        executable='laser_odom_node',
+        name='laser_odom',
         output='log',
-        arguments=['--ros-args', '--log-level', 'error'],
+        arguments=['--ros-args', '--log-level', 'warn'],
         parameters=[
-            driver_config,
-            {'laser_scan_topic': '/scan_filtered'},
+            {
+                'laser_scan_topic': '/scan_filtered',
+                'odom_topic': '/odom/laser',
+                'publish_tf': False,
+                'base_frame_id': 'base_footprint',
+                'odom_frame_id': 'odom',
+            },
         ],
         condition=IfCondition(use_lidar),
         respawn=True,
         respawn_delay=2.0,
     )
 
-    # EKF: fuses rf2o (/odom/laser) + IMU (/imu) → /odom + TF
+    # EKF: fuses laser odom (/odom/laser) + IMU (/imu) → /odom + TF
     ekf_config = os.path.join(pkg_bringup, 'config', 'ekf_params.yaml')
     ekf_node = Node(
         package='robot_localization',
@@ -371,7 +376,7 @@ def generate_launch_description():
         rplidar_driver,
         scan_filter,
         camera_driver,
-        rf2o_odometry,
+        laser_odom,
         ekf_node,
         audio_node,
         deepracer_node,

@@ -1,5 +1,5 @@
-# EKF (Extended Kalman Filter) — fuses rf2o laser odometry + IMU
-# Input:  /odom/laser (rf2o), /imu (IMU)
+# EKF (Extended Kalman Filter) — fuses laser odometry + IMU
+# Input:  /odom/laser (physicar_laser_odom), /imu (IMU)
 # Output: /odom (fused odometry) + odom→base_footprint TF
 #
 # robot_localization EKF config reference:
@@ -16,9 +16,9 @@ ekf_filter_node:
     base_link_frame: base_footprint
     world_frame: odom
 
-    # ── Sensor 0: rf2o laser odometry (/odom/laser) ──
-    # rf2o is good at x,y position and linear velocity.
-    # Its yaw drifts — let IMU handle orientation.
+    # ── Sensor 0: laser odometry (/odom/laser) ──
+    # Good at x,y position and linear velocity.
+    # Yaw drifts — let IMU handle orientation.
     # config order: x, y, z, roll, pitch, yaw,
     #               vx, vy, vz, vroll, vpitch, vyaw,
     #               ax, ay, az

@@ -30,8 +30,8 @@ Compared to device.launch.py, the following are EXCLUDED:
 The following run identically to the real robot:
   - robot_state_publisher (TF from URDF)
   - scan_filter (/scan → /scan_filtered)
-  - rf2o_odometry (LiDAR-based /odom/laser — raw laser odom)
-  - ekf_filter_node (fuses rf2o + IMU → /odom)
+  - laser_odom (LiDAR-based /odom/laser — Point-to-Line ICP)
+  - ekf_filter_node (fuses laser_odom + IMU → /odom)
   - deepracer_node (inference, always runs)
   - agent_node (AI agent tools)
   - webserver_node (REST API on port 8000)
@@ -192,18 +192,21 @@ def generate_launch_description():
         respawn_delay=2.0,
     )
 
-    # RF2O Laser Odometry → /odom/laser (raw, no TF)
-    # EKF fuses this with IMU → /odom (final) + odom→base_footprint TF
-    rf2o_odometry = Node(
-        package='rf2o_laser_odometry',
-        executable='rf2o_laser_odometry_node',
-        name='rf2o_laser_odometry',
+    # Laser Odometry → /odom/laser (raw, no TF)
+    # Point-to-Line ICP scan matching. EKF fuses with IMU → /odom + TF.
+    laser_odom = Node(
+        package='physicar_laser_odom',
+        executable='laser_odom_node',
+        name='laser_odom',
         output='log',
-        arguments=['--ros-args', '--log-level', 'error'],
+        arguments=['--ros-args', '--log-level', 'warn'],
         parameters=[
-            driver_config,
             {
                 'laser_scan_topic': '/scan_filtered',
+                'odom_topic': '/odom/laser',
+                'publish_tf': False,
+                'base_frame_id': 'base_footprint',
+                'odom_frame_id': 'odom',
                 'use_sim_time': True,
             },
         ],
@@ -211,7 +214,7 @@ def generate_launch_description():
         respawn_delay=2.0,
     )
 
-    # EKF: fuses rf2o (/odom/laser) + IMU (/imu) → /odom + TF
+    # EKF: fuses laser odom (/odom/laser) + IMU (/imu) → /odom + TF
     ekf_config = os.path.join(pkg_bringup, 'config', 'ekf_params.yaml')
     ekf_node = Node(
         package='robot_localization',
@@ -236,10 +239,8 @@ def generate_launch_description():
     )
 
     # Topic Watchdog (sim mode)
-    # Monitors /odom/laser — if rf2o gets stuck after a Gazebo world switch
-    # (sim time backward jump blocks its Rate::sleep()), kills it so
-    # respawn=True restarts it fresh.  Uses wall time (no use_sim_time)
-    # so it's immune to sim time issues.
+    # Monitors /odom/laser — if laser_odom gets stuck after a Gazebo world switch
+    # (sim time backward jump), kills it so respawn=True restarts it fresh.
     topic_watchdog = TimerAction(
         period=10.0,
         actions=[
@@ -263,7 +264,7 @@ def generate_launch_description():
         robot_state_publisher,
         cmd_vel_adapter,
         scan_filter,
-        rf2o_odometry,
+        laser_odom,
         ekf_node,
         deepracer_node,
         agent_node,
