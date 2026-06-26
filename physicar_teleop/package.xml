@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>physicar_teleop</name>
+  <version>0.1.0</version>
+  <description>Gamepad teleoperation for PhysiCar (Xbox / PS / Switch via SDL2)</description>
+  <maintainer email="dev@physicar.ai">AICASTLE</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>physicar_interfaces</depend>
+  <build_depend>nlohmann-json-dev</build_depend>
+  <exec_depend>joy</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

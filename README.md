@@ -1,0 +1,183 @@
+# PhysiCar ROS 2
+
+[![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-blue)](https://docs.ros.org/en/jazzy/)
+[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420)](https://releases.ubuntu.com/24.04/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green)](LICENSE)
+
+<p align="center">
+  <img src="logo.png" alt="logo" width="480" style="max-width: 100%;">
+</p>
+
+The ROS 2 Jazzy stack for **PhysiCar AI**, a Physical AI education platform.
+
+### 🌐 Official site: [https://physicar.ai](https://physicar.ai)
+
+## Vehicle Specs
+
+| Item | Spec |
+|------|------|
+| Computer | Raspberry Pi 5 (8 GB) |
+| LiDAR | 360°, 0.10–16 m, 10 Hz |
+| IMU | 6-axis (accelerometer + gyroscope), 50 Hz |
+| Camera | 480×360, 15 fps, MF, FOV 100°, Night Vision |
+| Camera Pan | ±30° |
+| Camera Tilt | ±30° |
+| Battery | 2S Lithium 7.4 V |
+| Steering | Ackermann |
+| Max Speed | 3.0 m/s |
+| Max Wheel Steering Angle | ±20° |
+
+## Installation
+
+See [deploy/README.md](deploy/README.md). The source is installed at `/opt/physicar/src/physicar-ros`.
+
+## Run Modes
+
+Configured via the `.env` file (`/opt/physicar/userdata/.env`).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SIM` | `false` | `false`: run on device (real robot), `true`: run on physicar-sim (simulation environment) |
+| `DEV` | `false` | `false`: auto-update enabled, `true`: auto-update disabled, code can be edited directly |
+
+## Apps
+
+### Agent
+
+- LLM-based Tool Call app.
+- User-defined tool path: `/opt/physicar/userdata/agent/tools.py`
+  > If there are no user-defined tools or loading fails, the package's built-in tools are loaded.
+
+### DeepRacer
+- Reinforcement-learning-based autonomous driving app.
+- Model storage location: `/opt/physicar/userdata/deepracer/models/<model_name>/`
+
+### MyApp
+
+- Your own robot web app.
+- Launch an app on port **5000** and it becomes accessible at `/myapp/`.
+- Path rules
+    - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
+    - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
+
+- Auto-start script
+    - `/home/physicar/physicar_ws/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
+        ```
+        python3 /home/physicar/physicar_ws/app.py
+        ```
+    - `/home/physicar/physicar_ws/myapp.log`: execution log of the auto-start script.
+
+## ROS 2 Interfaces
+
+### Sensors
+
+| Name | Kind | Type | Description |
+|------|------|------|-------------|
+| `/camera/image_raw/compressed` | topic | [`CompressedImage`](https://docs.ros2.org/latest/api/sensor_msgs/msg/CompressedImage.html) | Camera image (JPEG) |
+| `/battery_state` | topic | [`BatteryState`](https://docs.ros2.org/latest/api/sensor_msgs/msg/BatteryState.html) | Battery state (1 Hz) |
+| `/imu` | topic | [`Imu`](https://docs.ros2.org/latest/api/sensor_msgs/msg/Imu.html) | IMU (50 Hz) |
+| `/odom` | topic | [`Odometry`](https://docs.ros2.org/latest/api/nav_msgs/msg/Odometry.html) | Odometry |
+| `/scan` | topic | [`LaserScan`](https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html) | LiDAR scan (raw) |
+| `/scan_filtered` | topic | [`LaserScan`](https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html) | LiDAR scan (filtered) |
+
+### Control
+
+| Name | Kind | Type | Description |
+|------|------|------|-------------|
+| `/cmd_vel` | topic | [`Twist`](https://docs.ros2.org/latest/api/geometry_msgs/msg/Twist.html) | Velocity + steering (Ackermann conversion) |
+| `/speed` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Speed (m/s) |
+| `/steering` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Steering angle (rad) |
+| `/camera/pan` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Camera pan (rad) |
+| `/camera/tilt` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Camera tilt (rad) |
+| `/audio` | topic | [`Audio`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/msg/Audio.msg) | Audio playback |
+
+### Agent Tools
+
+| Name | Kind | Type | Description |
+|------|------|------|-------------|
+| `/agent/tool/call` | service | [`ToolCall`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/ToolCall.srv) | Run a tool |
+| `/agent/tool/get` | service | [`ToolGet`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/ToolGet.srv) | Get a tool |
+| `/agent/tool/init` | service | [`ToolInit`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/ToolInit.srv) | Initialize tools |
+| `/agent/tool/list` | service | [`ToolList`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/ToolList.srv) | List tools |
+| `/agent/tool/load` | service | [`ToolLoad`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/ToolLoad.srv) | Reload tools |
+| `/agent/tool/set` | service | [`ToolSet`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/ToolSet.srv) | Register/update tools |
+
+### DeepRacer
+
+| Name | Kind | Type | Description |
+|------|------|------|-------------|
+| `/deepracer/control` | service | [`DeepracerControl`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerControl.srv) | Start/stop inference |
+| `/deepracer/inference` | topic | [`DeepracerInference`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/msg/DeepracerInference.msg) | Inference result |
+| `/deepracer/load_model` | service | [`DeepracerLoadModel`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerLoadModel.srv) | Load a model |
+| `/deepracer/unload_model` | service | [`DeepracerUnloadModel`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerUnloadModel.srv) | Unload a model |
+| `/deepracer/set_config` | service | [`DeepracerSetConfig`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerSetConfig.srv) | Speed scale, action selection |
+| `/deepracer/status` | service | [`DeepracerStatus`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerStatus.srv) | Get status |
+
+## Web API
+
+Interactive docs at `/docs` (OpenAPI).
+
+### Sensor Queries
+
+Query endpoints support real-time streaming via `?stream=true` (camera uses MJPEG, others use SSE).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/states` | Full state snapshot (select with `?include=odom,battery,imu`) |
+| `GET` | `/speed` | Speed (m/s) |
+| `GET` | `/steering` | Steering angle (rad) |
+| `GET` | `/odom` | Odometry |
+| `GET` | `/battery` | Battery state |
+| `GET` | `/imu` | IMU |
+| `GET` | `/lidar` | LiDAR scan |
+| `GET` | `/camera` | Camera image (JPEG, resize with `?width`/`?height`) |
+| `GET` | `/camera/pan` | Camera pan angle |
+| `GET` | `/camera/tilt` | Camera tilt angle |
+| `GET` | `/audio` | Audio state |
+
+### Control (Publish)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/speed` | Speed command |
+| `POST` | `/steering` | Steering command |
+| `POST` | `/camera/pan` | Camera pan |
+| `POST` | `/camera/tilt` | Camera tilt |
+| `POST` | `/audio` | Audio playback |
+
+### Agent Tools
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/agent/tool/list` | List tools |
+| `GET` | `/agent/tool/get/{name}` | Get a tool |
+| `POST` | `/agent/tool/call/{name}` | Run a tool |
+| `POST` | `/agent/tool/set` | Register/update tools |
+| `GET` | `/agent/tool/file` | Get tool source file |
+| `POST` | `/agent/tool/load` | Reload tools |
+| `POST` | `/agent/tool/init` | Initialize tools |
+
+### DeepRacer
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/deepracer/load_model` | Load a model |
+| `POST` | `/deepracer/unload_model` | Unload a model |
+| `POST` | `/deepracer/control` | Start/stop inference |
+| `POST` | `/deepracer/set_config` | Speed scale / action settings |
+| `GET` | `/deepracer/status` | Get status |
+| `GET` | `/deepracer/inference` | Inference result (`?stream=true`) |
+| `GET` | `/deepracer/models` | List models |
+| `GET` | `/deepracer/models/{name}` | Model details |
+| `DELETE` | `/deepracer/models/{name}` | Delete a model |
+| `POST` | `/deepracer/models/import/{init,chunk,complete,cancel}` | Chunked model upload |
+
+## License
+
+Copyright 2026 **AICASTLE Inc.**
+
+| Package | License |
+|---------|---------|
+| `physicar_*` (this project) | Apache-2.0 |
+| `physicar_camera` (vendored from camera_ros) | MIT |
+| `physicar_lidar` (vendored from rplidar_ros) | BSD-2-Clause |

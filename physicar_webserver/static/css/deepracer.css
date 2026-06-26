@@ -1,0 +1,114 @@
+/* ===== DeepRacer Page ===== */
+.dr-layout { display: flex; flex-direction: column; gap: 0.75rem; flex: 1; min-height: 0; }
+.dr-top-bar { flex-shrink: 0; }
+.dr-body { display: flex; gap: 0.75rem; flex: 1; min-height: 0; }
+.dr-sidebar { width: 30%; min-width: 0; display: flex; flex-direction: column; flex-shrink: 0; min-height: 0; overflow-y: auto; }
+.dr-main { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+/* Model list */
+.model-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.model-item {
+  display: flex; align-items: center; padding: 0.4rem 0.5rem; border-radius: 6px;
+  background: var(--bg3); cursor: pointer; transition: all 0.15s; gap: 0.4rem; font-size: 0.92rem;
+}
+.model-item:hover { background: var(--border); }
+.model-item.loaded { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); }
+.model-item.active { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); }
+.model-name { flex: 1; word-break: break-all; overflow-wrap: anywhere; }
+.model-badge { font-size: 0.65rem; padding: 1px 5px; border-radius: 3px; font-weight: 500; background: rgba(255,255,255,0.1); color: var(--fg2); }
+.model-del { opacity: 0; color: var(--fg3); font-size: 1rem; padding: 0 0.2rem; transition: opacity 0.15s; }
+.model-item:hover .model-del { opacity: 1; }
+.model-del:hover { color: var(--red); }
+.model-empty { color: var(--fg3); font-size: 0.88rem; text-align: center; padding: 1rem; }
+.model-sensor { font-size: 0.6rem; flex-shrink: 0; padding: 1px 4px; border-radius: 3px; font-family: 'SF Mono','Consolas',monospace; font-weight: 600; }
+.model-sensor.cam { background: rgba(59,130,246,0.15); color: var(--accent); }
+.model-sensor.lidar { background: rgba(6,182,212,0.15); color: var(--cyan); }
+.model-sub { font-size: 0.65rem; color: var(--fg3); }
+
+/* Import */
+.import-area {
+  border: 1px dashed var(--fg3); border-radius: var(--radius); padding: 0.6rem;
+  text-align: center; color: var(--fg3); font-size: 0.82rem; cursor: pointer; transition: all 0.15s;
+}
+.import-area:hover { border-color: var(--accent); color: var(--accent); }
+.import-area input { display: none; }
+.import-btn {
+  font-size: 0.85rem; color: var(--fg3); cursor: pointer; padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border); border-radius: 4px; transition: all 0.15s; font-weight: 400;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+}
+.import-btn:hover { border-color: var(--accent); color: var(--accent); }
+.import-btn.importing { background: rgba(245,158,11,0.15); border-color: var(--orange); color: var(--orange); cursor: default; pointer-events: none; }
+.import-spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status badge */
+.dr-status {
+  display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.5rem;
+  border-radius: 4px; font-size: 0.82rem; font-weight: 500;
+}
+.dr-status.stopped { background: var(--bg3); color: var(--fg3); }
+.dr-status.loading { background: rgba(245,158,11,0.15); color: var(--orange); }
+.dr-status.running { background: rgba(34,197,94,0.15); color: var(--green); }
+
+/* Controls */
+.dr-controls { display: flex; align-items: center; width: 100%; flex-wrap: wrap; gap: 0.5rem; }
+.dr-control-section { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-width: 0; padding: 0.25rem 0; }
+.dr-control-section label { color: var(--fg2); font-size: 0.88rem; white-space: nowrap; }
+.dr-control-section select { background: var(--bg3); border: 1px solid var(--border); color: var(--fg); padding: 0.25rem 0.4rem; border-radius: 4px; font-size: 0.7rem; }
+
+/* Config rows */
+.dr-config-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.88rem; }
+.dr-config-row label { color: var(--fg2); min-width: 80px; }
+.dr-config-row select { background: var(--bg3); border: 1px solid var(--border); color: var(--fg); padding: 0.25rem 0.4rem; border-radius: 4px; font-size: 0.78rem; }
+
+/* Speed +/- button group */
+.speed-btn-group { display: inline-flex; border-radius: 8px; overflow: hidden; gap: 3px; }
+.speed-btn-group button {
+  padding: 0.55rem 1.1rem; font-size: 1.7rem; font-weight: 700;
+  background: var(--bg3); color: var(--fg2); border: none; cursor: pointer;
+  transition: background 0.15s; line-height: 1; border-radius: 6px;
+}
+.speed-btn-group button:hover { background: var(--border); color: var(--fg); }
+.speed-btn-group button:active { background: var(--accent); color: #fff; }
+
+/* Action visualization */
+.dr-action-canvas { width: 100%; aspect-ratio: 2/1; background: #0a0a0a; border-radius: var(--radius); display: block; }
+.dr-action-info { display: flex; gap: 1rem; font-size: 0.92rem; margin-top: 0.4rem; }
+.dr-action-info span { color: var(--fg2); }
+.dr-action-info strong { color: var(--fg); font-family: 'SF Mono', 'Consolas', monospace; }
+
+/* Prob chart — horizontal bars */
+.dr-prob-chart { display: flex; flex-direction: column; gap: 3px; padding-top: 0.3rem; }
+.dr-prob-row { display: flex; align-items: center; gap: 6px; font-size: 0.95rem; height: 24px; }
+.dr-prob-idx { width: 14px; text-align: center; color: var(--fg3); flex-shrink: 0; }
+.dr-prob-info { width: 70px; color: var(--fg2); font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.8rem; flex-shrink: 0; white-space: nowrap; overflow: hidden; }
+.dr-prob-bar-wrap { flex: 1; height: 100%; background: var(--bg); border-radius: 2px; overflow: hidden; }
+.dr-prob-bar { height: 100%; background: var(--bg3); border-radius: 2px; transition: width 0.15s, background 0.15s; min-width: 2px; }
+.dr-prob-bar.selected { background: var(--accent); }
+.dr-prob-pct { width: 38px; text-align: right; color: var(--fg3); font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.85rem; flex-shrink: 0; }
+
+/* Camera (DeepRacer view) */
+.dr-camera { width: 100%; aspect-ratio: 4/3; background: var(--bg); border-radius: var(--radius); object-fit: cover; display: block; }
+
+@media (max-width: 900px) {
+  .dr-body { flex-direction: column; }
+  .dr-sidebar { width: 100%; overflow-y: auto; }
+  .dr-controls { justify-content: center; }
+}
+@media (max-width: 600px) {
+  .dr-controls { gap: 0.3rem; }
+  .dr-control-section { gap: 0.3rem; }
+  .dr-control-section label { font-size: 0.78rem; }
+  .speed-btn-group button { padding: 0.4rem 0.8rem; font-size: 1.3rem; }
+  .dr-prob-info { width: 55px; font-size: 0.72rem; }
+}
+
+/* Active model row inside .dr-top-bar (below controls) */
+.dr-active-model { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.2rem 0; margin-top: 0.5rem; border-top: 1px solid var(--border); font-size: 0.85rem; flex-wrap: wrap; }
+.dr-active-label { color: var(--fg3); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px; font-weight: 600; }
+.dr-active-name { color: var(--fg2); font-weight: 500; word-break: break-all; overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.dr-active-model.has-active .dr-active-name { color: var(--accent); }
+.dr-active-state { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+.dr-active-state.loaded { background: rgba(126,87,194,0.18); color: var(--accent); }
+.dr-active-state.running { background: rgba(34,197,94,0.18); color: var(--green, #22c55e); }

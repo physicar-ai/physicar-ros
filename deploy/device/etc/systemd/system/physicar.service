@@ -1,0 +1,20 @@
+[Unit]
+Description=Physicar Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=physicar
+Group=physicar
+EnvironmentFile=-/opt/physicar/userdata/.env
+StandardOutput=append:/opt/physicar/userdata/physicar.log
+StandardError=append:/opt/physicar/userdata/physicar.log
+ExecStartPre=/bin/bash -c '> /opt/physicar/userdata/physicar.log'
+ExecStart=/opt/physicar/src/physicar-ros/deploy/device/physicar.sh
+RemainAfterExit=yes
+TimeoutStartSec=0
+TimeoutStopSec=3
+
+[Install]
+WantedBy=multi-user.target

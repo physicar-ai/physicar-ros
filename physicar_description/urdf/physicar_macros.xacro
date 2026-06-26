@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<!--
+  PhysiCar Robot Macros
+  Copyright 2025 PhysiCar AI
+  
+  Wheel macros for Ackermann steering vehicle
+-->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ========== REAR WHEEL MACRO (Passive) ========== -->
+  <xacro:macro name="rear_wheel" params="prefix y_offset wheel_radius wheel_width rpy_yaw x_offset visual_y_offset">
+    <link name="${prefix}_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.05"/>
+        <inertia 
+          ixx="${0.05 * (3*wheel_radius*wheel_radius + wheel_width*wheel_width) / 12}"
+          ixy="0" ixz="0"
+          iyy="${0.05 * wheel_radius * wheel_radius / 2}"
+          iyz="0"
+          izz="${0.05 * (3*wheel_radius*wheel_radius + wheel_width*wheel_width) / 12}"/>
+      </inertial>
+
+      <visual>
+        <origin xyz="0 ${visual_y_offset} 0" rpy="0 0 ${rpy_yaw}"/>
+        <geometry>
+          <mesh filename="file://$(find physicar_description)/meshes/Wheel.dae"/>
+        </geometry>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${prefix}_wheel_link"/>
+      <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.01" friction="0.1"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ========== FRONT WHEEL MACRO (Steering + Drive) ========== -->
+  <xacro:macro name="front_wheel" params="prefix y_offset wheel_radius wheel_width x_offset rpy_yaw visual_y_offset">
+    <!-- Steering hinge link -->
+    <link name="${prefix}_steering_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.01"/>
+        <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+      </inertial>
+    </link>
+
+    <joint name="${prefix}_steering_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${prefix}_steering_link"/>
+      <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-0.3491" upper="0.3491" effort="25" velocity="1.0"/>
+      <dynamics damping="0.1" friction="0.1"/>
+    </joint>
+
+    <!-- Wheel link -->
+    <link name="${prefix}_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.05"/>
+        <inertia 
+          ixx="${0.05 * (3*wheel_radius*wheel_radius + wheel_width*wheel_width) / 12}"
+          ixy="0" ixz="0"
+          iyy="${0.05 * wheel_radius * wheel_radius / 2}"
+          iyz="0"
+          izz="${0.05 * (3*wheel_radius*wheel_radius + wheel_width*wheel_width) / 12}"/>
+      </inertial>
+
+      <visual>
+        <origin xyz="0 ${visual_y_offset} 0" rpy="0 0 ${rpy_yaw}"/>
+        <geometry>
+          <mesh filename="file://$(find physicar_description)/meshes/Wheel.dae"/>
+        </geometry>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="${prefix}_steering_link"/>
+      <child link="${prefix}_wheel_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.01" friction="0.1"/>
+    </joint>
+  </xacro:macro>
+
+</robot>

@@ -1,0 +1,4 @@
+# Get all registered tools
+bool include_system     # Include system tools (tool_list, tool_set, tool_delete, tool_reset)
+---
+string tools_json       # JSON array of Tool objects

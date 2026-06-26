@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSICAR Studio</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100vh;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a2e;display:flex;flex-direction:column}
+
+/* ── Top Bar ── */
+.toolbar{
+  height:34px;min-height:34px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 10px;background:#000;border-bottom:1px solid #333;
+  user-select:none;flex-shrink:0;
+}
+.toolbar .group{display:flex;align-items:center;gap:6px}
+.toolbar .center-group{display:flex;align-items:center;gap:10px}
+.toolbar .machine{display:none;align-items:center;gap:6px;color:#aaa;font-size:12px;font-family:monospace;cursor:pointer;padding:2px 8px;border-radius:3px;border:1px solid transparent}
+.toolbar .machine:hover{border-color:#444;color:#fff}
+.toolbar .machine .cpu{color:#6cf}
+.toolbar .machine .mem{color:#9f9}
+.toolbar .machine .gear{font-size:13px;color:#888}
+.toolbar .machine:hover .gear{color:#fff}
+
+/* Machine Type Modal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#1e1e2e;border:1px solid #444;border-radius:8px;padding:20px;min-width:340px;max-width:420px;color:#ddd;font-family:system-ui,sans-serif}
+.modal h3{margin:0 0 14px;font-size:15px;color:#fff}
+.modal .machine-list{display:flex;flex-direction:column;gap:6px}
+.modal .machine-opt{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #333;border-radius:6px;cursor:pointer;transition:border-color .15s;font-size:13px;color:#aaa}
+.modal .machine-opt:hover{border-color:#666}
+.modal .machine-opt.selected{border-color:#1a73e8;background:rgba(26,115,232,.1)}
+.modal .machine-opt input[type=radio]{accent-color:#1a73e8}
+.modal .machine-opt .specs b{color:#fff}
+.modal .machine-opt .tag{font-size:11px;font-weight:600;padding:1px 6px;border-radius:3px;margin-left:6px}
+.modal .machine-opt .tag.current{color:#1a73e8;background:rgba(26,115,232,.15)}
+.modal .machine-opt .tag.insufficient{color:#e85050;background:rgba(232,80,80,.15)}
+.modal .machine-opt.disabled{opacity:.5;cursor:not-allowed}
+.modal .modal-warn{margin-top:10px;padding:8px 12px;background:rgba(255,180,0,.08);border:1px solid #554400;border-radius:6px;font-size:12px;color:#eea}
+.modal .modal-err{margin-top:10px;padding:8px 12px;background:rgba(255,60,60,.08);border:1px solid #550000;border-radius:6px;font-size:12px;color:#f88}
+.modal .modal-footer{margin-top:14px;display:flex;gap:8px;justify-content:flex-end}
+.modal .btn-cancel{background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
+.modal .btn-cancel:hover{background:#444}
+.modal .btn-primary{background:#1a73e8;color:#fff;border:none;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
+.modal .btn-primary:hover{background:#1558b0}
+.modal .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.modal .btn-danger{background:#d33;color:#fff;border:none;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:13px}
+.modal .btn-danger:hover{background:#b22}
+.toolbar label{color:#fff;font-size:13px}
+.toolbar select{
+  background:#111;color:#eee;border:1px solid #444;border-radius:3px;
+  padding:2px 6px;font-size:13px;cursor:pointer;outline:none;
+}
+.toolbar select:hover{border-color:#666}
+.toolbar select:focus{border-color:#1a73e8}
+.toolbar .info{color:#fff;font-size:12px;font-family:monospace;min-width:80px}
+
+/* ── Panels Container ── */
+.panels{display:flex;flex:1;position:relative;overflow:hidden;height:calc(100vh - 34px)}
+.panel{
+  position:relative;overflow:hidden;
+  display:flex;flex-direction:column;height:100%;
+}
+.panel iframe{
+  flex:1;width:100%;height:100%;border:none;background:#111;
+}
+.panel-empty{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  color:#555;font-size:14px;
+}
+
+/* ── Divider ── */
+.divider{
+  width:6px;cursor:col-resize;background:#744399;
+  flex-shrink:0;position:relative;z-index:10;
+  transition:background .15s;
+}
+.divider:hover,.divider.dragging{background:#1a73e8}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="group">
+    <label>Left</label>
+    <select id="sel-left"></select>
+    <span class="info" id="info-left"></span>
+  </div>
+  <div class="center-group">
+    <span class="machine" id="machine-info" title="Change Machine Type">
+      <span class="cpu" id="machine-cpu"></span>
+      <span style="color:#555">·</span>
+      <span class="mem" id="machine-mem"></span>
+      <span class="gear">⚙</span>
+    </span>
+  </div>
+  <div class="group">
+    <label>Right</label>
+    <select id="sel-right"></select>
+    <span class="info" id="info-right"></span>
+  </div>
+</div>
+
+<div class="panels" id="panels"></div>
+
+<!-- Machine Type Modal -->
+<div class="modal-overlay" id="machine-modal">
+  <div class="modal" id="machine-modal-body"></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ── Monitor definitions (add new ones here) ── */
+  const MONITORS = [
+    { id: 'home',  label: 'Home',   path: '/',       port: 8000, desc: 'FastAPI' },
+    { id: 'sim',   label: 'Simulation', path: '/sim/',  port: 9002, desc: '3D Sim'  },
+    { id: 'vnc',   label: 'VNC',    path: '/vnc/',    port: 6080, desc: 'noVNC'   },
+    { id: 'myapp', label: 'MyApp',  path: '/myapp/',  port: 5000, desc: 'Flask'   },
+  ];
+
+  // Left is always Home; right defaults to Simulation in sim, VNC otherwise.
+  // DEF_RIGHT assumes sim (the common case) so the sim view renders without a
+  // flicker; the /info handler below downgrades to VNC on real robots.
+  const DEF_LEFT = 'home', DEF_RIGHT = 'sim', DEF_RIGHT_NONSIM = 'vnc', DEF_RATIO = 0.7;
+  let leftId = DEF_LEFT;
+  let rightId = DEF_RIGHT;
+  let splitRatio = DEF_RATIO;
+
+  const selLeft  = document.getElementById('sel-left');
+  const selRight = document.getElementById('sel-right');
+  const panels   = document.getElementById('panels');
+
+  /* ── Info ── */
+  const infoLeft  = document.getElementById('info-left');
+  const infoRight = document.getElementById('info-right');
+
+  function buildOptions(sel){
+    sel.innerHTML = '<option value="">— None —</option>';
+    MONITORS.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      if(m.disabled) opt.disabled = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function updateInfo(){
+    const l = MONITORS.find(m => m.id === leftId);
+    const r = MONITORS.find(m => m.id === rightId);
+    infoLeft.textContent  = l ? l.path + ' :' + l.port : '';
+    infoRight.textContent = r ? r.path + ' :' + r.port : '';
+  }
+  buildOptions(selLeft);
+  buildOptions(selRight);
+
+  let _lastLeftClick = 0, _lastRightClick = 0;
+  selLeft.addEventListener('change', () => {
+    const newVal = selLeft.value;
+    if(newVal === leftId && lpEl){ const f = lpEl.querySelector('iframe'); if(f) f.src = f.src; return; }
+    leftId = newVal; saveState(); render(); updateInfo();
+  });
+  selLeft.addEventListener('click', () => {
+    const now = Date.now();
+    if(now - _lastLeftClick < 500 && selLeft.value === leftId && lpEl){
+      const f = lpEl.querySelector('iframe'); if(f) f.src = f.src;
+    }
+    _lastLeftClick = now;
+  });
+  selRight.addEventListener('change', () => {
+    const newVal = selRight.value;
+    if(newVal === rightId && rpEl){ const f = rpEl.querySelector('iframe'); if(f) f.src = f.src; return; }
+    rightId = newVal; saveState(); render(); updateInfo();
+  });
+  selRight.addEventListener('click', () => {
+    const now = Date.now();
+    if(now - _lastRightClick < 500 && selRight.value === rightId && rpEl){
+      const f = rpEl.querySelector('iframe'); if(f) f.src = f.src;
+    }
+    _lastRightClick = now;
+  });
+
+  /* ── Track current iframe state to avoid unnecessary reloads ── */
+  let curLeftId = null, curRightId = null;
+  let curLayout = '';  // 'none','single-l','single-r','dual'
+  let lpEl = null, rpEl = null, divEl = null;
+
+  /* ── Render ── */
+  function render(){
+    selLeft.value = leftId;
+    selRight.value = rightId;
+
+    const left  = leftId  ? MONITORS.find(m => m.id === leftId)  : null;
+    const right = rightId ? MONITORS.find(m => m.id === rightId) : null;
+
+    const newLayout = !left && !right ? 'none'
+      : left && !right ? 'single-l'
+      : !left && right ? 'single-r'
+      : 'dual';
+
+    const oldLayout = curLayout;
+    curLayout = newLayout;
+
+    /* ── Transition: reuse panels when possible ── */
+
+    // dual → single-l: keep left, remove divider+right
+    if(oldLayout === 'dual' && newLayout === 'single-l' && lpEl){
+      if(divEl){ divEl.remove(); divEl = null; }
+      if(rpEl){ rpEl.remove(); rpEl = null; curRightId = null; }
+      lpEl.style.width = '100%';
+      if(leftId !== curLeftId){ lpEl.querySelector('iframe').src = left.path; curLeftId = leftId; }
+      return;
+    }
+
+    // dual → single-r: keep right, remove divider+left
+    if(oldLayout === 'dual' && newLayout === 'single-r' && rpEl){
+      if(divEl){ divEl.remove(); divEl = null; }
+      if(lpEl){ lpEl.remove(); lpEl = null; curLeftId = null; }
+      rpEl.style.width = '100%';
+      if(rightId !== curRightId){ rpEl.querySelector('iframe').src = right.path; curRightId = rightId; }
+      return;
+    }
+
+    // single-l → dual: keep left, add divider+right
+    if(oldLayout === 'single-l' && newLayout === 'dual' && lpEl){
+      const leftW  = (splitRatio * 100).toFixed(2) + '%';
+      const rightW = ((1 - splitRatio) * 100).toFixed(2) + '%';
+      lpEl.style.width = 'calc(' + leftW + ' - 2px)';
+      if(leftId !== curLeftId){ lpEl.querySelector('iframe').src = left.path; curLeftId = leftId; }
+      divEl = document.createElement('div'); divEl.className = 'divider';
+      rpEl = makePanel(right, 'calc(' + rightW + ' - 2px)'); curRightId = rightId;
+      panels.appendChild(divEl);
+      panels.appendChild(rpEl);
+      setupDrag(divEl, lpEl, rpEl);
+      return;
+    }
+
+    // single-r → dual: keep right, prepend divider+left
+    if(oldLayout === 'single-r' && newLayout === 'dual' && rpEl){
+      const leftW  = (splitRatio * 100).toFixed(2) + '%';
+      const rightW = ((1 - splitRatio) * 100).toFixed(2) + '%';
+      rpEl.style.width = 'calc(' + rightW + ' - 2px)';
+      if(rightId !== curRightId){ rpEl.querySelector('iframe').src = right.path; curRightId = rightId; }
+      lpEl = makePanel(left, 'calc(' + leftW + ' - 2px)'); curLeftId = leftId;
+      divEl = document.createElement('div'); divEl.className = 'divider';
+      panels.insertBefore(divEl, rpEl);
+      panels.insertBefore(lpEl, divEl);
+      setupDrag(divEl, lpEl, rpEl);
+      return;
+    }
+
+    // single-l → single-r or vice versa, or none → anything: full rebuild
+    if(newLayout !== oldLayout){
+      curLeftId = null; curRightId = null;
+      lpEl = null; rpEl = null; divEl = null;
+      panels.innerHTML = '';
+
+      if(newLayout === 'none'){
+        panels.innerHTML = '<div class="panel-empty">Select a monitor above</div>';
+        return;
+      }
+      if(newLayout === 'single-l'){
+        lpEl = makePanel(left, '100%'); curLeftId = leftId;
+        panels.appendChild(lpEl);
+        return;
+      }
+      if(newLayout === 'single-r'){
+        rpEl = makePanel(right, '100%'); curRightId = rightId;
+        panels.appendChild(rpEl);
+        return;
+      }
+      // dual
+      const leftW  = (splitRatio * 100).toFixed(2) + '%';
+      const rightW = ((1 - splitRatio) * 100).toFixed(2) + '%';
+      lpEl = makePanel(left,  'calc(' + leftW  + ' - 2px)'); curLeftId = leftId;
+      divEl = document.createElement('div'); divEl.className = 'divider';
+      rpEl = makePanel(right, 'calc(' + rightW + ' - 2px)'); curRightId = rightId;
+      panels.appendChild(lpEl);
+      panels.appendChild(divEl);
+      panels.appendChild(rpEl);
+      setupDrag(divEl, lpEl, rpEl);
+      return;
+    }
+
+    // Same layout → patch only changed panels
+    if(newLayout === 'single-l' && leftId !== curLeftId){
+      lpEl.querySelector('iframe').src = left.path; curLeftId = leftId;
+    }
+    if(newLayout === 'single-r' && rightId !== curRightId){
+      rpEl.querySelector('iframe').src = right.path; curRightId = rightId;
+    }
+    if(newLayout === 'dual'){
+      if(leftId !== curLeftId){
+        lpEl.querySelector('iframe').src = left.path; curLeftId = leftId;
+      }
+      if(rightId !== curRightId){
+        rpEl.querySelector('iframe').src = right.path; curRightId = rightId;
+      }
+    }
+  }
+
+  function makePanel(monitor, width){
+    const div = document.createElement('div');
+    div.className = 'panel';
+    div.style.width = width;
+    const iframe = document.createElement('iframe');
+    iframe.src = monitor.path;
+    iframe.setAttribute('loading', 'lazy');
+    iframe.setAttribute('allow', 'autoplay; camera; microphone');
+    div.appendChild(iframe);
+    return div;
+  }
+
+  /* ── Divider drag ── */
+  function setupDrag(divider, leftPanel, rightPanel){
+    let dragging = false;
+    function onDown(e){
+      e.preventDefault(); dragging = true;
+      divider.classList.add('dragging');
+      panels.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = 'none');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.addEventListener('touchmove', onMove, {passive:false});
+      document.addEventListener('touchend', onUp);
+    }
+    function onMove(e){
+      if(!dragging) return;
+      e.preventDefault();
+      const rect = panels.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      splitRatio = Math.max(0.15, Math.min(0.85, (cx - rect.left) / rect.width));
+      leftPanel.style.width  = 'calc(' + (splitRatio * 100).toFixed(2) + '% - 2px)';
+      rightPanel.style.width = 'calc(' + ((1 - splitRatio) * 100).toFixed(2) + '% - 2px)';
+      updateInfo();
+    }
+    function onUp(){
+      dragging = false;
+      divider.classList.remove('dragging');
+      panels.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onUp);
+      saveState();
+    }
+    divider.addEventListener('mousedown', onDown);
+    divider.addEventListener('touchstart', onDown, {passive:false});
+  }
+
+  /* ── Persist ── */
+  function saveState(){
+    try{ localStorage.setItem('studio', JSON.stringify({leftId, rightId, splitRatio})); }catch(e){}
+  }
+  function loadState(){
+    try{
+      const s = JSON.parse(localStorage.getItem('studio'));
+      if(s){
+        if(s.leftId && MONITORS.some(m => m.id === s.leftId)) leftId = s.leftId;
+        if(s.rightId && MONITORS.some(m => m.id === s.rightId)) rightId = s.rightId;
+        if(typeof s.splitRatio === 'number') splitRatio = s.splitRatio;
+      }
+    }catch(e){}
+  }
+
+  /* ── Hide Simulation on real robot ── */
+  (async function(){
+    try {
+      const r = await fetch('/info');
+      if(!r.ok) return;
+      const info = await r.json();
+      if(info.mode !== 'sim'){
+        const sim = MONITORS.find(m => m.id === 'sim');
+        if(sim) sim.disabled = true;
+        if(leftId === 'sim') leftId = DEF_LEFT;
+        if(rightId === 'sim') rightId = DEF_RIGHT_NONSIM;
+        buildOptions(selLeft);
+        buildOptions(selRight);
+        render();
+        updateInfo();
+      }
+    } catch(e){}
+  })();
+
+  loadState();
+  render();
+  updateInfo();
+
+  /* ── Machine Type (Codespaces only) ── */
+  const machineEl    = document.getElementById('machine-info');
+  const machineCpu   = document.getElementById('machine-cpu');
+  const machineMem   = document.getElementById('machine-mem');
+  const machineModal = document.getElementById('machine-modal');
+  const modalBody    = document.getElementById('machine-modal-body');
+
+  let machineData = null;
+
+  function closeModal(){ machineModal.classList.remove('show'); }
+
+  async function loadMachines(){
+    try {
+      const r = await fetch('/api/codespaces/machines');
+      if(!r.ok) return;
+      machineData = await r.json();
+      machineCpu.textContent = machineData.cpus + ' CPUs';
+      machineMem.textContent = machineData.memory_gb + ' GB';
+      machineEl.style.display = 'flex';
+    } catch(e){}
+  }
+
+  machineEl.addEventListener('click', () => {
+    if(!machineData) return;
+    showSettingsModal();
+  });
+
+  machineModal.addEventListener('click', (e) => {
+    if(e.target === machineModal) closeModal();
+  });
+
+  /* Step 1: Settings modal — radio list + Change button */
+  function showSettingsModal(){
+    let html = '<h3>Codespace Settings</h3>';
+
+    if(machineData.billable_owner){
+      html += '<div style="margin-bottom:12px;font-size:13px;color:#aaa">' +
+        '<div style="font-weight:600;color:#888;margin-bottom:4px">Billing</div>' +
+        'Codespace usage is paid for by <b style="color:#fff">' + machineData.billable_owner + '</b>.' +
+        '</div><hr style="border:none;border-top:1px solid #333;margin:0 0 12px">';
+    }
+
+    html += '<div style="font-size:13px;font-weight:600;color:#888;margin-bottom:8px">Machine Type</div>';
+    html += '<div class="machine-list">';
+    machineData.machines.forEach((m, i) => {
+      const isCurrent = m.name === machineData.current;
+      const checked = isCurrent ? 'checked' : '';
+      const cls = isCurrent ? 'machine-opt selected' : 'machine-opt';
+      const label = '<b>' + m.cpus + ' cores</b>, ' + Math.round(m.storage_gb) + ' GB';
+      const tag = isCurrent ? '<span class="tag current">current</span>' : '';
+      html += '<label class="' + cls + '">' +
+        '<input type="radio" name="machine" value="' + m.name + '" ' + checked + '> ' +
+        '<span class="specs">' + label + tag + '</span></label>';
+    });
+    html += '</div>';
+    html += '<div class="modal-warn">⚠ Codespace will restart after change</div>';
+    html += '<div class="modal-footer">' +
+      '<button class="btn-cancel" id="m-cancel">Cancel</button>' +
+      '<button class="btn-primary" id="m-change">Change</button></div>';
+
+    modalBody.innerHTML = html;
+    machineModal.classList.add('show');
+
+    // Highlight selected radio
+    modalBody.querySelectorAll('.machine-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        modalBody.querySelectorAll('.machine-opt').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        opt.querySelector('input').checked = true;
+      });
+    });
+
+    document.getElementById('m-cancel').addEventListener('click', closeModal);
+    document.getElementById('m-change').addEventListener('click', () => {
+      const sel = modalBody.querySelector('input[name="machine"]:checked');
+      if(!sel || sel.value === machineData.current) return;
+      showConfirmModal(sel.value);
+    });
+  }
+
+  /* Step 2: Confirmation modal */
+  function showConfirmModal(name){
+    modalBody.innerHTML = '<h3>Are you sure?</h3>' +
+      '<p style="font-size:13px;color:#aaa;margin:10px 0">The Codespace will restart and you will be disconnected.<br><br>' +
+      '<b style="color:#fff">Any running simulation will be stopped.</b></p>' +
+      '<div class="modal-footer">' +
+      '<button class="btn-cancel" id="c-cancel">Cancel</button>' +
+      '<button class="btn-danger" id="c-confirm">Yes, change it</button></div>';
+
+    document.getElementById('c-cancel').addEventListener('click', () => showSettingsModal());
+    document.getElementById('c-confirm').addEventListener('click', () => doChangeMachine(name));
+  }
+
+  /* Step 3: Execute change */
+  async function doChangeMachine(name){
+    modalBody.innerHTML = '<h3>Changing machine…</h3>' +
+      '<p style="font-size:13px;color:#aaa;margin:10px 0">This may take a moment</p>' +
+      '<div style="text-align:center;margin:16px 0"><div style="width:32px;height:32px;border:3px solid #333;border-top-color:#1a73e8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto"></div></div>' +
+      '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+
+    try {
+      const r = await fetch('/api/codespaces/machine', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({machine: name}),
+      });
+      const data = await r.json();
+      if(data.success){
+        modalBody.innerHTML = '<h3>Machine Changed</h3>' +
+          '<p style="font-size:13px;color:#aaa;margin:10px 0">Codespace is restarting…<br><br>Please wait and refresh the page in a few seconds.</p>' +
+          '<div class="modal-footer"><button class="btn-primary" onclick="location.reload()">OK</button></div>';
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
+    } catch(e){
+      modalBody.innerHTML = '<h3>Error</h3>' +
+        '<div class="modal-err">' + e.message + '</div>' +
+        '<div class="modal-footer"><button class="btn-cancel" id="e-close">Close</button></div>';
+      document.getElementById('e-close').addEventListener('click', closeModal);
+    }
+  }
+
+  loadMachines();
+})();
+</script>
+</body>
+</html>

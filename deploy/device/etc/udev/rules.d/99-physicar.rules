@@ -1,0 +1,30 @@
+# DRI/GPU devices — allow VirtualGL to access GPU from non-root users
+SUBSYSTEM=="drm", MODE="0666"
+
+# Yahboom ROS Robot Expansion Board (STM32 USB Serial)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="yahboom", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", SYMLINK+="yahboom", MODE="0666"
+
+# RPLidar C1
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", SYMLINK+="rplidar", MODE="0666"
+
+# USB Audio device
+SUBSYSTEM=="sound", ATTRS{idVendor}=="*", ATTRS{idProduct}=="*", MODE="0666"
+
+# Xbox Wireless Controller (xpadneo) — inhibit the auxiliary keyboard/mouse/
+# consumer-control sub-devices so the Share button (and friends) don't reach
+# Chromium as F12/DevTools/etc.  The main gamepad input device (js0/event)
+# is left enabled.  Triggered when xpadneo creates the input device.
+SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Keyboard", ATTR{inhibited}="1"
+SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Mouse", ATTR{inhibited}="1"
+SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Consumer Control", ATTR{inhibited}="1"
+
+# USB WiFi — auto-bind unknown Realtek adapters (interface class ff:ff:ff)
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", \
+  ATTR{bInterfaceClass}=="ff", ATTR{bInterfaceSubClass}=="ff", ATTR{bInterfaceProtocol}=="ff", \
+  RUN+="/usr/local/bin/physicar-wifi-usb-autobind.sh $devpath"
+
+# USB WiFi removed — migrate hotspot back to internal ap0
+ACTION=="remove", SUBSYSTEM=="net", KERNEL=="wlx*", \
+  RUN+="/bin/systemd-run --no-block /usr/local/bin/physicar-wifi-hotspot-migrate.sh"

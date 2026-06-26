@@ -1,0 +1,14 @@
+{
+  "TranslateEnabled": false,
+  "OfferTranslationEnabled": false,
+  "PasswordManagerEnabled": false,
+  "AutofillAddressEnabled": false,
+  "AutofillCreditCardEnabled": false,
+  "ImportSavedPasswords": false,
+  "SavingBrowserHistoryDisabled": true,
+  "SearchSuggestEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "BookmarkBarEnabled": false,
+  "DownloadRestrictions": 3,
+  "PromptForDownloadLocation": false
+}

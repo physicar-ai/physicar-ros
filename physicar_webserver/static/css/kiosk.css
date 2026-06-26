@@ -1,0 +1,880 @@
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        html { background: #1a1a2e; }
+        body.touch-mode, body.touch-mode * { cursor: none !important; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            width: 800px; height: 480px;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        .container { display: flex; height: 100%; }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 160px;
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+        .sidebar h1 {
+            font-size: 1.4rem;
+            background: linear-gradient(90deg, #b388ff, #7b2cbf);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+        .nav-btn.nav-btn-apps {
+            padding: 3px 8px;
+        }
+        .nav-btn {
+            width: 100%;
+            padding: 12px 8px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: #ccc;
+            font-size: 1.4rem;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+            user-select: none;
+            font-weight: 600;
+            letter-spacing: 1px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .nav-btn-title { font-size: 1.4rem; font-weight: 600; letter-spacing: 1px; }
+        .nav-btn-sub {
+            font-size: 0.72rem;
+            font-weight: 400;
+            letter-spacing: 0.3px;
+            color: #888;
+            font-family: 'SF Mono', 'Consolas', monospace;
+        }
+        .nav-btn:hover .nav-btn-sub, .nav-btn.active .nav-btn-sub { color: #b388ff; }
+        .nav-section-label {
+            width: 100%;
+            font-size: 0.7rem;
+            color: #8d8888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-align: center;
+            padding: 6px 4px 2px;
+            margin-top: 4px;
+        }
+        .nav-btn:hover, .nav-btn.active {
+            background: rgba(179,136,255,0.2);
+            border-color: #b388ff;
+            color: #fff;
+        }
+        .nav-btn.active { background: rgba(179,136,255,0.3); }
+        
+        /* iframe panel */
+        .iframe-panel { width: 100%; height: 100%; border: none; display: block; }
+        
+        /* WiFi popup modal */
+        .wifi-popup-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 150;
+        }
+        .wifi-popup-overlay.active { display: flex; }
+        .wifi-popup {
+            background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 16px; padding: 16px; width: 620px;
+            height: 400px; max-height: calc(100vh - 24px);
+            display: flex; flex-direction: column;
+        }
+        .wifi-popup-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .wifi-popup-header h3 { color: #b388ff; font-size: 1.1rem; }
+        .wifi-popup-close {
+            width: 36px; height: 36px; border-radius: 8px; border: none;
+            background: rgba(255,255,255,0.1); color: #ccc; font-size: 2rem;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .wifi-popup-skip {
+            color: #666; font-size: 0.85rem;
+            text-decoration: underline; cursor: pointer;
+            padding: 6px 4px;
+        }
+        .wifi-popup-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .wifi-popup-item {
+            display: flex; align-items: center; padding: 12px 14px;
+            background: rgba(255,255,255,0.05); border-radius: 10px;
+            cursor: pointer; transition: background 0.15s; border: 1px solid transparent;
+            gap: 6px;
+        }
+        /* Right-side meta (signal bars, lock icon, freq badge, forget btn,
+         * saved label) sits in a fixed cluster; only the SSID is allowed to
+         * grow/shrink and wrap.  Without this, a long SSID pushes the icons
+         * off-screen to the right. */
+        .wifi-popup-item > *:not(.ssid) { flex-shrink: 0; }
+        /* Touch-screen kiosk: no hover/active highlights on list items.
+         * Browsers fire :hover after a tap on touch devices and Chromium
+         * kiosk is treated as hover-capable, so even @media (hover:hover)
+         * gates leak through and paint random items purple while the user
+         * is just trying to scroll. */
+        .wifi-popup-item.connected { border-color: #00ff88; background: rgba(0,255,136,0.1); cursor: default; }
+        /* (no hover for connected item either) */
+        .wifi-popup-item .ssid {
+            flex: 1;
+            min-width: 0;          /* allow flex shrink below intrinsic width */
+            font-size: 1.3rem;
+            overflow-wrap: anywhere; /* wrap long SSIDs (incl. no-space ones) */
+            word-break: break-word;
+        }
+        .wifi-popup-item .connected-icon { color: #00ff88; margin-right: 8px; }
+        .wifi-popup-item .signal-bars { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
+        .wifi-popup-item .signal-bars span { width: 4px; background: #b388ff; border-radius: 1px; }
+        .wifi-popup-item .signal-bars span.dim { opacity: 0.25; }
+        .wifi-popup-item .security-icon { margin-left: 8px; font-size: 0.9rem; opacity: 0.7; }
+        .wifi-popup-item .wifi-popup-forget {
+            background: transparent; color: #ef4444; border: 1px solid #ef4444; border-radius: 50%;
+            width: 32px; height: 32px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            cursor: pointer; margin-left: 10px;
+        }
+        .wifi-popup-item .wifi-popup-forget svg { width: 16px; height: 16px; }
+        /* (forget btn: no hover) */
+        .wifi-popup-item .wifi-popup-saved-label {
+            display: inline-block; margin-left: 8px; font-size: 0.7rem; color: #b388ff;
+            padding: 1px 6px; border: 1px solid #b388ff; border-radius: 8px;
+            vertical-align: middle; font-weight: 600; letter-spacing: 0.5px;
+        }
+        /* Hide the old ::after-based "saved" pill (replaced by .wifi-popup-saved-label) */
+        .wifi-popup-item.saved .ssid::after { content: none; }
+        .wifi-popup-scanning { color: #888; padding: 30px; text-align: center; }
+
+        /* Battery Status */
+        .battery-status {
+            margin-top: auto;
+            width: 100%;
+            text-align: center;
+        }
+        .battery-icon { font-size: 1.5rem; }
+        .battery-info { display: flex; justify-content: space-between; align-items: center; }
+        .battery-percent, .battery-volt { font-size: 1.1rem; color: #fff; font-weight: bold; }
+        .battery-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .battery-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s, background 0.3s;
+        }
+        .battery-fill.high { background: linear-gradient(90deg, #b388ff, #00ff88); }
+        .battery-fill.medium { background: linear-gradient(90deg, #ffaa00, #ffdd00); }
+        .battery-fill.low { background: linear-gradient(90deg, #ff4444, #ff8800); }
+        
+        /* Main Content */
+        .main { flex: 1; overflow: hidden; }
+        .panel { display: none; height: 100%; }
+        .panel.system-panel { padding: 16px; overflow-y: auto; }
+        .panel.active { display: block; }
+        .panel h2 { color: #b388ff; margin-bottom: 16px; font-size: 1.5rem; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .panel-header h2 { margin-bottom: 0; font-size: 1.2rem; }
+        .btn-refresh {
+            border-radius: 10px; border: none;
+            background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6);
+            cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .btn-refresh svg { width: 22px; height: 22px; }
+        .btn-refresh:hover { color: #b388ff; background: rgba(179,136,255,0.15); }
+        .btn-refresh.spinning { animation: spin 1s linear infinite; color: #b388ff; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        /* WiFi Panel */
+        .wifi-list { max-height: 340px; overflow-y: auto; margin-bottom: 12px; }
+        .wifi-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        /* (wifi-item: no hover) */
+        .wifi-item.connected { border-color: #00ff88; background: rgba(0,255,136,0.15); border-width: 2px; }
+        .wifi-ssid { flex: 1; font-size: 1.1rem; }
+        .wifi-connected-badge {
+            background: #00ff88; color: #1a1a2e; font-size: 0.75rem;
+            padding: 2px 8px; border-radius: 10px; font-weight: bold; margin-left: 8px;
+        }
+        .wifi-signal { width: 24px; height: 24px; margin-right: 12px; display: flex; align-items: flex-end; gap: 2px; }
+        .wifi-signal span { width: 4px; background: #b388ff; border-radius: 2px; }
+        .wifi-security { color: #888; font-size: 0.85rem; margin-left: 12px; }
+        .btn-scan {
+            padding: 12px 24px; background: #b388ff; border: none; border-radius: 10px;
+            color: #1a1a2e; font-size: 1rem; font-weight: bold; cursor: pointer;
+        }
+        .btn-scan:disabled { opacity: 0.5; }
+        
+        /* Network Info Panel */
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .info-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px; padding: 16px;
+        }
+        .info-card .label { color: #888; font-size: 0.9rem; margin-bottom: 6px; }
+        .info-card .value { font-size: 1.2rem; font-weight: bold; word-break: break-all; }
+        .info-card .value.highlight { color: #b388ff; }
+        
+        /* Network Panel (combined) */
+        .network-info { display: flex; flex-direction: column; gap: 5px; }
+        /* Connected panes wrap cards one level deeper, so re-apply spacing. */
+        /* WiFi connected pane wraps cards — stack them vertically.
+         * (Ethernet pane is now .net-inline, single row, so excluded.) */
+        #wifi-pane-connected { display: flex; flex-direction: column; gap: 8px; }
+        .net-section { display: flex; flex-direction: column; gap: 6px; }
+        .net-section-title {
+            font-size: 1rem; font-weight: 700;
+            color: #ffd54f; letter-spacing: 1px;
+            padding-left: 4px;
+        }
+        .net-section-actions {
+            display: flex; justify-content: flex-end;
+        }
+        /* Compact inline row for Ethernet (single-line card box for UI parity
+         * with WiFi cards but more compact \u2014 no per-row card stacking). */
+        .net-inline {
+            display: flex; align-items: center; gap: 12px;
+            padding: 8px 16px;
+            min-height: 28px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+        }
+        .net-inline .net-label { color: #888; font-size: 1.15rem; min-width: 90px; white-space: nowrap; }
+        .net-inline .net-value { flex: 1; font-size: 1.25rem; font-weight: bold; color: #b388ff; text-align: right; }
+        .net-inline-msg { color: #888; font-size: 1.15rem; min-width: 90px; }
+        .net-inline-hint { color: #666; font-size: 0.95rem; flex: 1; text-align: right; }
+        .net-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px; padding: 9px 16px;
+            cursor: default;
+        }
+        .net-card.clickable { cursor: pointer; }
+        /* (net-card: no hover) */
+        .net-row {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .net-icon { display: none; }
+        .net-label { color: #888; font-size: 1.15rem; min-width: 90px; white-space: nowrap; }
+        .net-value { flex: 1; font-size: 1.25rem; font-weight: bold; color: #b388ff; text-align: right; }
+        .net-value.masked { letter-spacing: 3px; cursor: pointer; user-select: none; }
+        .net-arrow { color: #666; font-size: 0.9rem; transition: transform 0.2s; }
+        .net-arrow.open { transform: rotate(180deg); }
+        .net-btn { background: none; border: none; color: #888; font-size: 1.1rem; cursor: pointer; padding: 4px 6px; }
+        .net-btn:hover { color: #b388ff; }
+        .net-status { font-size: 1.2rem; }
+        .net-status.online { color: #00ff88; }
+        .net-status.offline { color: #ef4444; }
+        
+        /* Network Sub-tabs */
+        .net-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+        .net-tab, .set-tab {
+            flex: 1; padding: 8px 0; text-align: center;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; color: #888;
+            font-size: 1.35rem; cursor: pointer;
+            transition: all 0.2s; user-select: none;
+        }
+        .net-tab:hover, .set-tab:hover { background: rgba(255,255,255,0.08); color: #ccc; }
+        .net-tab.active, .set-tab.active {
+            background: rgba(179,136,255,0.2);
+            border-color: #b388ff; color: #fff;
+        }
+        .net-tab-panel, .set-tab-panel { display: none; }
+        .net-tab-panel.active, .set-tab-panel.active { display: block; }
+
+        /* Connect tab — STEP-based layout: STEP 1 (WiFi creds) → STEP 2 (URL).
+         * Designed to fit the 800x480 kiosk without scroll. */
+        .connect-step {
+            margin-bottom: 20px;
+        }
+        .connect-step:last-child { margin-bottom: 0; }
+        .connect-step-header {
+            display: flex; align-items: baseline; gap: 10px;
+            margin-bottom: 8px;
+        }
+        .connect-step-num {
+            font-size: 1.05rem; font-weight: 700;
+            color: #ffd54f;
+            letter-spacing: 1px;
+            text-shadow: 0 0 12px rgba(255,213,79,0.4);
+        }
+        .connect-step-title {
+            font-size: 1.25rem; font-weight: 600;
+            color: #fff;
+        }
+        .connect-diagram {
+            display: flex; align-items: center; justify-content: center;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .connect-node {
+            display: flex; flex-direction: column; align-items: center;
+            flex: 0 0 auto;
+        }
+        .connect-node-img {
+            height: 72px; width: auto; display: block;
+            -webkit-user-drag: none; user-select: none;
+        }
+        .connect-node-label {
+            margin-top: 2px;
+            font-size: 0.85rem; color: #aaa; letter-spacing: 0.5px;
+        }
+        .connect-arrow {
+            display: flex; flex-direction: column; align-items: center;
+            flex: 0 0 240px;
+            gap: 8px;
+        }
+        .connect-arrow-img {
+            height: 36px; width: 100%; max-width: 240px;
+            display: block;
+            -webkit-user-drag: none; user-select: none;
+            object-fit: contain;
+        }
+        .connect-arrow-label {
+            font-size: 1rem; font-weight: 600;
+            color: #aaa;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        /* Connect tab info cards: full-width, label on top (small, muted)
+         * with a big monospace value below.  Side-by-side via 2-column
+         * grid so SSID and Password sit at the same level. */
+        .connect-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 0 0 10px;
+        }
+        .connect-cards .connect-info-card {
+            background: rgba(179,136,255,0.08);
+            border: 1px solid rgba(179,136,255,0.3);
+            border-radius: 12px;
+            padding: 10px 14px;
+            display: flex; flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+        }
+        .connect-cards .connect-info-label {
+            font-size: 0.85rem;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+        }
+        .connect-cards .connect-info-row {
+            width: 100%;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .connect-cards .connect-info-value {
+            flex: 0 1 auto;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffd54f;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            word-break: break-all;
+            min-width: 0;
+            line-height: 1.2;
+        }
+        .connect-cards .connect-info-value.masked {
+            letter-spacing: 4px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .connect-cards .connect-info-eye {
+            background: none; border: none; color: #888;
+            font-size: 1.1rem; cursor: pointer;
+            padding: 2px 4px;
+            flex: 0 0 auto;
+        }
+        .connect-url {
+            text-align: center;
+            padding: 20px 12px;
+            background: rgba(179,136,255,0.08);
+            border: 1px solid rgba(179,136,255,0.3);
+            border-radius: 12px;
+        }
+        .connect-url-label {
+            font-size: 0.78rem; color: #aaa;
+            text-transform: uppercase; letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .connect-url-value {
+            font-size: 1.8rem; font-weight: 700;
+            color: #ffd54f;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            word-break: break-all;
+        }
+
+        /* Disconnected pane (WiFi Connect CTA, Ethernet disabled msg) */
+        .net-empty-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 16px; padding: 40px 16px; text-align: center;
+        }
+        .net-empty-msg { color: #fff; font-size: 1.25rem; font-weight: 500; }
+        .net-empty-hint { color: #888; font-size: 1rem; }
+        .net-cta-btn {
+            min-width: 150px; padding: 10px 28px;
+            background: #b388ff; border: none; border-radius: 10px;
+            color: #fff; font-size: 1.15rem; font-weight: 600;
+            cursor: pointer;
+        }
+        .net-cta-btn:hover { background: #c89fff; }
+        .net-cta-btn:active { background: #9c75e6; }
+        .net-cta-btn.secondary {
+            background: rgba(179,136,255,0.18); color: #b388ff;
+            border: 1px solid #b388ff;
+        }
+        .net-cta-btn.secondary:hover { background: rgba(179,136,255,0.3); color: #fff; }
+        .net-pane-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+        
+        /* Password Panel: shares .net-card styles with Network panel */
+        .btn-pw-change {
+            margin: 15px; padding: 12px 24px;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 10px; color: #fff; font-size: 1rem; cursor: pointer;
+        }
+        .btn-pw-change:hover { background: rgba(255,255,255,0.15); }
+        
+        /* Modal */
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.9); justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #1a1a2e; border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 16px; padding: 16px; width: 760px;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .modal h3 { color: #b388ff; font-size: 1.1rem; }
+        .password-input-wrapper { display: flex; gap: 8px; margin-bottom: 12px; }
+        .password-input {
+            flex: 1; padding: 12px; font-size: 1.2rem;
+            background: rgba(0,0,0,0.3); border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 8px; color: #fff; letter-spacing: 2px;
+        }
+        .password-input:focus { outline: none; border-color: #b388ff; }
+        .identity-input-wrapper { display: flex; gap: 8px; margin-bottom: 8px; }
+        .identity-input-wrapper.hidden { display: none; }
+        .btn-show-pw {
+            padding: 12px 16px; background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; font-size: 1.2rem; cursor: pointer;
+        }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+        .modal-actions button { padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; border: none; }
+        .btn-cancel { background: rgba(255,68,68,0.3); color: #ff6666; }
+        .btn-connect { background: #b388ff; color: #1a1a2e; font-weight: bold; }
+        .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Status Message */
+        .status-msg {
+            padding: 3px 5px; border-radius: 8px; margin-bottom: 12px;
+            text-align: center; font-size: 0.95rem; display: none;
+        }
+        .status-msg.error { display: block; background: rgba(255,68,68,0.2); border: 1px solid #ff6666; color: #ff6666; }
+        .status-msg.connecting { display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(179,136,255,0.1); border: 1px solid #b388ff; color: #b388ff; }
+        .status-msg.err { display: block; background: rgba(255,68,68,0.2); border: 1px solid #ff6666; color: #ff6666; }
+        .status-msg.info { display: block; background: rgba(179,136,255,0.1); border: 1px solid #b388ff; color: #b388ff; }
+        .status-msg.ok { display: block; background: rgba(34,197,94,0.15); border: 1px solid #22c55e; color: #22c55e; }
+        
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            padding: 16px 32px; border-radius: 12px; font-size: 1.1rem;
+            z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .toast.success { background: #00ff88; color: #1a1a2e; }
+        .toast.error { background: #ff4444; color: #fff; }
+        
+        /* Spinner */
+        .spinner {
+            width: 20px; height: 20px; border: 3px solid rgba(179,136,255,0.3);
+            border-top-color: #b388ff; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Connect spinner overlay (covers any modal during long ops) */
+        .connect-spinner-overlay {
+            position: fixed; inset: 0;
+            background: rgba(15,15,30,0.85);
+            backdrop-filter: blur(2px);
+            display: none; align-items: center; justify-content: center;
+            z-index: 250; /* above .modal (z-index ~150) and toasts */
+        }
+        .connect-spinner-overlay.active { display: flex; }
+        .connect-spinner-box {
+            display: flex; flex-direction: column; align-items: center; gap: 18px;
+            padding: 32px 48px; border-radius: 16px;
+            background: #1a1a2e; border: 1px solid rgba(179,136,255,0.4);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            min-width: 280px; max-width: 80vw;
+        }
+        .connect-spinner {
+            width: 48px; height: 48px;
+            border: 4px solid rgba(179,136,255,0.25);
+            border-top-color: #b388ff; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .connect-spinner-msg { font-size: 1.1rem; color: #fff; text-align: center; }
+        .connect-spinner-sub { font-size: 0.85rem; color: #888; text-align: center; min-height: 1.2em; }
+        
+        /* Custom Keyboard */
+        .keyboard { display: flex; flex-direction: column; gap: 5px; }
+        .keyboard-row { display: flex; gap: 4px; justify-content: center; }
+        .key {
+            min-width: 56px; height: 48px;
+            background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 8px; color: #fff; font-size: 1.25rem;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; user-select: none; transition: background 0.1s;
+        }
+        .key:active { background: rgba(179,136,255,0.4); }
+        .key.fn { background: rgba(255,255,255,0.06); color: #aaa; font-size: 1rem; }
+        .key.shift { min-width: 80px; }
+        .key.shift.active { background: rgba(179,136,255,0.3); color: #b388ff; }
+        .key.shift.locked { background: rgba(179,136,255,0.5); color: #b388ff; border: 2px solid #b388ff; }
+        .key.space { flex: 1; max-width: 320px; }
+        .key.bksp { min-width: 80px; }
+        
+        /* Calibration */
+        .calibration-grid { display: flex; flex-direction: column; gap: 8px; }
+        .calibration-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 12px;
+        }
+        .calibration-label { font-size: 1.2rem; color: #ccc; }
+        .calibration-control { display: flex; align-items: center; gap: 12px; }
+        .cal-btn {
+            width: 44px; height: 44px; border-radius: 50%; border: none;
+            background: linear-gradient(145deg, #b388ff, #0099cc);
+            color: #fff; font-size: 1.5rem; font-weight: bold;
+            cursor: pointer; transition: all 0.1s;
+        }
+        .cal-btn:active { transform: scale(0.95); }
+        .cal-value {
+            min-width: 65px; text-align: center;
+            font-size: 1.2rem; color: #b388ff;
+        }
+        .cal-toggle {
+            padding: 12px 24px; border-radius: 25px; border: 2px solid #555;
+            background: rgba(255,255,255,0.05); color: #888;
+            font-size: 1rem; cursor: pointer; transition: all 0.2s;
+        }
+        .cal-toggle.active {
+            border-color: #ff6b6b; background: rgba(255,107,107,0.2); color: #ff6b6b;
+        }
+        /* Kiosk-sized toggle switch (overrides smaller settings.css .cal-switch) */
+        #settab-calibration .cal-switch { position: relative; display: inline-block; width: 64px; height: 36px; flex-shrink: 0; }
+        #settab-calibration .cal-switch input { opacity: 0; width: 0; height: 0; }
+        #settab-calibration .cal-slider { position: absolute; cursor: pointer; inset: 0; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 36px; transition: 0.15s; }
+        #settab-calibration .cal-slider::before { content: ''; position: absolute; height: 28px; width: 28px; left: 3px; top: 3px; background: #888; border-radius: 50%; transition: 0.15s; }
+        #settab-calibration .cal-switch input:checked + .cal-slider { background: #b388ff; border-color: #b388ff; }
+        #settab-calibration .cal-switch input:checked + .cal-slider::before { transform: translateX(28px); background: white; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: rgba(179,136,255,0.5); border-radius: 3px; }
+
+/* Inline confirm dialog for kiosk (replaces window.confirm) */
+.kiosk-confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.kiosk-confirm { background: #1c1c1e; border: 1px solid #444; border-radius: 12px; max-width: 480px; width: 100%; padding: 1.6rem; }
+.kiosk-confirm-title { font-size: 1.2rem; font-weight: 600; color: #fff; margin-bottom: 0.6rem; }
+.kiosk-confirm-body { font-size: 1rem; color: #aaa; margin-bottom: 1.4rem; }
+.kiosk-confirm-actions { display: flex; gap: 0.8rem; justify-content: flex-end; }
+.kiosk-confirm-btn { padding: 0.7rem 1.4rem; font-size: 1rem; border-radius: 8px; border: none; cursor: pointer; min-width: 100px; }
+.kiosk-confirm-btn.cancel { background: #333; color: #fff; }
+.kiosk-confirm-btn.danger { background: #ef4444; color: #fff; }
+.kiosk-confirm-btn.cancel:active { background: #555; }
+.kiosk-confirm-btn.danger:active { background: #c53030; }
+
+/* Kiosk Settings: change-password form */
+.kiosk-pw-hint { font-size: 0.85rem; color: #888; margin-top: 8px; }
+
+/* Kiosk Settings: S/N panel */
+#settab-sn .sn-block {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px; padding: 12px 8px;
+}
+#settab-sn .sn-value {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 1.8rem; letter-spacing: 3px;
+    color: #fff;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 14px 20px;
+    user-select: all;
+    text-align: center;
+    width: 100%; max-width: 460px; box-sizing: border-box;
+}
+#settab-sn .sn-actions { display: flex; gap: 12px; }
+#settab-sn .btn-pw-change { margin-top: 0; }
+#settab-sn .sn-qr {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px;
+    line-height: 0;
+}
+#settab-sn .sn-qr img, #settab-sn .sn-qr canvas { display: block; }
+#settab-sn .sn-qr table { border-collapse: collapse; }
+
+/* Password panel hint */
+
+/* Settings > Password panel: no card wrapper, just centered value + change button */
+.pw-panel { padding: 24px 8px; text-align: center; }
+.pw-row { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 24px; margin-top:50px; }
+.pw-row .net-value { flex: none; font-size: 3rem; line-height: 1; font-family: monospace; letter-spacing: 8px; padding-left: 8px; }
+.pw-row .net-btn { font-size: 2rem; line-height: 1; padding: 6px 10px; display: inline-flex; align-items: center; }
+
+/* ── Bluetooth tab (kiosk: 800x480 touch) ── */
+.bt-section-title { font-size: 0.95rem; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin: 18px 4px 8px; display: flex; align-items: center; justify-content: space-between; }
+.bt-list { display: flex; flex-direction: column; gap: 8px; }
+.bt-empty { padding: 18px; color: rgba(255,255,255,0.4); text-align: center; font-size: 1rem; border: 1px dashed rgba(255,255,255,0.15); border-radius: 10px; }
+.bt-empty.error { color: #ff8080; border-color: #ff8080; }
+.bt-item { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 5px 12px; background: rgba(255,255,255,0.04); border-radius: 10px; }
+.bt-icon { font-size: 1.5rem; text-align: center; }
+.bt-name { font-weight: 500; color: #fff; display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.05rem; }
+.bt-mac { font-family: monospace; font-size: 0.78rem; color: rgba(255,255,255,0.4); }
+.bt-actions { display: flex; gap: 8px; }
+.bt-act { padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: #fff; cursor: pointer; font-size: 0.9rem; touch-action: manipulation; }
+.bt-act:active:not(:disabled) { filter: brightness(1.2); }
+.bt-act:disabled { opacity: 0.5; }
+.bt-act.primary { background: #b388ff; border-color: #b388ff; color: #1a1a2e; font-weight: 600; }
+.bt-act.danger { background: transparent; border-color: rgba(255,128,128,0.5); color: #ff8080; }
+.bt-tag { font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+.bt-tag.ok { background: rgba(108,219,144,0.2); color: #6cdb90; }
+.bt-tag.muted { background: transparent; color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.15); }
+.bt-item-offline { opacity: 0.6; }
+.bt-item-offline .bt-act { opacity: 0.85; }
+.bt-switch { position: relative; display: inline-block; width: 48px; height: 26px; margin-left: auto; }
+.bt-switch input { opacity: 0; width: 0; height: 0; }
+.bt-slider { position: absolute; cursor: pointer; inset: 0; background: rgba(255,255,255,0.15); border-radius: 26px; transition: 0.2s; }
+.bt-slider::before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: 0.2s; }
+.bt-switch input:checked + .bt-slider { background: #b388ff; }
+.bt-switch input:checked + .bt-slider::before { transform: translateX(22px); }
+.bt-switch input:disabled + .bt-slider { opacity: 0.4; cursor: not-allowed; }
+.spinning { animation: bt-spin 1s linear infinite; }
+@keyframes bt-spin { to { transform: rotate(360deg); } }
+
+/* Bluetooth — connected-only row in main panel */
+.bt-item-readonly { grid-template-columns: 36px 1fr; }
+
+/* Connected list card (touchscreen) */
+.bt-list-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 10px;
+  height: 280px;
+  overflow-y: auto;
+}
+.bt-list-card .bt-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: rgba(255,255,255,0.5);
+}
+
+/* Joystick settings rows (kiosk) — clickable rows that open modals */
+#settab-joystick .joy-row-clickable { cursor: pointer; }
+#settab-joystick .joy-row-clickable:active { background: rgba(255,255,255,0.10); }
+#settab-joystick .joy-row-arrow {
+    color: #b388ff; font-size: 1.6rem; line-height: 1; padding-right: 4px;
+}
+/* Kiosk-sized switch in joystick tab (slightly smaller than calibration tab) */
+#settab-joystick .cal-switch { position: relative; display: inline-block; width: 50px; height: 28px; flex-shrink: 0; }
+#settab-joystick .cal-switch input { opacity: 0; width: 0; height: 0; }
+#settab-joystick .cal-slider { position: absolute; cursor: pointer; inset: 0; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 28px; transition: 0.15s; }
+#settab-joystick .cal-slider::before { content: ''; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; background: #888; border-radius: 50%; transition: 0.15s; }
+#settab-joystick .cal-switch input:checked + .cal-slider { background: #b388ff; border-color: #b388ff; }
+#settab-joystick .cal-switch input:checked + .cal-slider::before { transform: translateX(22px); background: white; }
+
+/* Joy modals — keep content inside the 800x480 viewport */
+#joy-live-modal .modal-content,
+#joy-map-modal  .modal-content,
+#joy-tune-modal .modal-content { width: 760px; height: 460px; max-height: 460px; display: flex; flex-direction: column; }
+#joy-live-modal .joy-live { flex: 1; min-height: 0; overflow: hidden; padding: 0; }
+#joy-live-modal .joy-live-cols { height: 100%; min-height: 0; }
+#joy-live-modal .joy-live-col { min-height: 0; }
+#joy-live-modal .joy-axes,
+#joy-live-modal .joy-buttons { overflow-y: auto; min-height: 0; flex: 1; }
+#joy-map-modal  .joy-map-list,
+#joy-tune-modal .joy-tune { flex: 1; overflow-y: auto; min-height: 0; }
+
+/* Tune modal — fill height with 5 evenly-spaced big rows */
+#joy-tune-modal .joy-tune {
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden;
+}
+#joy-tune-modal .joy-tune-row {
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+}
+/* Wider centre column so the bigger 44px stepper fits, fixed right
+ * column so Invert toggles stack vertically across all five rows. */
+#joy-tune-modal .joy-tune-row--pair,
+#joy-tune-modal .joy-tune-row--solo {
+    grid-template-columns: minmax(0, 1fr) 230px 180px;
+    gap: 16px;
+}
+#joy-tune-modal .joy-tune-name { font-size: 1.7rem; }
+#joy-tune-modal .joy-tune-unit { font-size: 0.95rem; }
+#joy-tune-modal .joy-tune-invert-label { font-size: 1rem; }
+#joy-tune-modal .joy-step { gap: 8px; }
+#joy-tune-modal .joy-step-btn {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #b388ff, #0099cc);
+    border: none; color: white;
+    font-size: 1.5rem; font-weight: bold;
+}
+#joy-tune-modal .joy-step-btn:hover { filter: brightness(1.1); }
+#joy-tune-modal .joy-step-val {
+    width: 80px;
+    font-size: 1.3rem;
+}
+/* Larger Invert switch for tune modal — modal lives OUTSIDE
+ * #settab-joystick so the base .cal-switch / .cal-slider rules
+ * defined there don't reach it.  Self-contained block below. */
+#joy-tune-modal .joy-tune-invert { gap: 12px; }
+#joy-tune-modal .cal-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px; height: 28px;
+    flex: 0 0 auto;
+    vertical-align: middle;
+    margin: 0;
+}
+#joy-tune-modal .cal-switch input { opacity: 0; width: 0; height: 0; }
+#joy-tune-modal .cal-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid #555;
+    border-radius: 28px;
+    transition: 0.15s;
+}
+#joy-tune-modal .cal-slider::before {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    left: 3px; top: 3px;
+    background: #888;
+    border-radius: 50%;
+    transition: 0.15s;
+}
+#joy-tune-modal .cal-switch input:checked + .cal-slider {
+    background: #b388ff;
+    border-color: #b388ff;
+}
+#joy-tune-modal .cal-switch input:checked + .cal-slider::before {
+    transform: translateX(22px);
+    background: white;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Cert Gate Overlay
+   Shown when /network/cert-status reports invalid LE cert. Reuses the
+   wifi-popup-* item styles for the network list inside.
+   ───────────────────────────────────────────────────────────────────── */
+.cert-gate-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.92);
+    /* Below .modal (100) and .wifi-popup-overlay (150) so the WiFi password
+       prompt + on-screen keyboard the user picks from inside the gate
+       actually surface above us.  Still above panel content (no z-index). */
+    z-index: 50;
+    justify-content: center; align-items: center;
+}
+.cert-gate-overlay.active { display: flex; }
+
+.cert-gate-card {
+    background: #1a1a2e;
+    border: 1px solid rgba(179,136,255,0.4);
+    border-radius: 16px;
+    padding: 20px 24px;
+    width: 720px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    display: flex; flex-direction: column;
+    box-shadow: 0 8px 40px rgba(179,136,255,0.15);
+}
+.cert-gate-header { margin-bottom: 12px; }
+.cert-gate-header h3 {
+    color: #ffaa44;
+    font-size: 1.25rem;
+    margin: 0 0 6px 0;
+}
+.cert-gate-sub {
+    color: #bbb;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+.cert-gate-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    min-height: 240px;
+    max-height: 320px;
+}
+.cert-gate-cta {
+    display: flex;
+    justify-content: center;
+    padding: 24px 0 16px;
+}
+.cert-gate-cta .net-cta-btn {
+    min-width: 260px;
+    padding: 16px 32px;
+    font-size: 1.2rem;
+}
+.cert-gate-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 0.85rem;
+}
+.cert-gate-status {
+    color: #888;
+    flex: 1;
+    text-align: center;
+    padding: 0 12px;
+}
+.cert-gate-status.connecting { color: #b388ff; }
+.cert-gate-status.success    { color: #00ff88; }
+.cert-gate-status.error      { color: #ff6666; }
+.cert-gate-skip {
+    color: #888;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 6px 4px;
+}
+.cert-gate-skip:hover { color: #ccc; }
