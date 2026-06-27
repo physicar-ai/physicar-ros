@@ -235,8 +235,13 @@ DKMS
   rm -rf "$TMPD"
 done
 
-# WiFi USB auto-bind script + modules auto-load
+# WiFi USB auto-bind + hotspot-migrate scripts + modules auto-load.
+# autobind binds the Realtek driver on hotplug; migrate moves the hotspot onto
+# the USB WiFi (wlx*) when present and back to ap0 when removed. The autobind
+# udev rule execs the migrate script, so BOTH must be installed — otherwise a
+# hotplugged USB adapter is bound but the hotspot never moves off ap0.
 install -m 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-usb-autobind.sh" /usr/local/bin/physicar-wifi-usb-autobind.sh
+install -m 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-hotspot-migrate.sh" /usr/local/bin/physicar-wifi-hotspot-migrate.sh
 ln -sf "$DEPLOY_DIR/etc/modules-load.d/physicar-wifi.conf" /etc/modules-load.d/physicar-wifi.conf
 
 # noVNC symlink
