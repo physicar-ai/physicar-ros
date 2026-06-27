@@ -44,6 +44,27 @@ try:
 except ImportError:
     HAS_DEEPRACER_INTERFACES = False
 
+# Import joy teleop mapping services + status message
+try:
+    from physicar_interfaces.srv import GetJoyMapping, SetJoyMapping
+    HAS_JOY_MAPPING_SERVICES = True
+except ImportError:
+    HAS_JOY_MAPPING_SERVICES = False
+
+try:
+    from physicar_interfaces.msg import JoyTeleopStatus
+    HAS_JOY_STATUS_MSG = True
+except ImportError:
+    HAS_JOY_STATUS_MSG = False
+
+# rcl_interfaces SetParameters — used to toggle joy_teleop's `enabled` flag
+try:
+    from rcl_interfaces.srv import SetParameters
+    from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
+    HAS_RCL_PARAM_SERVICES = True
+except ImportError:
+    HAS_RCL_PARAM_SERVICES = False
+
 
 class ROSBridge:
     """
@@ -90,7 +111,13 @@ class ROSBridge:
         self._deepracer_control_client = None
         self._deepracer_status_client = None
         self._deepracer_set_config_client = None
-        
+
+        # Joy teleop service clients + cached status (joy-only fields)
+        self._get_joy_mapping_client = None
+        self._set_joy_mapping_client = None
+        self._joy_set_params_client = None
+        self._joy_status: Dict[str, Any] = {'enabled': False, 'received': False}
+
         # Thread pool for async service calls
         self._executor = ThreadPoolExecutor(max_workers=4)
         
@@ -159,7 +186,36 @@ class ROSBridge:
                 self._deepracer_set_config_client = self._node.create_client(
                     DeepracerSetConfig, '/deepracer/set_config'
                 )
-            
+
+            # Joy teleop mapping service clients
+            if HAS_JOY_MAPPING_SERVICES:
+                self._get_joy_mapping_client = self._node.create_client(
+                    GetJoyMapping, '/physicar_joy_teleop/get_mapping'
+                )
+                self._set_joy_mapping_client = self._node.create_client(
+                    SetJoyMapping, '/physicar_joy_teleop/set_mapping'
+                )
+
+            # Parameter client to toggle joy_teleop's `enabled` flag at runtime
+            if HAS_RCL_PARAM_SERVICES:
+                self._joy_set_params_client = self._node.create_client(
+                    SetParameters, '/physicar_joy_teleop/set_parameters'
+                )
+
+            # Joy teleop status subscription — latched (TRANSIENT_LOCAL) so this
+            # server learns the `enabled` value immediately on (re)start.
+            if HAS_JOY_STATUS_MSG:
+                self._node.create_subscription(
+                    JoyTeleopStatus,
+                    '/physicar_joy_teleop/status',
+                    self._on_joy_status,
+                    QoSProfile(
+                        depth=1,
+                        reliability=ReliabilityPolicy.RELIABLE,
+                        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                    ),
+                )
+
             # Start spin thread only if we created our own node
             # (external node is spun by its owner)
             if not self._external_node:
@@ -197,6 +253,123 @@ class ROSBridge:
     def is_ready(self) -> bool:
         """Check if ROS bridge is ready."""
         return self._node is not None and rclpy.ok()
+
+    # ========================================================================
+    # Joy Teleop (mapping + enable toggle)
+    # ========================================================================
+
+    def _on_joy_status(self, msg) -> None:
+        """Cache the latest JoyTeleopStatus (joy-only fields)."""
+        self._joy_status = {
+            'enabled': bool(msg.enabled),
+            'received': True,
+        }
+
+    def get_joy_status(self) -> Dict[str, Any]:
+        """Return the latest cached joy-specific status."""
+        return dict(self._joy_status)
+
+    async def get_joy_mapping(self) -> Dict[str, Any]:
+        """Get current joystick teleop mapping."""
+        if not HAS_JOY_MAPPING_SERVICES or not self._get_joy_mapping_client:
+            raise Exception("Joy mapping services not available")
+
+        request = GetJoyMapping.Request()
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            self._executor,
+            self._call_service_sync,
+            self._get_joy_mapping_client,
+            request,
+        )
+        if response is None:
+            raise Exception("Service call failed or timeout")
+
+        import json as _json
+        try:
+            mapping = _json.loads(response.mapping_json) if response.mapping_json else {}
+        except _json.JSONDecodeError:
+            mapping = {}
+        return {
+            'success': response.success,
+            'message': response.message,
+            'source': response.source,
+            'mapping': mapping,
+        }
+
+    async def set_joy_mapping(
+        self,
+        key: str = '',
+        int_value: int = 0,
+        float_value: float = 0.0,
+        bool_value: bool = False,
+        mapping_json: str = '',
+        save: bool = False,
+    ) -> Dict[str, Any]:
+        """Set joystick teleop mapping (single key or bulk JSON)."""
+        if not HAS_JOY_MAPPING_SERVICES or not self._set_joy_mapping_client:
+            raise Exception("Joy mapping services not available")
+
+        request = SetJoyMapping.Request()
+        request.key = key
+        request.int_value = int(int_value)
+        request.float_value = float(float_value)
+        request.bool_value = bool(bool_value)
+        request.mapping_json = mapping_json
+        request.save_to_file = save
+
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            self._executor,
+            self._call_service_sync,
+            self._set_joy_mapping_client,
+            request,
+        )
+        if response is None:
+            raise Exception("Service call failed or timeout")
+
+        import json as _json
+        try:
+            mapping = _json.loads(response.mapping_json) if response.mapping_json else {}
+        except _json.JSONDecodeError:
+            mapping = {}
+        return {
+            'success': response.success,
+            'message': response.message,
+            'mapping': mapping,
+        }
+
+    async def set_joy_enabled(self, enabled: bool) -> Dict[str, Any]:
+        """Toggle joy_teleop's `enabled` parameter via /set_parameters.
+
+        When false, joy_teleop publishes nothing on the /teleop/* topics and
+        reports drive_engaged/camera_engaged=false in TeleopStatus. Other
+        publishers (deepracer, REST control) regain the topics immediately.
+        """
+        if not HAS_RCL_PARAM_SERVICES or not self._joy_set_params_client:
+            raise Exception("Joy parameter service not available")
+
+        request = SetParameters.Request()
+        param = Parameter()
+        param.name = 'enabled'
+        param.value = ParameterValue(
+            type=ParameterType.PARAMETER_BOOL, bool_value=bool(enabled)
+        )
+        request.parameters = [param]
+
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            self._executor,
+            self._call_service_sync,
+            self._joy_set_params_client,
+            request,
+        )
+        if response is None:
+            raise Exception("Service call failed or timeout")
+        if not response.results or not response.results[0].successful:
+            reason = response.results[0].reason if response.results else 'unknown'
+            return {'success': False, 'message': reason, 'enabled': None}
+        return {'success': True, 'message': 'ok', 'enabled': bool(enabled)}
 
     # ========================================================================
     # Publishers - Low-level control

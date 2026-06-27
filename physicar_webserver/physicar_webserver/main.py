@@ -33,6 +33,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from physicar_webserver.routers import health, kiosk, info, auth, deepracer
 from physicar_webserver.routers import hw, agent, calibration, network, bluetooth, uistate, myapp
 from physicar_webserver.routers import codespaces as codespaces_router
+from physicar_webserver.routers import joy
 from physicar_webserver.ros_bridge import get_ros_bridge
 from physicar_webserver.state_manager import state_manager
 
@@ -199,6 +200,7 @@ app.include_router(bluetooth.router)   # /network/bluetooth
 app.include_router(uistate.router)     # /uistate (cross-browser tab sync)
 app.include_router(myapp.router)       # /settings/myapp (host-side :5000 student web app)
 app.include_router(codespaces_router.router)  # /api/codespaces (Codespaces machine mgmt + open-external)
+app.include_router(joy.router)         # /teleop/joy (gamepad mapping + enable toggle)
 
 # DeepRacer
 app.include_router(deepracer.router)

@@ -165,16 +165,21 @@ fi
 systemctl enable --now bluetooth 2>/dev/null || true
 
 # ── xpadneo: Xbox One/Series controller BLE-HID driver ──
-# Build for the newest installed kernel (may differ from running kernel).
-if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo"; then
+# Build for the newest installed kernel (NEW_KVER), which is what boots after the
+# reboot. NOTE: at install time `uname -r` is still the image's stock kernel, and
+# we only installed headers for NEW_KVER — so building for the running kernel
+# fails. We must pass `-k "$NEW_KVER"` to the *build* step (not just install).
+if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo.*installed"; then
   TMPD=$(mktemp -d)
   git clone --depth 1 --branch v0.11-pre https://github.com/atar-axis/xpadneo.git "$TMPD/xpadneo"
   git config --global --add safe.directory "$TMPD/xpadneo"
+  # install.sh registers the source + dkms.conf (its own build targets the running
+  # kernel and may fail — that's fine, we rebuild for NEW_KVER below).
   ( cd "$TMPD/xpadneo" && ./install.sh ) || true
-  # Ensure module is built for the new kernel (install.sh only builds for running kernel)
-  if [ "$NEW_KVER" != "$(uname -r)" ]; then
-    XPADNEO_VER=$(dkms status hid-xpadneo 2>/dev/null | head -1 | sed 's/.*\///' | cut -d',' -f1)
-    [ -n "$XPADNEO_VER" ] && dkms install "hid-xpadneo/$XPADNEO_VER" -k "$NEW_KVER" 2>/dev/null || true
+  XPADNEO_VER=$(dkms status hid-xpadneo 2>/dev/null | sed -n 's#^hid-xpadneo[/,] *\([^:,]*\).*#\1#p' | head -1 | tr -d ' ')
+  if [ -n "$XPADNEO_VER" ]; then
+    dkms build   "hid-xpadneo/$XPADNEO_VER" -k "$NEW_KVER" || true
+    dkms install --force "hid-xpadneo/$XPADNEO_VER" -k "$NEW_KVER" || true
   fi
   rm -rf "$TMPD"
 fi
@@ -224,7 +229,9 @@ DKMS
   fi
   sudo cp -r "$TMPD/$repo" "/usr/src/${repo}-${VER}"
   sudo dkms add "${repo}/${VER}" 2>/dev/null || true
-  sudo dkms build "${repo}/${VER}" && sudo dkms install "${repo}/${VER}"
+  # Build/install for NEW_KVER (the post-reboot kernel whose headers are present).
+  # Building for the running kernel here fails — its headers are not installed.
+  sudo dkms build "${repo}/${VER}" -k "$NEW_KVER" && sudo dkms install --force "${repo}/${VER}" -k "$NEW_KVER"
   rm -rf "$TMPD"
 done
 
@@ -571,8 +578,11 @@ usermod -aG physicar www-data
 #  - dialout: /dev/ttyUSB* serial (lidar / expansion board), in case udev
 #            MODE=0666 is ever tightened.
 #  - i2c   : /dev/i2c-* (servo / expansion board over I2C).
+#  - input : /dev/input/event* and /dev/input/js* (Bluetooth gamepad) — without
+#            it joy_node can't read the controller, so /joy never publishes and
+#            the kiosk "Joystick: Enable" toggle does nothing.
 groupadd -f gpio
-for _grp in gpio video render audio dialout i2c plugdev; do
+for _grp in gpio video render audio dialout i2c plugdev input; do
   getent group "$_grp" >/dev/null && usermod -aG "$_grp" physicar
 done
 
