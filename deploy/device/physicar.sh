@@ -315,6 +315,14 @@ done
     echo ""
     echo "address=/www.msftconnecttest.com/${_AP_IP}"
     echo "address=/msftconnecttest.com/${_AP_IP}"
+    # Windows NCSI also does a DNS probe: dns.msftncsi.com must resolve to the
+    # exact IP 131.107.255.255, plus an http://www.msftncsi.com/ncsi.txt fetch.
+    # Spoof these self-contained (not via upstream) so the hotspot still looks
+    # "online" with no real internet — otherwise Windows flags "No Internet" and
+    # the laptop roams to another SSID.
+    echo "address=/dns.msftncsi.com/131.107.255.255"
+    echo "address=/www.msftncsi.com/${_AP_IP}"
+    echo "address=/msftncsi.com/${_AP_IP}"
     echo "address=/captive.apple.com/${_AP_IP}"
     echo "address=/connectivitycheck.gstatic.com/${_AP_IP}"
     echo "address=/clients3.google.com/${_AP_IP}"

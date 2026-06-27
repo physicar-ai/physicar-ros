@@ -30,6 +30,7 @@ server {
     listen 80;
     server_name
         www.msftconnecttest.com msftconnecttest.com
+        www.msftncsi.com msftncsi.com
         captive.apple.com
         connectivitycheck.gstatic.com
         clients3.google.com
@@ -39,6 +40,10 @@ server {
     # Windows: GET /connecttest.txt → "Microsoft Connect Test"
     location = /connecttest.txt {
         return 200 "Microsoft Connect Test";
+    }
+    # Windows (legacy NCSI): GET /ncsi.txt → "Microsoft NCSI"
+    location = /ncsi.txt {
+        return 200 "Microsoft NCSI";
     }
     # Windows: GET /redirect → 200 (not a redirect)
     location = /redirect {
