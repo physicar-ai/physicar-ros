@@ -72,7 +72,7 @@ while true; do
 
   # Start a fresh quick tunnel (URL banner is printed to the log).
   : > "$LOG"
-  cloudflared tunnel --url http://localhost:80 --no-autoupdate > "$LOG" 2>&1 &
+  cloudflared tunnel --url http://localhost:80 --no-autoupdate --protocol http2 > "$LOG" 2>&1 &
   CF_PID=$!
 
   # Single deadline covers both URL acquisition and the routability probe.

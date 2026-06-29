@@ -352,8 +352,10 @@ public:
     int neutral = MIN_DUTY_NS + DUTY_RANGE_NS / 2;
     for (auto & [ch, idx] : kChannelMap) {
       if (dir_exists(pwm_path(idx))) {
+        // Hold neutral but do NOT write enable=0: cutting the pulse train lets the
+        // pin settle and the ESC can catch a spurious throttle -> brief twitch on
+        // shutdown/restart. Keep emitting neutral until power is actually cut.
         write_file(pwm_path(idx, "duty_cycle"), std::to_string(neutral));
-        write_file(pwm_path(idx, "enable"), "0");
       }
     }
     connected_ = false;

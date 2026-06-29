@@ -257,8 +257,21 @@ chown -R physicar:physicar /home/physicar/.config
 ln -sf "$DEPLOY_DIR/usr/share/applications/xterm.desktop" /usr/share/applications/xterm.desktop
 
 # ── ROS 2 Jazzy ──
-curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-  -o /usr/share/keyrings/ros-archive-keyring.gpg
+# Download the apt signing key with retries + validation. A transient GitHub
+# error (e.g. HTTP 400) would otherwise be saved verbatim as the "key", giving an
+# invalid keyring -> apt reports the ROS repo as NOT signed -> ros-jazzy install
+# fails -> `set -e` aborts the ENTIRE install (no services/build -> no kiosk).
+_ros_key=/usr/share/keyrings/ros-archive-keyring.gpg
+for _kt in 1 2 3 4 5 6; do
+  curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o "$_ros_key" 2>/dev/null || true
+  [ "$(stat -c%s "$_ros_key" 2>/dev/null || echo 0)" -gt 1000 ] && break
+  echo "  ros.key download failed (attempt $_kt/6), retrying in 5s..."
+  sleep 5
+done
+if [ "$(stat -c%s "$_ros_key" 2>/dev/null || echo 0)" -le 1000 ]; then
+  echo "ERROR: could not fetch a valid ROS apt key (network/GitHub issue). Re-run install."
+  exit 1
+fi
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
   | tee /etc/apt/sources.list.d/ros2.list > /dev/null
 wait_for_apt

@@ -252,7 +252,7 @@ def generate_launch_description():
 
     # Gamepad teleop — translates /joy into /speed, /steering, /camera/{pan,tilt}
     teleop_node = TimerAction(
-        period=2.0,
+        period=16.0,
         actions=[
             Node(
                 package='physicar_teleop',
@@ -269,7 +269,7 @@ def generate_launch_description():
     # Agent Node (tool management, auto-detection of topics/services/actions)
     # 3-second delay so other nodes have started first
     agent_node = TimerAction(
-        period=3.0,
+        period=16.0,
         actions=[
             Node(
                 package='physicar_agent',
@@ -285,7 +285,7 @@ def generate_launch_description():
     # WebServer Node (REST API)
     # 4-second delay so it starts after the Agent node
     webserver_node = TimerAction(
-        period=4.0,
+        period=18.0,
         actions=[
             Node(
                 package='physicar_webserver',
@@ -302,13 +302,18 @@ def generate_launch_description():
     # On stale sensor topic, SIGTERM the responsible node → respawn=True restarts it.
     # Starts monitoring after startup_grace=30s.
     topic_watchdog = TimerAction(
-        period=10.0,
+        period=20.0,
         actions=[
             Node(
                 package='physicar_bringup',
                 executable='topic_watchdog_node',
                 name='topic_watchdog',
                 output='screen',
+                # Long startup grace: the watchdog starts at t=20 but its own
+                # subscriptions can take a while to match under localhost discovery.
+                # Wait well past that before it may kill, so it never false-kills a
+                # healthy node it simply hasn't discovered yet.
+                parameters=[{'startup_grace_sec': 60.0}],
                 respawn=True,
                 respawn_delay=5.0,
             )
@@ -330,35 +335,10 @@ def generate_launch_description():
     intro_sound = os.path.join(sounds_dir, 'intro.mp3')
     is_dev = os.environ.get('DEV', '').lower() == 'true'
     play_intro = TimerAction(
-        period=3.0,
-        actions=[] if is_dev else [
+        period=20.0,
+        actions=[
             ExecuteProcess(
-                cmd=['python3', '-c', (
-                    'import rclpy, time\n'
-                    'from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy\n'
-                    'from physicar_interfaces.msg import Audio\n'
-                    'rclpy.init()\n'
-                    'node = rclpy.create_node("intro")\n'
-                    'qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,\n'
-                    '                 durability=DurabilityPolicy.TRANSIENT_LOCAL,\n'
-                    '                 history=HistoryPolicy.KEEP_LAST, depth=1)\n'
-                    'pub = node.create_publisher(Audio, "/audio", qos)\n'
-                    'deadline = time.time() + 30.0\n'
-                    'while pub.get_subscription_count() == 0 and time.time() < deadline:\n'
-                    '    rclpy.spin_once(node, timeout_sec=0.1)\n'
-                    'msg = Audio()\n'
-                    'msg.channel = "intro"\n'
-                    f'msg.data = list(open("{intro_sound}", "rb").read())\n'
-                    'msg.format = "mp3"\n'
-                    'msg.volume = 1.0\n'
-                    'pub.publish(msg)\n'
-                    'try: pub.wait_for_all_acked(rclpy.duration.Duration(seconds=5))\n'
-                    'except Exception: pass\n'
-                    'end = time.time() + 1.0\n'
-                    'while time.time() < end: rclpy.spin_once(node, timeout_sec=0.1)\n'
-                    'node.destroy_node()\n'
-                    'rclpy.shutdown()\n'
-                )],
+                cmd=['python3', os.path.join(scripts_dir, 'play_intro.py'), intro_sound],
                 output='log',
             )
         ]
@@ -374,10 +354,10 @@ def generate_launch_description():
         robot_state_publisher,
         physicar_driver,
         rplidar_driver,
-        scan_filter,
+        TimerAction(period=6.0, actions=[scan_filter]),
         camera_driver,
-        laser_odom,
-        ekf_node,
+        TimerAction(period=11.0, actions=[laser_odom]),
+        TimerAction(period=16.0, actions=[ekf_node]),
         audio_node,
         deepracer_node,
         agent_node,

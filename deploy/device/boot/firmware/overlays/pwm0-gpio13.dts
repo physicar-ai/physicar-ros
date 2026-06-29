@@ -23,7 +23,7 @@
             pwm0_pins: pwm0_pins {
                 pins = "gpio12", "gpio13";
                 function = "alt0";
-                bias-disable;
+                bias-pull-down;
             };
         };
     };
