@@ -1,0 +1,119 @@
+/* ===== DeepRacer page — fixed 4:3 stage, everything scales with it =====
+ * The stage is a 4:3 box letterboxed into the viewport; container-query
+ * units (cqw: 1% of stage width) size every element and font, so the
+ * layout never reflows — it only scales, at any window size.
+ * Logical canvas: 100 x 75 units. Top bar, then two columns
+ * (Models | Visualization + Probabilities stacked).
+ */
+
+body { display: flex; align-items: center; justify-content: center; height: 100vh; }
+
+.stage {
+  width: min(100vw, calc(100vh * 4 / 3));
+  aspect-ratio: 4 / 3;
+  container-type: size;
+  display: flex; flex-direction: column;
+  gap: 1.2cqw;
+  padding: 1.2cqw;
+}
+
+.dr-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 1cqw; padding: 1.1cqw;
+  min-width: 0; min-height: 0;
+}
+.dr-card-title { font-size: 1.6cqw; font-weight: 600; color: var(--fg); margin-bottom: 0.8cqw; display: flex; align-items: center; gap: 0.8cqw; flex-shrink: 0; }
+.dr-spacer { flex: 1; }
+
+/* ── Top bar: start/stop · mode · speed · active model ── */
+.dr-top-bar { flex-shrink: 0; display: flex; align-items: center; gap: 1.8cqw; }
+.dr-controls { display: flex; align-items: center; gap: 1.8cqw; }
+.dr-control-section { display: flex; align-items: center; gap: 0.8cqw; }
+.dr-control-section label { color: var(--fg2); font-size: 1.5cqw; white-space: nowrap; }
+.dr-control-section select {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--fg);
+  padding: 0.35cqw 0.55cqw; border-radius: 0.55cqw; font-size: 1.3cqw;
+}
+.dr-btn {
+  padding: 0.6cqw 1.8cqw; border-radius: 0.7cqw; font-size: 1.5cqw; font-weight: 500;
+  transition: all 0.15s;
+}
+.dr-btn-primary { background: var(--accent); color: #fff; }
+.dr-btn-primary:hover { background: var(--accent-hover); }
+.dr-btn-danger { background: rgba(239,68,68,0.15); color: var(--red); }
+.dr-btn-danger:hover { background: rgba(239,68,68,0.25); }
+.dr-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#dr-speed-pct { font-weight: 600; font-size: 1.5cqw; min-width: 4cqw; text-align: center; color: var(--fg); }
+.speed-btn-group { display: inline-flex; gap: 0.3cqw; }
+.speed-btn-group button {
+  padding: 0.45cqw 1.1cqw; font-size: 1.7cqw; font-weight: 700; line-height: 1;
+  background: var(--bg3); color: var(--fg2); border-radius: 0.55cqw;
+  transition: background 0.15s;
+}
+.speed-btn-group button:hover { background: var(--border); color: var(--fg); }
+.speed-btn-group button:active { background: var(--accent); color: #fff; }
+
+/* Active model (right side of the top bar) */
+.dr-active-model {
+  display: flex; align-items: center; gap: 0.9cqw;
+  flex: 1; min-width: 0; justify-content: flex-end;
+  font-size: 1.4cqw;
+}
+.dr-active-label { color: var(--fg3); text-transform: uppercase; font-size: 1.1cqw; letter-spacing: 0.05em; font-weight: 600; }
+.dr-active-name { color: var(--fg2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dr-active-model.has-active .dr-active-name { color: var(--accent); }
+.dr-active-state { font-size: 1.1cqw; padding: 0.15cqw 0.9cqw; border-radius: 2cqw; text-transform: uppercase; letter-spacing: 0.04em; }
+.dr-active-state.loaded { background: rgba(126,87,194,0.18); color: var(--accent); }
+.dr-active-state.running { background: rgba(34,197,94,0.18); color: var(--green, #22c55e); }
+
+/* ── Body: Models (left) | Visualization + Probabilities (right, stacked) ── */
+.dr-body { display: flex; gap: 1.2cqw; flex: 1; min-height: 0; }
+.dr-sidebar { width: 28cqw; flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.dr-main { flex: 1; display: flex; flex-direction: column; gap: 1.2cqw; min-width: 0; min-height: 0; }
+
+/* Model list */
+.model-list { display: flex; flex-direction: column; gap: 0.5cqw; overflow-y: auto; }
+.model-item {
+  display: flex; align-items: center; padding: 0.65cqw 0.75cqw; border-radius: 0.7cqw;
+  background: var(--bg3); cursor: pointer; transition: all 0.15s; gap: 0.6cqw; font-size: 1.4cqw;
+}
+.model-item:hover { background: var(--border); }
+.model-item.loaded { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); }
+.model-item.active { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); }
+.model-name { word-break: break-all; overflow-wrap: anywhere; color: var(--fg); }
+.model-sub { font-size: 1cqw; color: var(--fg3); }
+.model-del { opacity: 0; color: var(--fg3); font-size: 1.5cqw; padding: 0 0.3cqw; transition: opacity 0.15s; }
+.model-item:hover .model-del { opacity: 1; }
+.model-del:hover { color: var(--red); }
+.model-empty { color: var(--fg3); font-size: 1.4cqw; text-align: center; padding: 1.4cqw; }
+
+/* Import */
+.import-btn {
+  font-size: 1.2cqw; color: var(--fg3); cursor: pointer; padding: 0.25cqw 0.75cqw;
+  border: 1px solid var(--border); border-radius: 0.55cqw; transition: all 0.15s; font-weight: 400;
+  display: inline-flex; align-items: center; gap: 0.45cqw;
+}
+.import-btn:hover { border-color: var(--accent); color: var(--accent); }
+.import-btn.importing { background: rgba(245,158,11,0.15); border-color: var(--orange); color: var(--orange); cursor: default; pointer-events: none; }
+.import-spinner { width: 1.2cqw; height: 1.2cqw; border: 0.22cqw solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Action visualization */
+.dr-viz { flex-shrink: 0; display: flex; flex-direction: column; }
+.dr-action-canvas { width: 100%; aspect-ratio: 5/2; background: #0a0a0a; border-radius: 0.7cqw; display: block; }
+.dr-action-info { display: flex; gap: 1.8cqw; font-size: 1.4cqw; margin-top: 0.55cqw; flex-shrink: 0; }
+.dr-action-info span { color: var(--fg2); }
+.dr-action-info strong { color: var(--fg); font-weight: 600; }
+
+/* Probabilities */
+.dr-probs { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.dr-probs-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+.dr-prob-chart { display: flex; flex-direction: column; gap: 0.4cqw; padding-top: 0.35cqw; }
+.dr-prob-row { display: flex; align-items: center; gap: 0.75cqw; font-size: 1.4cqw; height: 2.2cqw; flex-shrink: 0; }
+.dr-prob-idx { width: 1.7cqw; text-align: center; color: var(--fg3); flex-shrink: 0; }
+.dr-prob-info { width: 9cqw; color: var(--fg2); font-size: 1.2cqw; flex-shrink: 0; white-space: nowrap; overflow: hidden; }
+.dr-prob-bar-wrap { flex: 1; height: 100%; background: var(--bg); border-radius: 0.28cqw; overflow: hidden; }
+.dr-prob-bar { height: 100%; background: var(--bg3); border-radius: 0.28cqw; transition: width 0.15s, background 0.15s; min-width: 0.28cqw; }
+.dr-prob-bar.selected { background: var(--accent); }
+.dr-prob-pct { width: 4.2cqw; text-align: right; color: var(--fg3); font-size: 1.3cqw; flex-shrink: 0; }

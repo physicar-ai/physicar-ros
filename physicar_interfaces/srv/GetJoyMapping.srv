@@ -1,0 +1,13 @@
+# GetJoyMapping.srv
+# Get current joystick teleop mapping
+#
+# Example:
+#   ros2 service call /physicar_joy_teleop/get_mapping physicar_interfaces/srv/GetJoyMapping "{}"
+
+# Request (empty)
+---
+# Response
+bool success
+string message
+string source            # 'file' (loaded from /opt/physicar/joy_mapping.json) or 'default' (yaml)
+string mapping_json      # Full mapping as JSON string

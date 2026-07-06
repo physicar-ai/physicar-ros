@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+  /* PhysiCar extension handshake: tells the wrapper webview this page actually
+     rendered (browser error pages never send this). No-op when not embedded. */
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "physicar-app-ready" }, "*");
+    }
+  } catch (e) { /* not embedded -- ignore */ }
+</script>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysiCar Login</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #1e1e1e; color: #ccc; }
+  .login { text-align: center; }
+  .logo { width: 96px; height: auto; opacity: 0.95; }
+  h1 { font-size: 1.1em; margin-bottom: 1.5em; color: #fff; letter-spacing: 0.15em; font-weight: 600; }
+  input[type=password] { padding: 10px 16px; font-size: 16px; border: 1px solid #555; border-radius: 4px; background: #2d2d2d; color: #fff; outline: none; width: 220px; }
+  input[type=password]:focus { border-color: #7e57c2; }
+  button { padding: 10px 24px; font-size: 16px; border: none; border-radius: 4px; background: #7e57c2; color: #fff; cursor: pointer; margin-left: 8px; }
+  button:hover { background: #6a47ad; }
+  .error { color: #f48771; font-size: 0.9em; margin-top: 1em; display: none; }
+</style>
+</head>
+<body>
+<div class="login">
+  <img class="logo" src="/login/logo.png" alt="PhysiCar">
+  <h1>PHYSICAR DEVICE CONSOLE</h1>
+  <form id="f">
+    <input type="password" id="p" placeholder="Password" autofocus>
+    <button type="submit">Connect</button>
+  </form>
+  <p class="error" id="err"></p>
+</div>
+<script>
+  var next = new URLSearchParams(location.search).get('next') || '/';
+  var errEl = document.getElementById('err');
+  function showErr(msg) {
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+  }
+  document.getElementById('f').onsubmit = async function(e) {
+    e.preventDefault();
+    var pw = document.getElementById('p').value;
+    if (!pw) { showErr('Enter your password'); return; }
+    // Fetch the current boot token; combined cookie value is "<PW>.<TOKEN>".
+    // The token rotates on every host reboot, invalidating old cookies.
+    var token = '';
+    try {
+      var r = await fetch('/auth/nonce', { cache: 'no-store' });
+      if (r.ok) token = (await r.text()).trim();
+    } catch (e) {}
+    if (!token) { showErr('Cannot reach server'); return; }
+    document.cookie = 'physicar_auth=' + pw + '.' + token + '; path=/; max-age=86400; samesite=lax';
+    // Verify the cookie was actually accepted before redirecting — nginx
+    // returns 200 on /info iff auth passed.  This way we can show
+    // "Wrong password" inline instead of looping back through /login.
+    try {
+      var v = await fetch('/info', { cache: 'no-store', redirect: 'manual' });
+      if (v.type === 'opaqueredirect' || v.status === 401 || v.status === 403 || (!v.ok && v.status !== 0)) {
+        // Clear the bad cookie so reloads don't keep failing the same way.
+        document.cookie = 'physicar_auth=; path=/; max-age=0';
+        showErr('Wrong password');
+        return;
+      }
+    } catch (e) { /* network blip — fall through and let the next page handle it */ }
+    location.href = next;
+  };
+</script>
+</body>
+</html>

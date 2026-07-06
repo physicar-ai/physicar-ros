@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>physicar_bringup</name>
+  <version>0.1.0</version>
+  <description>
+    Bringup and hardware drivers for PhysiCar robot platform.
+    - Yahboom ROS Robot Expansion Board (STM32F103RCT6 + MPU9250 IMU)
+    - RPLidar C1 (via physicar_lidar)
+    - Raspberry Pi Camera Module 3 Night Vision
+    - 4x PWM Servos (Pan-Tilt + Steering + Throttle)
+  </description>
+
+  <maintainer email="dev@physicar.ai">AICASTLE</maintainer>
+  <license>GPL-3.0-or-later</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <!-- ROS2 Dependencies -->
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rosgraph_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>cv_bridge</depend>
+
+  <!-- Custom Interfaces (optional) -->
+  <exec_depend>physicar_interfaces</exec_depend>
+
+  <!-- Launch Dependencies -->
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>physicar_description</exec_depend>
+  <exec_depend>physicar_control</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+
+  <!-- Hardware Drivers -->
+  <exec_depend>physicar_lidar</exec_depend>
+  <exec_depend>physicar_laser_odom</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+
+  <!-- Agent -->
+
+  <!-- Python Dependencies -->
+  <exec_depend>python3-serial</exec_depend>
+  <exec_depend>python3-smbus2</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

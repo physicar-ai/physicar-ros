@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+  Copyright 2025 PhysiCar AI
+  
+  Common material and property definitions for PhysiCar URDF
+-->
+
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- Materials -->
+  <material name="black">
+    <color rgba="0.0 0.0 0.0 1.0"/>
+  </material>
+
+  <material name="dark_grey">
+    <color rgba="0.3 0.3 0.3 1.0"/>
+  </material>
+
+  <material name="light_grey">
+    <color rgba="0.6 0.6 0.6 1.0"/>
+  </material>
+
+  <material name="blue">
+    <color rgba="0.1 0.1 0.8 1.0"/>
+  </material>
+
+  <material name="green">
+    <color rgba="0.0 0.8 0.0 1.0"/>
+  </material>
+
+  <material name="red">
+    <color rgba="0.8 0.0 0.0 1.0"/>
+  </material>
+
+  <material name="white">
+    <color rgba="1.0 1.0 1.0 1.0"/>
+  </material>
+
+  <material name="orange">
+    <color rgba="1.0 0.42 0.04 1.0"/>
+  </material>
+
+</robot>

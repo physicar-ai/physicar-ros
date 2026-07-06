@@ -1,0 +1,28 @@
+# SetJoyMapping.srv
+# Set joystick teleop mapping values and optionally save to file.
+#
+# Two ways to call:
+#   1. Single key/value: set "key" + one of float_value/bool_value/int_value
+#   2. Bulk update    : leave "key" empty and pass full JSON in "mapping_json"
+#
+# Recognised keys:
+#   ints:   axis_speed, axis_steering, axis_pan, axis_tilt,
+#           deadman_button, estop_button, center_camera_button
+#   floats: max_speed, max_steering, max_pan, max_tilt, deadzone, rate
+#   bools:  invert_speed, invert_steering, invert_pan, invert_tilt
+#
+# Example (single line):
+#   ros2 service call /physicar_joy_teleop/set_mapping physicar_interfaces/srv/SetJoyMapping "{key: 'deadman_button', int_value: 5, save_to_file: true}"
+
+# Request
+string key              # Mapping key to update; empty → use mapping_json bulk
+float64 float_value     # Used when key is a float param
+bool bool_value         # Used when key is a bool param
+int64 int_value         # Used when key is an int param
+string mapping_json     # Optional bulk JSON (overrides key/value if non-empty)
+bool save_to_file       # true: persist to /opt/physicar/joy_mapping.json
+---
+# Response
+bool success
+string message
+string mapping_json     # Resulting full mapping as JSON

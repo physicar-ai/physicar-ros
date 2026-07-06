@@ -1,0 +1,42 @@
+[project]
+name = "physicar-webserver"
+version = "1.0.0"
+description = "PhysiCar Web Server - FastAPI based REST API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "AICASTLE", email = "dev@physicar.ai"}
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "httpx>=0.26.0",  # For FastAPI testing
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["physicar_webserver"]
+
+[tool.uv]
+# ROS2 packages (rclpy etc.) come from the system
+# Option below is supported in uv 0.5+
+# system-site-packages = true
+
+[tool.uv.pip]
+# rclpy is used from the system, not declared here
+# `ros2 run` uses system Python automatically
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

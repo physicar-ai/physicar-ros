@@ -1,0 +1,13 @@
+/build/
+/install/
+/log/
+/.vscode/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# colcon package ignore markers (created at runtime for SIM builds)
+COLCON_IGNORE
+*.pyo

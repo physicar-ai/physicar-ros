@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<script>
+  /* PhysiCar extension handshake: tells the wrapper webview this page actually
+     rendered (browser error pages never send this). No-op when not embedded. */
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "physicar-app-ready" }, "*");
+    }
+  } catch (e) { /* not embedded -- ignore */ }
+</script>
+<script>
+  /* Boot race guard: right after a Codespace (re)start, github.dev port auth
+     can 302 CSS/JS subresources to pf-signin while the document itself loads,
+     leaving an unstyled page. If any stylesheet/script fails to load, reload
+     once auth settles (max 5 attempts, backed off; counter resets on success). */
+  (function () {
+    var KEY = 'pc-asset-reload';
+    window.addEventListener('error', function (e) {
+      var t = e.target || {};
+      if (t.tagName !== 'LINK' && t.tagName !== 'SCRIPT') return;
+      var n = +(sessionStorage.getItem(KEY) || 0);
+      if (n >= 5 || window.__pcReloading) return;
+      window.__pcReloading = true;
+      sessionStorage.setItem(KEY, String(n + 1));
+      setTimeout(function () { location.reload(); }, 2000 * (n + 1));
+    }, true);
+    window.addEventListener('load', function () {
+      if (!window.__pcReloading) sessionStorage.removeItem(KEY);
+    });
+  }());
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSICAR DeepRacer</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/deepracer.css">
+</head>
+<body>
+<!-- 4:3 stage — letterboxed and uniformly scaled (see deepracer.css) -->
+<div class="stage" id="page-deepracer">
+
+  <!-- Top: Controls bar (controls left, active model right) -->
+  <div class="dr-top-bar dr-card">
+    <div class="dr-controls">
+      <div class="dr-control-section">
+        <button class="dr-btn dr-btn-primary" id="dr-btn-start" onclick="DR.start()">&#9654; Start</button>
+        <button class="dr-btn dr-btn-danger" id="dr-btn-stop" onclick="DR.stop()" disabled>&#9724; Stop</button>
+      </div>
+      <div class="dr-control-section">
+        <label>Mode</label>
+        <select id="dr-mode" onchange="DR.setMode(this.value)">
+          <option value="greedy">Greedy</option>
+          <option value="softmax">Softmax (Stochastic)</option>
+          <option value="mean">Mean (Weighted Avg)</option>
+        </select>
+      </div>
+      <div class="dr-control-section">
+        <label>Speed</label>
+        <span id="dr-speed-pct">100%</span>
+        <div class="speed-btn-group">
+          <button onclick="DR.adjustSpeed(5)">+</button>
+          <button onclick="DR.adjustSpeed(-5)">−</button>
+        </div>
+      </div>
+    </div>
+    <div class="dr-active-model" id="dr-active-model">
+      <span class="dr-active-label">Model</span>
+      <span class="dr-active-name" id="dr-active-name">—</span>
+      <span class="dr-active-state" id="dr-active-state"></span>
+    </div>
+  </div>
+
+  <!-- Bottom: Models (left) | Visualization + Probabilities (right, stacked) -->
+  <div class="dr-body">
+    <div class="dr-sidebar dr-card">
+      <div class="dr-card-title">Models <div class="dr-spacer"></div>
+        <label class="import-btn" id="dr-import-btn" title="Import model (.tar.gz)">➕ Import model
+          <input type="file" accept=".tar.gz,.gz" id="dr-import-input" onchange="DR.importModel(this)" style="display:none">
+        </label>
+      </div>
+      <div class="model-list" id="dr-model-list">
+        <div class="model-empty">Loading...</div>
+      </div>
+    </div>
+
+    <div class="dr-main">
+      <div class="dr-viz dr-card">
+        <div class="dr-card-title">Visualization</div>
+        <canvas class="dr-action-canvas" id="dr-action-canvas"></canvas>
+        <div class="dr-action-info">
+          <span>Speed: <strong id="dr-speed">0.00</strong> m/s</span>
+          <span>Steering: <strong id="dr-steering">0</strong>&deg;</span>
+          <span>Rate: <strong id="dr-rate">-</strong> Hz</span>
+        </div>
+      </div>
+
+      <div class="dr-probs dr-card">
+        <div class="dr-card-title">Probabilities</div>
+        <div class="dr-probs-scroll">
+          <div class="dr-prob-chart" id="dr-prob-chart">
+            <div class="model-empty">Load a model to see actions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/js/core.js"></script>
+<script src="/static/js/deepracer.js"></script>
+<script>
+(async function init() {
+  DR.init();
+  requestAnimationFrame(() => DR.drawAction(0, 0, -1, []));
+
+  // The stage scales with the window — redraw the action canvas so its
+  // backing store follows the new visual size.
+  let _rt = null;
+  window.addEventListener('resize', () => {
+    if (_rt) cancelAnimationFrame(_rt);
+    _rt = requestAnimationFrame(() => DR.drawAction(0, 0, -1, []));
+  });
+
+  await detectMode();
+  if (window.PHYSICAR_MODE === 'sim') document.title = 'PHYSICAR DeepRacer (SIM)';
+})();
+
+/* Leaving the page while a model is running: auto-stop inference on the
+   server (replaces the old SPA tab-switch confirm — separate documents
+   can't intercept navigation, so fail safe by stopping the model). */
+window.addEventListener('pagehide', () => {
+  if (typeof DR !== 'undefined' && DR.isRunning) {
+    try {
+      const blob = new Blob([JSON.stringify({ start: false })], { type: 'application/json' });
+      navigator.sendBeacon('/deepracer/control', blob);
+    } catch (e) {}
+  }
+});
+</script>
+</body>
+</html>

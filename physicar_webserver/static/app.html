@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<script>
+  /* PhysiCar extension handshake: tells the wrapper webview this page actually
+     rendered. Sent only AFTER the window load event AND a sanity check that
+     core.js really executed — right after a Codespace (re)start nginx serves
+     /app while FastAPI is still booting, so the document can load with its
+     CSS/JS missing. A broken render must NOT be confirmed to the wrapper;
+     without the handshake it keeps its spinner and reloads the iframe (~8s)
+     until the page comes up healthy. No-op when not embedded. */
+  window.addEventListener("load", function () {
+    if (typeof detectMode !== "function") return;   // core.js missing → not healthy
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "physicar-app-ready" }, "*");
+      }
+    } catch (e) { /* not embedded -- ignore */ }
+  });
+
+  /* ── PhysiCar session token sharing (physicar-ext bridge) ──
+     When the extension pushes the Chat-login session token (pushToken →
+     "physicar-token"), it is planted as the "physicar_session" COOKIE. Why a
+     cookie:
+      - It rides automatically on every same-origin request (new tabs, iframes,
+        WS handshakes), so student backends just read request.cookies —
+        zero-code token delivery, per browser = per user.
+      - localStorage written inside the webview iframe is storage-partitioned
+        away from top-level tabs, but cookies are shared (the nginx pc_token
+        gate proves this in practice).
+     In the iframe (third-party context, always an https tunnel) SameSite=None;
+     Secure is mandatory. Also mirrored to localStorage as a fallback for JS in
+     the same partition (physicarSession helper). Sign-out (clear) propagates.
+     Outside the webview (plain tab) there is no parent — silently a no-op. */
+  (function () {
+    var SESSION_KEY = "physicar_session";
+    var WEEK = 7 * 24 * 3600;  // matches the session token TTL
+    function setCookie(token) {
+      var attrs = "; Path=/; Max-Age=" + WEEK
+        + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
+      try { document.cookie = SESSION_KEY + "=" + encodeURIComponent(token) + attrs; } catch (_) {}
+    }
+    function clearCookie() {
+      var attrs = "; Path=/; Max-Age=0"
+        + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
+      try { document.cookie = SESSION_KEY + "=" + attrs; } catch (_) {}
+    }
+    window.addEventListener("message", function (e) {
+      var msg = e.data || {};
+      if (msg.type === "physicar-token" && typeof msg.token === "string" && msg.token) {
+        setCookie(msg.token);
+        try { localStorage.setItem(SESSION_KEY, msg.token); } catch (_) {}
+      } else if (msg.type === "physicar-token-clear") {
+        clearCookie();
+        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+      }
+    });
+    try {
+      if (window.parent !== window) {
+        // always request so a stored token gets refreshed (no reply if chat is closed)
+        window.parent.postMessage({ type: "physicar-token-request" }, "*");
+      }
+    } catch (_) {}
+  })();
+</script>
+<script>
+  /* Boot race guard: right after a Codespace (re)start, github.dev port auth
+     can 302 CSS/JS subresources to pf-signin while the document itself loads,
+     leaving an unstyled page. If any stylesheet/script fails to load, reload
+     once auth settles (max 5 attempts, backed off; counter resets on success). */
+  (function () {
+    var KEY = 'pc-asset-reload';
+    window.addEventListener('error', function (e) {
+      var t = e.target || {};
+      if (t.tagName !== 'LINK' && t.tagName !== 'SCRIPT') return;
+      var n = +(sessionStorage.getItem(KEY) || 0);
+      if (n >= 5 || window.__pcReloading) return;
+      window.__pcReloading = true;
+      sessionStorage.setItem(KEY, String(n + 1));
+      setTimeout(function () { location.reload(); }, 2000 * (n + 1));
+    }, true);
+    window.addEventListener('load', function () {
+      if (!window.__pcReloading) sessionStorage.removeItem(KEY);
+    });
+  }());
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSICAR App</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/control.css">
+<style>
+/* ── /app layout — every boundary is a RATIO, so resizing the window keeps
+   the exact same composition:
+   ┌─────────┬──────────────────────┬─────────┐
+   │         │ MyApp VNC DeepRacer  │         │
+   │ Control │   (selected iframe)  │ Sensors │
+   ├─────────┴──────────────────────┤         │
+   │ Simulator (sim mode only)      │         │
+   └────────────────────────────────┴─────────┘ */
+body{display:flex;flex-direction:row;height:100vh}
+
+/* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
+.main{display:flex;flex-direction:column;min-width:0;container-type:size}
+
+.top{flex:58;display:flex;flex-direction:row;min-height:0}
+
+/* Control column — 27% of the main area width by default (drag-adjustable) */
+.ctrl-col{width:27%;flex-shrink:0}
+
+/* Vertical divider: Control | Center (drag) */
+.vdivider{
+  width:6px;cursor:col-resize;background:var(--border);
+  flex-shrink:0;position:relative;z-index:10;transition:background .15s;
+}
+.vdivider:hover,.vdivider.dragging{background:var(--accent)}
+
+/* Horizontal divider: top | Simulator (drag; sim mode only) */
+.hdivider{
+  height:6px;cursor:row-resize;background:var(--border);
+  flex-shrink:0;position:relative;z-index:10;transition:background .15s;
+  display:none;
+}
+.hdivider:hover,.hdivider.dragging{background:var(--accent)}
+body.sim-mode .hdivider{display:block}
+
+/* Center: tab bar + selected service iframe */
+.center{flex:1;display:flex;flex-direction:column;min-width:0;container-type:inline-size}
+.tabbar{
+  display:flex;align-items:center;gap:1cqw;flex-shrink:0;
+  padding:1.2cqw;background:var(--bg2);border-bottom:1px solid var(--border);
+}
+.tab{
+  padding:0.9cqw 2.4cqw;border-radius:99cqw;font-size:2.3cqw;font-weight:600;
+  color:var(--fg3);background:var(--bg3);border:1px solid var(--border);
+  transition:all .15s;white-space:nowrap;
+}
+.tab:hover{color:var(--fg2);border-color:var(--fg3)}
+.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.tab-spacer{flex:1}
+.tab-open{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:4.6cqw;height:4.6cqw;border-radius:1cqw;color:var(--fg2);
+}
+.tab-open:hover{background:var(--bg3);color:var(--fg)}
+.tab-open svg{width:3cqw;height:3cqw}
+.view{flex:1;min-height:0;position:relative;background:#111}
+.view iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+
+/* Simulator row — 42% of the main area height (sim mode only) */
+.sim-row{flex:42;display:none;position:relative;background:#111;border-top:1px solid var(--border);min-height:0}
+.sim-row iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+body.sim-mode .sim-row{display:block}
+
+/* Focused iframe (clicks/keyboard go there) → accent outline */
+.view.focused,.sim-row.focused{box-shadow:inset 0 0 0 2px var(--accent)}
+
+/* ── Divider ── */
+.divider{
+  width:6px;cursor:col-resize;background:var(--border);
+  flex-shrink:0;position:relative;z-index:10;transition:background .15s;
+}
+.divider:hover,.divider.dragging{background:var(--accent)}
+
+/* ── Right sensor column (inline panel, width-proportional text) ── */
+.right{display:flex;flex-direction:column;min-width:0;flex-shrink:0;background:var(--bg2);container-type:inline-size}
+.right-head{
+  display:flex;align-items:center;height:6cqw;flex-shrink:0;
+  padding:0 1.6cqw;border-bottom:1px solid var(--border);
+}
+.right-title{font-size:2.4cqw;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--fg3)}
+.right .panel{width:100%;min-width:0;flex:1;border-left:none}
+.right .panel-section{padding:1.7cqw 1cqw}
+.right .panel-section.panel-section-flush .panel-title{padding:0 1cqw}
+.right .panel-title{font-size:3.2cqw;margin-bottom:1.2cqw;gap:1.2cqw}
+.right .panel-title select{font-size:2.7cqw;border-radius:1cqw;padding:0.3cqw 0.6cqw}
+.right .panel-row{font-size:3.6cqw;padding:0.6cqw 0}
+.right .panel-value{font-size:3.5cqw}
+.right .battery-bar{height:1.6cqw;border-radius:0.8cqw;margin-top:1.2cqw}
+.right .panel-restart{padding:2cqw !important}
+.right .btn-restart{font-size:3.1cqw;padding:1.3cqw 4.5cqw;border-radius:1.6cqw}
+</style>
+</head>
+<body>
+
+<div class="main" id="main">
+  <div class="top">
+
+    <!-- Control (inline; id/class kept — control.js gates sending on #page-control.active) -->
+    <div class="ctrl-col active" id="page-control">
+      <!-- Speed / Steering -->
+      <div class="cc">
+        <div class="cc-head">
+          Speed / Steering
+          <div class="cc-spacer"></div>
+          <div class="ctrl-mode-switch">
+            <button class="ctrl-mode active" data-group="drive" data-mode="continuous" onclick="CTRL.setMode('drive','continuous')">Continuous</button>
+            <button class="ctrl-mode" data-group="drive" data-mode="discrete" onclick="CTRL.setMode('drive','discrete')">Discrete</button>
+          </div>
+        </div>
+        <div class="ctrl-area" id="ctrl-drive-area">
+          <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
+            <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
+          </div>
+          <div class="ctrl-dpad hidden" id="ctrl-drive-dpad">
+            <div class="dpad-grid">
+              <button class="dpad-btn" data-dir="fwd-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="fwd"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="fwd-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
+              <div class="dpad-center"></div>
+              <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="bwd-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="bwd"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="bwd-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="ctrl-info">
+          <span>Speed: <strong id="ctrl-speed">0.00</strong> m/s</span>
+          <span>Steer: <strong id="ctrl-steer">0</strong>°</span>
+        </div>
+        <div class="ctrl-max-speed">
+          <label>Max: <strong id="ctrl-max-speed-val">1.0</strong> m/s</label>
+          <input type="range" id="ctrl-max-speed" min="0.1" max="3.0" step="0.1" value="1.0" oninput="CTRL.setMaxSpeed(this.value)">
+        </div>
+      </div>
+
+      <!-- Pan / Tilt -->
+      <div class="cc">
+        <div class="cc-head">
+          Pan / Tilt
+          <div class="cc-spacer"></div>
+          <div class="ctrl-mode-switch">
+            <button class="ctrl-mode active" data-group="cam" data-mode="continuous" onclick="CTRL.setMode('cam','continuous')">Continuous</button>
+            <button class="ctrl-mode" data-group="cam" data-mode="discrete" onclick="CTRL.setMode('cam','discrete')">Discrete</button>
+          </div>
+        </div>
+        <div class="ctrl-area" id="ctrl-cam-area">
+          <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
+            <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
+          </div>
+          <div class="ctrl-dpad hidden" id="ctrl-cam-dpad">
+            <div class="dpad-grid">
+              <button class="dpad-btn" data-dir="up-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="up"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="up-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
+              <div class="dpad-center"></div>
+              <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="dn-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="dn"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
+              <button class="dpad-btn" data-dir="dn-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="ctrl-info">
+          <span>Pan: <strong id="ctrl-pan">0</strong>°</span>
+          <span>Tilt: <strong id="ctrl-tilt">0</strong>°</span>
+        </div>
+        <div class="ctrl-max-speed" aria-hidden="true" style="visibility:hidden">
+          <label>Max: <strong>1.0</strong> m/s</label>
+          <input type="range" min="0" max="1" step="1" value="0" tabindex="-1">
+        </div>
+      </div>
+    </div>
+
+    <div class="vdivider" id="ctrl-divider"></div>
+
+    <!-- Center: service tabs (single select) + iframe -->
+    <div class="center">
+      <div class="tabbar" id="tabbar">
+        <div class="tab-spacer"></div>
+        <button class="tab-open" id="btn-open-tab" title="Open in new tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+      </div>
+      <div class="view" id="view">
+        <iframe id="view-frame" title="Service" allow="autoplay; camera; microphone"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <div class="hdivider" id="sim-divider"></div>
+
+  <!-- Simulator (sim mode only) -->
+  <div class="sim-row" id="sim-row">
+    <iframe id="sim-frame" title="Simulator" allow="autoplay"></iframe>
+  </div>
+</div>
+
+<div class="divider" id="divider"></div>
+
+<!-- Sensors (inline panel) -->
+<div class="right" id="right">
+  <div class="right-head">
+    <span class="right-title">Sensors</span>
+  </div>
+  <div class="panel" id="sensor-panel">
+    <div class="panel-section panel-section-flush">
+      <div class="panel-title">Camera
+        <select id="cam-res" onchange="changeCameraRes()">
+          <option value="480" selected>480x360</option>
+          <option value="320">320x240</option>
+          <option value="160">160x120</option>
+        </select>
+      </div>
+      <img class="panel-camera panel-zoomable" id="p-camera" alt="Camera" onclick="openSensorModal('camera')" title="Click to enlarge">
+    </div>
+    <div class="panel-section panel-section-flush">
+      <div class="panel-title">LiDAR
+        <select id="lidar-step" onchange="changeLidarStep()">
+          <option value="0.5">0.5&deg;</option>
+          <option value="1">1&deg;</option>
+          <option value="3" selected>3&deg;</option>
+          <option value="5">5&deg;</option>
+          <option value="10">10&deg;</option>
+        </select>
+        <select id="lidar-range" onchange="changeLidarRange()">
+          <option value="2">2m</option>
+          <option value="4" selected>4m</option>
+          <option value="8">8m</option>
+          <option value="16">16m</option>
+        </select>
+      </div>
+      <canvas class="panel-lidar panel-zoomable" id="p-lidar" onclick="openSensorModal('lidar')" title="Click to enlarge"></canvas>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">Velocity</div>
+      <div class="panel-row"><span class="panel-label">Linear</span><span class="panel-value" id="p-linear">0.0 m/s</span></div>
+      <div class="panel-row"><span class="panel-label">Angular</span><span class="panel-value" id="p-angular">0.0 rad/s</span></div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">Battery</div>
+      <div class="panel-row">
+        <span class="panel-value" id="p-battery">--%</span>
+        <span class="panel-value" id="p-voltage">--V</span>
+      </div>
+      <div class="battery-bar"><div class="battery-fill" id="p-battery-fill" style="width:0%"></div></div>
+    </div>
+    <div class="panel-section panel-restart">
+      <button class="btn-restart" id="btn-restart" onclick="restartContainer()">&#x21bb; Restart</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/core.js"></script>
+<script src="/static/js/control.js"></script>
+<script src="/static/js/sensors.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  /* ── Center services (single-select tabs) ── */
+  const MONITORS = [
+    { id: 'myapp',     label: 'MyApp',     path: '/myapp/'    },
+    { id: 'vnc',       label: 'VNC',       path: '/vnc/'      },
+    { id: 'deepracer', label: 'DeepRacer', path: '/deepracer' },
+  ];
+  const KEY = 'app-view';
+
+  /* tab is persisted; all split ratios start at their defaults (session only):
+     ratio     — main : sensors (5:2)
+     ctrlRatio — control column share of the main width
+     simRatio  — simulator row share of the main height */
+  let state = { tab: 'myapp', ratio: 5 / 7, ctrlRatio: 0.27, simRatio: 0.42 };
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && MONITORS.some(m => m.id === s.tab)) state.tab = s.tab;
+  } catch(e){}
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ tab: state.tab })); }catch(e){} }
+
+  const main    = document.getElementById('main');
+  const right   = document.getElementById('right');
+  const divider = document.getElementById('divider');
+  const tabbar  = document.getElementById('tabbar');
+  const frame   = document.getElementById('view-frame');
+
+  const tabs = {};
+  const tabSpacer = tabbar.querySelector('.tab-spacer');
+  MONITORS.forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'tab';
+    b.textContent = m.label;
+    b.addEventListener('click', () => { state.tab = m.id; save(); render(); });
+    tabbar.insertBefore(b, tabSpacer);
+    tabs[m.id] = b;
+  });
+
+  // Open the selected service in a full browser tab. Inside the VS Code
+  // webview the iframe sandbox blocks window.open (returns null) — relay to
+  // the extension instead, which opens the system browser via openExternal.
+  document.getElementById('btn-open-tab').addEventListener('click', () => {
+    const m = MONITORS.find(x => x.id === state.tab);
+    if (!m) return;
+    // the session token reaches the new tab via the physicar_session cookie (no URL exposure)
+    const url = new URL(m.path, location.href).href;
+    let w = null;
+    try { w = window.open(url, '_blank', 'noopener'); } catch(e){}
+    if (!w && window.parent !== window) {
+      window.parent.postMessage({ type: 'physicar-open', url }, '*');
+    }
+  });
+
+  function render(){
+    const m = MONITORS.find(x => x.id === state.tab);
+    MONITORS.forEach(x => tabs[x.id].classList.toggle('active', x.id === state.tab));
+    if (m && frame.getAttribute('src') !== m.path) frame.src = m.path;
+  }
+
+  /* ── Split ratios (all ratio-based → window resizes keep proportions;
+     all drag-adjustable, deliberately session-only) ── */
+  const topEl   = document.querySelector('.top');
+  const ctrlCol = document.getElementById('page-control');
+  const simRow  = document.getElementById('sim-row');
+
+  function applyRatio(){
+    main.style.width  = 'calc(' + (state.ratio * 100).toFixed(2) + '% - 3px)';
+    right.style.width = 'calc(' + ((1 - state.ratio) * 100).toFixed(2) + '% - 3px)';
+    main.style.flex = 'none';
+  }
+  function applyCtrlRatio(){
+    ctrlCol.style.width = (state.ctrlRatio * 100).toFixed(2) + '%';
+  }
+  function applySimRatio(){
+    topEl.style.flex  = String(((1 - state.simRatio) * 100).toFixed(2));
+    simRow.style.flex = String((state.simRatio * 100).toFixed(2));
+  }
+
+  /* Generic divider drag: onMove receives the pointer position and updates
+     its ratio; iframes are pointer-events-frozen during the drag. */
+  function makeDrag(el, onMove){
+    let dragging = false;
+    function down(e){
+      e.preventDefault(); dragging = true;
+      el.classList.add('dragging');
+      document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = 'none');
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+      document.addEventListener('touchmove', move, {passive:false});
+      document.addEventListener('touchend', up);
+    }
+    function move(e){
+      if(!dragging) return;
+      e.preventDefault();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      onMove(cx, cy);
+    }
+    function up(){
+      dragging = false;
+      el.classList.remove('dragging');
+      document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '');
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
+      // ratios are session-only by design — not saved
+    }
+    el.addEventListener('mousedown', down);
+    el.addEventListener('touchstart', down, {passive:false});
+  }
+
+  // main | sensors (vertical boundary across the window)
+  makeDrag(divider, (cx) => {
+    state.ratio = Math.max(0.2, Math.min(0.8, cx / document.body.clientWidth));
+    applyRatio();
+  });
+  // control | center (vertical boundary inside .top)
+  makeDrag(document.getElementById('ctrl-divider'), (cx) => {
+    const r = topEl.getBoundingClientRect();
+    state.ctrlRatio = Math.max(0.12, Math.min(0.55, (cx - r.left) / r.width));
+    applyCtrlRatio();
+  });
+  // top | simulator (horizontal boundary inside .main)
+  makeDrag(document.getElementById('sim-divider'), (_cx, cy) => {
+    const r = main.getBoundingClientRect();
+    state.simRatio = Math.max(0.12, Math.min(0.7, 1 - (cy - r.top) / r.height));
+    applySimRatio();
+  });
+
+  /* ── Focused-iframe outline (activeElement poll — cross-origin safe) ── */
+  (function(){
+    let last = null;
+    setInterval(() => {
+      const ae = document.activeElement;
+      const target = (ae && ae.tagName === 'IFRAME') ? ae : null;
+      if (target === last) return;
+      last = target;
+      document.querySelectorAll('.view.focused, .sim-row.focused').forEach(el => el.classList.remove('focused'));
+      if (target) {
+        const holder = target.closest('.view') || target.closest('.sim-row');
+        if (holder) holder.classList.add('focused');
+      }
+    }, 250);
+  })();
+
+  /* ── Control (inline) ── */
+  CTRL.init();
+  const redrawJoysticks = () => { CTRL._drawJoystick('drive'); CTRL._drawJoystick('cam'); };
+  requestAnimationFrame(redrawJoysticks);
+  // Redraw whenever the control column changes size (window resize, divider drag)
+  new ResizeObserver(() => requestAnimationFrame(redrawJoysticks))
+    .observe(document.getElementById('page-control'));
+
+  /* ── Sensors (inline) ── */
+  ['cam-res', 'lidar-step', 'lidar-range'].forEach(id => {
+    const v = localStorage.getItem(id);
+    if (v && $(id)) $(id).value = v;
+  });
+  startStateStream();
+  startLidarStream();
+  startCameraStream();
+
+  /* ── Mode: show the simulator row only in sim mode ── */
+  (async function(){
+    const mode = await detectMode();   // adds body.sim-mode when sim
+    if (mode === 'sim') {
+      document.getElementById('sim-frame').src = '/sim/';
+      document.title = 'PHYSICAR App (SIM)';
+    }
+  })();
+
+  render();
+  applyRatio();
+  applyCtrlRatio();
+  applySimRatio();
+})();
+</script>
+</body>
+</html>

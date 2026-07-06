@@ -1,0 +1,84 @@
+/* ===== Control column (embedded in /app, left side) =====
+ * Speed/Steering and Pan/Tilt cards stacked VERTICALLY. The column is a
+ * size container: everything inside is sized in cqw (1% of column width),
+ * so the whole control UI scales with the column / window proportionally.
+ */
+
+.ctrl-col {
+  container-type: inline-size;
+  display: flex; flex-direction: column;
+  gap: 1%; padding: 1%;
+  min-width: 0; min-height: 0;
+}
+
+/* ── Card (top: drive, bottom: cam) ── */
+.cc {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 3cqw;
+  padding: 3.5cqw;
+  gap: 2.5cqw;
+}
+.cc-head {
+  display: flex; align-items: center; gap: 2cqw; flex-wrap: wrap;
+  font-size: 5.4cqw; font-weight: 600; color: var(--fg);
+  flex-shrink: 0;
+}
+.cc-spacer { flex: 1; }
+
+/* Continuous / Discrete switch */
+.ctrl-mode-switch { display: flex; gap: 0.8cqw; background: var(--bg); border-radius: 2.2cqw; padding: 0.8cqw; }
+.ctrl-mode {
+  font-size: 3.8cqw; padding: 1.2cqw 2.8cqw; border-radius: 1.8cqw;
+  color: var(--fg3); white-space: nowrap;
+}
+.ctrl-mode:hover { color: var(--fg2); }
+.ctrl-mode.active { background: var(--accent); color: #fff; }
+
+/* ── Joystick / D-pad area ── */
+.ctrl-area {
+  flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ctrl-joystick-wrap {
+  height: 100%; max-height: 100%; aspect-ratio: 1 / 1; max-width: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+.ctrl-joystick { width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+
+.ctrl-dpad { height: 100%; aspect-ratio: 1 / 1; max-width: 100%; }
+.dpad-grid {
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  gap: 2cqw;
+}
+.dpad-btn {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 2.5cqw;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none; user-select: none; transition: all 0.1s;
+}
+.dpad-btn:hover { background: var(--border); }
+.dpad-btn.active { background: var(--accent); border-color: var(--accent); }
+.dpad-arrow { display: inline-block; font-size: 8cqw; line-height: 1; color: var(--fg2); transform: rotate(var(--rot, 0deg)); }
+.dpad-btn.active .dpad-arrow { color: #fff; }
+.dpad-center { background: var(--bg); border-radius: 2.5cqw; }
+
+.hidden { display: none !important; }
+
+/* ── Readouts ── */
+.ctrl-info {
+  display: flex; justify-content: space-around;
+  font-size: 4.6cqw; color: var(--fg2); flex-shrink: 0;
+}
+.ctrl-info strong { color: var(--fg); font-weight: 600; }
+
+/* ── Max-speed slider (drive card only) ── */
+.ctrl-max-speed {
+  display: flex; align-items: center; gap: 2.5cqw;
+  font-size: 4.2cqw; color: var(--fg2); flex-shrink: 0;
+  height: 7cqw;
+}
+.ctrl-max-speed label { white-space: nowrap; }
+.ctrl-max-speed strong { color: var(--fg); }
+.ctrl-max-speed input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }

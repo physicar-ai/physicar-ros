@@ -1,0 +1,13 @@
+{
+  "chat.sendElementsToChat.enabled": false,
+  "editor.fontSize": 14,
+  "editor.tabSize": 4,
+  "files.autoSave": "afterDelay",
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "simpleBrowser.focusLockIndicator.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "chat.viewSessions.orientation": "stacked",
+  "terminal.integrated.initialHint": false,
+  "explorer.compactFolders": false,
+  "security.workspace.trust.enabled": false
+}
