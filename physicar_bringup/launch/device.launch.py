@@ -51,6 +51,9 @@ def generate_launch_description():
         'scripts'
     )
 
+    # Sounds directory
+    sounds_dir = os.path.join(pkg_bringup, 'sounds')
+
     # URDF file
     urdf_file = os.path.join(pkg_description, 'urdf', 'physicar.urdf.xacro')
 
