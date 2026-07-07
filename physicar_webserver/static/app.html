@@ -128,11 +128,11 @@ body.sim-mode .hdivider{display:block}
 /* Center: tab bar + selected service iframe */
 .center{flex:1;display:flex;flex-direction:column;min-width:0;container-type:inline-size}
 .tabbar{
-  display:flex;align-items:center;gap:1cqw;flex-shrink:0;
-  padding:1.2cqw;background:var(--bg2);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px;flex-shrink:0;
+  padding:8px;background:var(--bg2);border-bottom:1px solid var(--border);
 }
 .tab{
-  padding:0.9cqw 2.4cqw;border-radius:99cqw;font-size:2.3cqw;font-weight:600;
+  padding:5px 14px;border-radius:999px;font-size:13px;font-weight:600;
   color:var(--fg3);background:var(--bg3);border:1px solid var(--border);
   transition:all .15s;white-space:nowrap;
 }
@@ -141,10 +141,10 @@ body.sim-mode .hdivider{display:block}
 .tab-spacer{flex:1}
 .tab-open{
   display:inline-flex;align-items:center;justify-content:center;
-  width:4.6cqw;height:4.6cqw;border-radius:1cqw;color:var(--fg2);
+  width:28px;height:28px;border-radius:6px;color:var(--fg2);
 }
 .tab-open:hover{background:var(--bg3);color:var(--fg)}
-.tab-open svg{width:3cqw;height:3cqw}
+.tab-open svg{width:16px;height:16px}
 .view{flex:1;min-height:0;position:relative;background:#111}
 .view iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
 
@@ -163,23 +163,18 @@ body.sim-mode .sim-row{display:block}
 }
 .divider:hover,.divider.dragging{background:var(--accent)}
 
-/* ── Right sensor column (inline panel, width-proportional text) ── */
-.right{display:flex;flex-direction:column;min-width:0;flex-shrink:0;background:var(--bg2);container-type:inline-size}
-.right-head{
-  display:flex;align-items:center;height:6cqw;flex-shrink:0;
-  padding:0 1.6cqw;border-bottom:1px solid var(--border);
-}
-.right-title{font-size:2.4cqw;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--fg3)}
+/* ── Right sensor column (inline panel, fixed type sizes) ── */
+.right{display:flex;flex-direction:column;min-width:0;flex-shrink:0;background:var(--bg2)}
 .right .panel{width:100%;min-width:0;flex:1;border-left:none}
-.right .panel-section{padding:1.7cqw 1cqw}
-.right .panel-section.panel-section-flush .panel-title{padding:0 1cqw}
-.right .panel-title{font-size:3.2cqw;margin-bottom:1.2cqw;gap:1.2cqw}
-.right .panel-title select{font-size:2.7cqw;border-radius:1cqw;padding:0.3cqw 0.6cqw}
-.right .panel-row{font-size:3.6cqw;padding:0.6cqw 0}
-.right .panel-value{font-size:3.5cqw}
-.right .battery-bar{height:1.6cqw;border-radius:0.8cqw;margin-top:1.2cqw}
-.right .panel-restart{padding:2cqw !important}
-.right .btn-restart{font-size:3.1cqw;padding:1.3cqw 4.5cqw;border-radius:1.6cqw}
+.right .panel-section{padding:12px 8px}
+.right .panel-section.panel-section-flush .panel-title{padding:0 8px}
+.right .panel-title{font-size:14px;margin-bottom:8px;gap:8px}
+.right .panel-title select{font-size:12px;border-radius:5px;padding:2px 4px}
+.right .panel-row{font-size:14px;padding:4px 0}
+.right .panel-value{font-size:14px}
+.right .battery-bar{height:8px;border-radius:4px;margin-top:8px}
+.right .panel-restart{padding:12px !important}
+.right .btn-restart{font-size:13px;padding:8px 26px;border-radius:8px}
 </style>
 </head>
 <body>
@@ -189,14 +184,14 @@ body.sim-mode .sim-row{display:block}
 
     <!-- Control (inline; id/class kept — control.js gates sending on #page-control.active) -->
     <div class="ctrl-col active" id="page-control">
-      <!-- Speed / Steering -->
+      <!-- Drive (speed / steering) -->
       <div class="cc">
         <div class="cc-head">
-          Speed / Steering
+          Drive
           <div class="cc-spacer"></div>
           <div class="ctrl-mode-switch">
-            <button class="ctrl-mode active" data-group="drive" data-mode="continuous" onclick="CTRL.setMode('drive','continuous')">Continuous</button>
-            <button class="ctrl-mode" data-group="drive" data-mode="discrete" onclick="CTRL.setMode('drive','discrete')">Discrete</button>
+            <button class="ctrl-mode active" data-group="drive" data-mode="continuous" title="Joystick (continuous)" onclick="CTRL.setMode('drive','continuous')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
+            <button class="ctrl-mode" data-group="drive" data-mode="discrete" title="D-pad (discrete)" onclick="CTRL.setMode('drive','discrete')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z"/></svg></button>
           </div>
         </div>
         <div class="ctrl-area" id="ctrl-drive-area">
@@ -227,14 +222,14 @@ body.sim-mode .sim-row{display:block}
         </div>
       </div>
 
-      <!-- Pan / Tilt -->
+      <!-- Look (camera pan / tilt) -->
       <div class="cc">
         <div class="cc-head">
-          Pan / Tilt
+          Look
           <div class="cc-spacer"></div>
           <div class="ctrl-mode-switch">
-            <button class="ctrl-mode active" data-group="cam" data-mode="continuous" onclick="CTRL.setMode('cam','continuous')">Continuous</button>
-            <button class="ctrl-mode" data-group="cam" data-mode="discrete" onclick="CTRL.setMode('cam','discrete')">Discrete</button>
+            <button class="ctrl-mode active" data-group="cam" data-mode="continuous" title="Joystick (continuous)" onclick="CTRL.setMode('cam','continuous')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
+            <button class="ctrl-mode" data-group="cam" data-mode="discrete" title="D-pad (discrete)" onclick="CTRL.setMode('cam','discrete')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z"/></svg></button>
           </div>
         </div>
         <div class="ctrl-area" id="ctrl-cam-area">
@@ -258,10 +253,6 @@ body.sim-mode .sim-row{display:block}
         <div class="ctrl-info">
           <span>Pan: <strong id="ctrl-pan">0</strong>°</span>
           <span>Tilt: <strong id="ctrl-tilt">0</strong>°</span>
-        </div>
-        <div class="ctrl-max-speed" aria-hidden="true" style="visibility:hidden">
-          <label>Max: <strong>1.0</strong> m/s</label>
-          <input type="range" min="0" max="1" step="1" value="0" tabindex="-1">
         </div>
       </div>
     </div>
@@ -294,9 +285,6 @@ body.sim-mode .sim-row{display:block}
 
 <!-- Sensors (inline panel) -->
 <div class="right" id="right">
-  <div class="right-head">
-    <span class="right-title">Sensors</span>
-  </div>
   <div class="panel" id="sensor-panel">
     <div class="panel-section panel-section-flush">
       <div class="panel-title">Camera

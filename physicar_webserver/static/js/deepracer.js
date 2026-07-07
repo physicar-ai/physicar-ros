@@ -45,11 +45,21 @@ const DR = {
   },
 
   _applyStatus(d) {
+    // Status arrives every ~2s over SSE — re-render ONLY what actually
+    // changed. Unconditional renderProbs()/drawAction() here used to wipe
+    // the probability bars and the action canvas between inference frames
+    // (visible as a 2s empty-then-refill flicker).
+    const prevSig = JSON.stringify(this.actionSpace)
+      + '|' + [...this.loadedModels].sort().join(',')
+      + '|' + this.activeModel + '|' + this.isRunning;
+
     this.activeModel = d.model_loaded ? d.model_name : null;
     this.isRunning = d.inference_running;
     this.loadedModels = new Set(JSON.parse(d.loaded_models_json || '[]'));
     if (d.model_loaded && d.action_space_json) {
       try { this.actionSpace = JSON.parse(d.action_space_json); } catch {}
+    } else if (!d.model_loaded) {
+      this.actionSpace = [];
     }
     if (d.speed_percent !== undefined) {
       this.speedPercent = d.speed_percent;
@@ -62,9 +72,17 @@ const DR = {
       if (sel && sel.value !== v) sel.value = v;
     }
     this.updateStatus();
-    this.renderModels();
-    this.renderProbs();
-    this.drawAction(0, 0, -1, []);
+
+    const sig = JSON.stringify(this.actionSpace)
+      + '|' + [...this.loadedModels].sort().join(',')
+      + '|' + this.activeModel + '|' + this.isRunning;
+    if (sig !== prevSig) {
+      this.renderModels();
+      this.renderProbs();
+      // Reset the canvas only when idle — while running, the inference
+      // stream owns the canvas and repaints it at the inference rate.
+      if (!this.isRunning) this.drawAction(0, 0, -1, []);
+    }
     if (this.isRunning && !this.inferenceActive) this.startStream();
   },
 
