@@ -1,0 +1,20 @@
+# Shell scripts and configs run on Linux — keep LF even on Windows checkouts.
+*.sh text eol=lf
+*.py text eol=lf
+*.xml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.service text eol=lf
+*.conf text eol=lf
+*.rules text eol=lf
+*.dts text eol=lf
+bashrc-append text eol=lf
+
+# Binaries
+*.png binary
+*.jpg binary
+*.ico binary
+*.mp3 binary
+*.vsix binary
+*.dtbo binary
