@@ -455,7 +455,7 @@ server {
     location ~ ^/(app|deepracer|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
-        }엥
+        }
         proxy_pass http://fastapi_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
