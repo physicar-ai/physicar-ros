@@ -41,6 +41,16 @@ echo "[1/7] System configuration..."
 # Limit journald log size (protect SD card lifespan)
 sed -i 's/^#SystemMaxUse=.*/SystemMaxUse=50M/' /etc/systemd/journald.conf
 
+# Kernel UDP buffers for DDS. The boot-time SEDP burst of 13+ localhost
+# participants overflows the 208KB default (UdpRcvbufErrors) and endpoints
+# never match — topics look alive but carry no data.
+tee /etc/sysctl.d/99-physicar-dds.conf >/dev/null <<'__SYSCTL__'
+net.core.rmem_max=16777216
+net.core.rmem_default=4194304
+net.core.wmem_max=16777216
+__SYSCTL__
+sysctl --system >/dev/null 2>&1 || true
+
 # ── Deploy config files ──
 
 ln -sf "$DEPLOY_DIR/etc/security/pwquality.conf" /etc/security/pwquality.conf

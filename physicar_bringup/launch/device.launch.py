@@ -279,11 +279,12 @@ def generate_launch_description():
                 executable='topic_watchdog_node',
                 name='topic_watchdog',
                 output='screen',
-                # Long startup grace: the watchdog starts at t=20 but its own
-                # subscriptions can take a while to match under localhost discovery.
-                # Wait well past that before it may kill, so it never false-kills a
-                # healthy node it simply hasn't discovered yet.
-                parameters=[{'startup_grace_sec': 60.0}],
+                # Disabled: its own subscriptions can starve during the boot
+                # discovery burst, so it SIGTERMs healthy nodes ("stale" topics
+                # it never matched) in an endless kill loop that also leaves
+                # zombie /dev/shm ports behind. respawn=True on each node
+                # already covers real crashes.
+                parameters=[{'enabled': False, 'startup_grace_sec': 60.0}],
                 respawn=True,
                 respawn_delay=5.0,
             )

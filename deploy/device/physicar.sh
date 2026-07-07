@@ -718,6 +718,19 @@ export DISPLAY=:1
 source /opt/ros/jazzy/setup.bash
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
+# UDP-only DDS transport. Fast DDS shared-memory transport leaves zombie
+# port files in /dev/shm when a node dies uncleanly; publishers writing to
+# such a port block forever and every topic silently freezes (camera/lidar/
+# battery all stale while the processes look alive). Localhost UDP with the
+# enlarged kernel buffers below handles the full sensor load.
+export FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+rm -f /dev/shm/fastrtps_* 2>/dev/null
+
+# Absorb the boot-time discovery burst: 13+ DDS participants exchange SEDP
+# on 127.0.0.1 at once and the 208KB kernel default drops datagrams
+# (UdpRcvbufErrors), leaving endpoints unmatched.
+sudo sysctl -qw net.core.rmem_max=16777216 net.core.rmem_default=4194304 net.core.wmem_max=16777216 2>/dev/null || true
+
 UPDATE_SIGNAL="/tmp/.physicar-update-ready"
 
 git config --global --add safe.directory "$PHYSICAR_ROS_DIR" 2>/dev/null || true
