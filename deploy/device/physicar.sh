@@ -91,24 +91,6 @@ sudo mkdir -p "$PHYSICAR_DIR" "$PHYSICAR_WS/src"
 sudo mkdir -p /var/lib/physicar /run/physicar
 sudo chown -R physicar:physicar "$PHYSICAR_WS" /run/physicar
 
-# ────────────────── User-data layout migration (one-time) ──────────────────
-# MyApp and DeepRacer user data moved into the student workspace:
-#   ~/physicar_ws/myapp.sh|myapp.log      → ~/physicar_ws/myapp/run.sh|run.log
-#   /opt/physicar/userdata/deepracer/...  → ~/physicar_ws/deepracer/...
-STUDENT_WS="/home/physicar/physicar_ws"
-sudo -u physicar mkdir -p "$STUDENT_WS/myapp" "$STUDENT_WS/deepracer/models"
-if [ -f "$STUDENT_WS/myapp.sh" ] && [ ! -f "$STUDENT_WS/myapp/run.sh" ]; then
-  sudo -u physicar mv "$STUDENT_WS/myapp.sh" "$STUDENT_WS/myapp/run.sh"
-fi
-if [ -f "$STUDENT_WS/myapp.log" ] && [ ! -f "$STUDENT_WS/myapp/run.log" ]; then
-  sudo -u physicar mv "$STUDENT_WS/myapp.log" "$STUDENT_WS/myapp/run.log"
-fi
-if [ -d "$PHYSICAR_DIR/deepracer/models" ]; then
-  sudo cp -an "$PHYSICAR_DIR/deepracer/." "$STUDENT_WS/deepracer/" \
-    && sudo rm -rf "$PHYSICAR_DIR/deepracer"
-  sudo chown -R physicar:physicar "$STUDENT_WS/deepracer"
-fi
-
 # ────────────────── Hostname/Password Setup ──────────────────
 
 SERIAL=$(tr -d '\0' </sys/firmware/devicetree/base/serial-number 2>/dev/null || echo "unknown")

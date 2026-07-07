@@ -38,22 +38,7 @@ else
 fi
 chmod 644 /tmp/pc-root.conf
 
-# ── User-data layout migration (one-time) ──
-# MyApp and DeepRacer user data moved into the student workspace:
-#   ~/physicar_ws/myapp.sh|myapp.log      → ~/physicar_ws/myapp/run.sh|run.log
-#   /opt/physicar/userdata/deepracer/...  → ~/physicar_ws/deepracer/...
 STUDENT_WS="/home/physicar/physicar_ws"
-mkdir -p "$STUDENT_WS/myapp" "$STUDENT_WS/deepracer/models"
-if [ -f "$STUDENT_WS/myapp.sh" ] && [ ! -f "$STUDENT_WS/myapp/run.sh" ]; then
-  mv "$STUDENT_WS/myapp.sh" "$STUDENT_WS/myapp/run.sh"
-fi
-if [ -f "$STUDENT_WS/myapp.log" ] && [ ! -f "$STUDENT_WS/myapp/run.log" ]; then
-  mv "$STUDENT_WS/myapp.log" "$STUDENT_WS/myapp/run.log"
-fi
-if [ -d /opt/physicar/userdata/deepracer/models ]; then
-  cp -an /opt/physicar/userdata/deepracer/. "$STUDENT_WS/deepracer/" \
-    && rm -rf /opt/physicar/userdata/deepracer
-fi
 
 # ── code-server webview microphone/camera patch (idempotent, every boot) ──
 # The install script patches once, but a code-server update restores the
