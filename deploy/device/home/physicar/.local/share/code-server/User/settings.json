@@ -1,5 +1,8 @@
 {
+  "chat.disableAIFeatures": true,
   "chat.sendElementsToChat.enabled": false,
+  "workbench.startupEditor": "none",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
   "editor.fontSize": 14,
   "editor.tabSize": 4,
   "files.autoSave": "afterDelay",

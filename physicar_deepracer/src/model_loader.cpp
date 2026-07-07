@@ -16,9 +16,9 @@ namespace fs = std::filesystem;
 
 namespace physicar_deepracer {
 
-ModelLoader::ModelLoader(rclcpp::Logger logger) : logger_(logger) {
-    fs::create_directories(MODELS_BASE_PATH);
-}
+// No eager directory creation: an empty ~/physicar_ws/deepracer in the student
+// workspace is noise. Upload/config-save paths create directories on demand.
+ModelLoader::ModelLoader(rclcpp::Logger logger) : logger_(logger) {}
 
 std::vector<std::string> ModelLoader::list_models() const {
     std::vector<std::string> models;

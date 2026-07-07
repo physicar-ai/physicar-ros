@@ -48,9 +48,6 @@ class ModelLoader:
     def __init__(self, logger=None):
         self.logger = logger
         self._current_model: Optional[ModelInfo] = None
-        
-        # Ensure directories exist
-        os.makedirs(constants.MODELS_BASE_PATH, exist_ok=True)
     
     def _log(self, msg: str, level: str = "info"):
         if self.logger:

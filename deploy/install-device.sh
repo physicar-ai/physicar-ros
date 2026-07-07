@@ -681,6 +681,32 @@ if [ -n "$CS_RES" ]; then
   cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_RES/code-512.png"
 fi
 
+# code-server 4.12x serves the browser tab icon from src/browser/media
+# (workbench.html links favicon-dark-support.svg first, then favicon.ico) —
+# the resources/server copies above never reach the tab. Replace the ico,
+# both SVGs (as an SVG-wrapped PNG), and the PWA icons.
+CS_MEDIA=$(find /usr/local/lib -path '*/code-server-*/src/browser/media' -type d 2>/dev/null | head -1)
+if [ -n "$CS_MEDIA" ]; then
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/favicon.ico" "$CS_MEDIA/favicon.ico"
+  _B64=$(base64 -w0 "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png")
+  for _svg in favicon.svg favicon-dark-support.svg; do
+    printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$_B64" > "$CS_MEDIA/$_svg"
+  done
+  for _png in pwa-icon-192.png pwa-icon-maskable-192.png; do
+    [ -f "$CS_MEDIA/$_png" ] && cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png" "$CS_MEDIA/$_png"
+  done
+  for _png in pwa-icon-512.png pwa-icon-maskable-512.png; do
+    [ -f "$CS_MEDIA/$_png" ] && cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_MEDIA/$_png"
+  done
+fi
+
+# Workbench titlebar icon (.window-appicon) — CSS points at out/media/code-icon.svg
+CS_OUT_MEDIA=$(find /usr/local/lib -path '*/code-server-*/lib/vscode/out/media' -type d 2>/dev/null | head -1)
+if [ -n "$CS_OUT_MEDIA" ] && [ -f "$CS_OUT_MEDIA/code-icon.svg" ]; then
+  _B64=$(base64 -w0 "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png")
+  printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$_B64" > "$CS_OUT_MEDIA/code-icon.svg"
+fi
+
 # code-server user settings
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
 sudo -u physicar mkdir -p "$CS_USER_DIR"
@@ -715,7 +741,14 @@ sudo -u physicar mkdir -p /opt/physicar/userdata
 sudo -u physicar touch /opt/physicar/userdata/physicar.log
 
 # ── Seed ~/.bashrc for physicar user ──
-sudo -u physicar bash -c 'cat "$1" >> /home/physicar/.bashrc' -- "$DEPLOY_DIR/home/physicar/bashrc-append"
+# Source the repo file directly (not a copy): env changes shipped in future
+# updates take effect on the next shell without re-running install.
+grep -qF "deploy/device/bashrc-append" /home/physicar/.bashrc 2>/dev/null || \
+  sudo -u physicar tee -a /home/physicar/.bashrc > /dev/null <<'__BASHRC_HOOK__'
+
+# physicar-ros environment
+. /opt/physicar/src/physicar-ros/deploy/device/bashrc-append
+__BASHRC_HOOK__
 
 # echo "DEV=true" | tee /opt/physicar/userdata/.env
 

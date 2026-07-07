@@ -27,6 +27,12 @@ export MESA_GL_VERSION_OVERRIDE=3.3
 source /opt/ros/jazzy/setup.bash
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
+# Same loopback-pinned DDS profile as the device (fastdds-lo.xml):
+# identical transport behavior in SIM and on hardware, and no SHM →
+# no Docker /dev/shm pressure.
+export FASTRTPS_DEFAULT_PROFILES_FILE="$PHYSICAR_ROS_DIR/deploy/device/fastdds-lo.xml"
+rm -f /dev/shm/fastrtps_* 2>/dev/null
+
 UPDATE_SIGNAL="/tmp/.physicar-update-ready"
 
 git config --global --add safe.directory "$PHYSICAR_ROS_DIR" 2>/dev/null || true

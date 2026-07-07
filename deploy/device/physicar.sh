@@ -344,7 +344,8 @@ done
     _file_psk=$(sudo grep -m1 '^psk=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     _file_iface=$(sudo grep -m1 '^interface-name=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     if [ "$_file_ssid" = "$DEVICE_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ] \
-       && [ "$_file_iface" = "$_AP_IFACE" ]; then
+       && [ "$_file_iface" = "$_AP_IFACE" ] \
+       && sudo grep -q '^wps-method=1' "$_HOTSPOT_FILE" 2>/dev/null; then
       _need_write=0
     fi
   fi
@@ -375,6 +376,9 @@ proto=rsn
 pairwise=ccmp
 group=ccmp
 pmf=1
+# Disable WPS advertisement — Windows otherwise prompts for a router PIN
+# instead of the passphrase when connecting to the hotspot.
+wps-method=1
 psk=${PASSWORD}
 
 [ipv4]
@@ -632,7 +636,10 @@ mkdir -p "$CODE_USER_DIR"
 if [ ! -f "$CODE_USER_DIR/settings.json" ]; then
 cat > "$CODE_USER_DIR/settings.json" <<'CODE_SETTINGS'
 {
+  "chat.disableAIFeatures": true,
   "chat.sendElementsToChat.enabled": false,
+  "workbench.startupEditor": "none",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
   "editor.fontSize": 14,
   "editor.tabSize": 4,
   "files.autoSave": "afterDelay",
@@ -684,6 +691,25 @@ patch_codeserver_webview_media() {
   done < <(grep -rlF -e "$A_OLD" -e "$B_OLD" -e "$C_OLD" "$cs_vscode/out" 2>/dev/null)
   echo "[media-patch] patched $n file(s) under $cs_vscode/out"
 
+  # Pattern C edits the inline bootstrap script of the webview pre/index.html,
+  # whose sha256 is pinned in the same file's CSP meta tag. Recompute the hash
+  # or the browser blocks the script and every webview renders blank
+  # (extension panels, app.physicar viewer).
+  while IFS= read -r f; do
+    python3 - "$f" <<'CSPFIX' || true
+import sys, re, hashlib, base64
+p = sys.argv[1]
+t = open(p, encoding='utf-8').read()
+m = re.search(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", t, re.S)
+if m:
+    h = base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode()
+    new, n = re.subn(r"'sha256-[A-Za-z0-9+/=]+'", "'sha256-%s'" % h, t)
+    if n and new != t:
+        open(p, "w", encoding="utf-8").write(new)
+        print("[media-patch] CSP hash updated in " + p)
+CSPFIX
+  done < <(find "$cs_vscode/out" -path '*webview*/pre/index.html' 2>/dev/null)
+
   # Silent-failure guard: after patching, at least one file must carry one of
   # the patched allow-lists. If none do, a code-server update changed the
   # pattern shape (it happened at 4.12x already) — warn loudly so it shows up
@@ -707,7 +733,11 @@ if [ ! -f "$EXT_MARKER" ]; then
     for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml; do
       /usr/local/bin/code-server --install-extension "$EXT_ID" &>/dev/null || true
     done
-    touch "$EXT_MARKER"
+    # Marker only on success — installs need internet (Open VSX), which may
+    # not be up yet on first boot. No marker -> retried on the next boot.
+    if /usr/local/bin/code-server --list-extensions 2>/dev/null | grep -q '^physicar.physicar-ext$'; then
+      touch "$EXT_MARKER"
+    fi
   ) &
 fi
 
@@ -718,12 +748,14 @@ export DISPLAY=:1
 source /opt/ros/jazzy/setup.bash
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
-# UDP-only DDS transport. Fast DDS shared-memory transport leaves zombie
-# port files in /dev/shm when a node dies uncleanly; publishers writing to
-# such a port block forever and every topic silently freezes (camera/lidar/
-# battery all stale while the processes look alive). Localhost UDP with the
-# enlarged kernel buffers below handles the full sensor load.
-export FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+# Loopback-pinned UDP DDS transport (fastdds-lo.xml):
+#  - interfaceWhiteList 127.0.0.1 → hotspot/wifi/eth interface changes are
+#    invisible to DDS. With default transports Fast DDS re-scans interfaces
+#    on change, and running participants silently stop delivering data when
+#    ap0/wlan0 appear or bounce (camera/lidar/battery freeze while the
+#    processes look alive).
+#  - no SHM → no zombie /dev/shm ports after unclean node death.
+export FASTRTPS_DEFAULT_PROFILES_FILE="$PHYSICAR_ROS_DIR/deploy/device/fastdds-lo.xml"
 rm -f /dev/shm/fastrtps_* 2>/dev/null
 
 # Absorb the boot-time discovery burst: 13+ DDS participants exchange SEDP

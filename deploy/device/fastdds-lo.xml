@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Loopback-pinned Fast DDS profile for all device ROS nodes.
+
+  Every PhysiCar topic is machine-local (ROS_AUTOMATIC_DISCOVERY_RANGE=
+  LOCALHOST), but with default transports Fast DDS binds every interface and
+  re-scans on interface changes — when the ap0 hotspot or wlan0 comes up or
+  bounces AFTER the nodes started, running participants silently stop
+  delivering user data (camera/lidar/battery freeze while processes stay
+  alive). Whitelisting 127.0.0.1 makes physical interface changes invisible
+  to DDS. SHM is also disabled: unclean node deaths leave zombie /dev/shm
+  ports that wedge publishers.
+-->
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <transport_descriptors>
+      <transport_descriptor>
+        <transport_id>udp_loopback</transport_id>
+        <type>UDPv4</type>
+        <interfaceWhiteList>
+          <address>127.0.0.1</address>
+        </interfaceWhiteList>
+        <!-- A port-less initial peer expands to this many participant
+             indices. The default only reaches the first few participants;
+             this device runs ~14, so late starters (webserver, watchdog)
+             would never be discovered. -->
+        <maxInitialPeersRange>32</maxInitialPeersRange>
+      </transport_descriptor>
+    </transport_descriptors>
+    <participant profile_name="physicar_loopback" is_default_profile="true">
+      <rtps>
+        <useBuiltinTransports>false</useBuiltinTransports>
+        <userTransports>
+          <transport_id>udp_loopback</transport_id>
+        </userTransports>
+        <builtin>
+          <initialPeersList>
+            <locator>
+              <udpv4>
+                <address>127.0.0.1</address>
+              </udpv4>
+            </locator>
+          </initialPeersList>
+        </builtin>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>

@@ -3,12 +3,14 @@
 export DISPLAY=:1
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export PHYSICAR_ROS_DIR=/opt/physicar/src/physicar-ros
+# Same loopback-pinned DDS profile as physicar.service — student-launched
+# nodes stay immune to interface changes (hotspot/wifi/eth events).
+export FASTRTPS_DEFAULT_PROFILES_FILE=$PHYSICAR_ROS_DIR/deploy/device/fastdds-lo.xml
 export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml
 export NAV2_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/nav2_params.yaml
-export GZ_PARTITION=physicar
-export GZ_CONFIG_PATH=/usr/share/gz
-export GALLIUM_DRIVER=llvmpipe
-export MESA_GL_VERSION_OVERRIDE=3.3
+export XDG_RUNTIME_DIR=/tmp/runtime-$(id -u)
+export VGL_DISPLAY=:0
+export LD_PRELOAD=/usr/lib/libvglfaker.so
 source /opt/ros/jazzy/setup.bash
 source ~/physicar_ws/install/setup.bash 2>/dev/null || true
 eval "$(register-python-argcomplete ros2)"

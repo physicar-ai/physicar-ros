@@ -361,10 +361,15 @@ sudo -u physicar git config --global --add safe.directory "$PHYSICAR_WS/src/phys
 echo "[6/7] Bashrc + initial build..."
 
 # Append bashrc (idempotent)
+# Source the repo file directly (not a copy): env changes shipped in future
+# updates take effect on the next shell without re-running install.
 MARKER="# physicar-sim-env"
 if ! grep -q "$MARKER" /home/physicar/.bashrc 2>/dev/null; then
-  echo "$MARKER" >> /home/physicar/.bashrc
-  cat "$DEPLOY_DIR/home/physicar/bashrc-append" >> /home/physicar/.bashrc
+  cat >> /home/physicar/.bashrc <<'__BASHRC_HOOK__'
+
+# physicar-sim-env
+. /opt/physicar/src/physicar-ros/deploy/sim/bashrc-append
+__BASHRC_HOOK__
 fi
 
 # Allow nginx (www-data) to traverse /home/physicar
