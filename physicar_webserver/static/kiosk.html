@@ -185,19 +185,6 @@
                             <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
                                 <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
                             </div>
-                            <div class="ctrl-dpad hidden" id="ctrl-drive-dpad">
-                                <div class="dpad-grid">
-                                    <button class="dpad-btn" data-dir="fwd-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="fwd"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="fwd-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
-                                    <div class="dpad-center"></div>
-                                    <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="bwd-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="bwd"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="bwd-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
-                                </div>
-                            </div>
                         </div>
                         <div class="ctrl-info">
                             <span>Speed: <strong id="ctrl-speed">0.00</strong> m/s</span>
@@ -209,19 +196,6 @@
                         <div class="ctrl-area" id="ctrl-cam-area">
                             <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
                                 <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
-                            </div>
-                            <div class="ctrl-dpad hidden" id="ctrl-cam-dpad">
-                                <div class="dpad-grid">
-                                    <button class="dpad-btn" data-dir="up-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="up"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="up-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
-                                    <div class="dpad-center"></div>
-                                    <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="dn-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="dn"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
-                                    <button class="dpad-btn" data-dir="dn-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
-                                </div>
                             </div>
                         </div>
                         <div class="ctrl-info">
@@ -537,10 +511,6 @@
                     if (v && $(id)) $(id).value = v;
                 });
                 CTRL.init();
-                // Kiosk is joystick-only: force continuous without saving, so
-                // the /app page's saved mode preference is untouched.
-                CTRL.setMode('drive', 'continuous', true);
-                CTRL.setMode('cam', 'continuous', true);
             }
             requestAnimationFrame(() => { CTRL._drawJoystick('drive'); CTRL._drawJoystick('cam'); });
             startStateStream();
