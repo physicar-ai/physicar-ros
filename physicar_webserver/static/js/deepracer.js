@@ -185,7 +185,7 @@ const DR = {
     if (!btn) return;
     if (status === 'idle') {
       btn.className = 'import-btn';
-      btn.innerHTML = `➕ Import model<input type="file" accept=".tar.gz,.gz" id="dr-import-input" onchange="DR.importModel(this)" style="display:none">`;
+      btn.innerHTML = `➕ Import<input type="file" accept=".tar.gz,.gz" id="dr-import-input" onchange="DR.importModel(this)" style="display:none">`;
     } else {
       btn.className = 'import-btn importing';
       btn.innerHTML = `<span class="import-spinner"></span> ${text}`;

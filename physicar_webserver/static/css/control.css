@@ -1,11 +1,10 @@
-/* ===== Control column (embedded in /app, left side) =====
- * Drive and Look cards stacked vertically, equal heights (flex-basis 0).
- * DESIGN RULE: nothing wraps and nothing scales with the container —
- * every row is a fixed-height, nowrap line, and the mode switch is a
- * fixed-width icon toggle. Horizontal overflow is therefore impossible
- * down to ~140px column width. Only the joystick/d-pad flexes, fitting
- * the largest square via geometry-only container units. Truly tiny
- * windows fall back to a column scrollbar rather than overlapping.
+/* ===== Control card (embedded in the /app panel stack) =====
+ * Drive and Look cards side by side, equal widths (flex-basis 0).
+ * Joystick-only (continuous) control. DESIGN RULE: nothing wraps and
+ * nothing scales with the container — every row is a fixed-height,
+ * nowrap line. Only the joystick flexes, fitting the largest square via
+ * geometry-only container units. Truly tiny panels fall back to a
+ * scrollbar rather than overlapping.
  */
 
 .ctrl-col {
@@ -27,60 +26,30 @@
   min-width: 0;
 }
 
-/* Header: title + fixed-width icon toggle — single line, never wraps */
+/* Header: single fixed-height line, never wraps */
 .cc-head {
   display: flex; align-items: center; gap: 8px;
   font-size: 14px; font-weight: 600; color: var(--fg);
   flex-shrink: 0; white-space: nowrap; min-width: 0;
 }
-.cc-spacer { flex: 1; }
-
-/* Continuous / Discrete: icon segmented toggle (fixed ~64px) */
-.ctrl-mode-switch {
-  display: flex; gap: 2px; background: var(--bg);
-  border-radius: 7px; padding: 2px; flex-shrink: 0;
-}
-.ctrl-mode {
-  width: 30px; height: 22px; border-radius: 5px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--fg3);
-}
-.ctrl-mode svg { width: 14px; height: 14px; display: block; }
-.ctrl-mode:hover { color: var(--fg2); }
-.ctrl-mode.active { background: var(--accent); color: #fff; }
 
 /* ── Joystick / D-pad: the only flexible element ── */
+/* Drive card: joystick + vertical max-speed slider side by side */
+.ctrl-area-row {
+  flex: 1 1 auto; min-height: 60px;
+  display: flex; gap: 6px; min-width: 0;
+}
 .ctrl-area {
   flex: 1 1 auto; min-height: 60px;
   container-type: size;
   display: flex; align-items: center; justify-content: center;
 }
 /* Largest square that fits the area (geometry-only container units) */
-.ctrl-joystick-wrap,
-.ctrl-dpad {
+.ctrl-joystick-wrap {
   width: min(100cqw, 100cqh);
   height: min(100cqw, 100cqh);
 }
 .ctrl-joystick { width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
-
-.dpad-grid {
-  width: 100%; height: 100%;
-  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-  gap: 5px;
-}
-.dpad-btn {
-  background: var(--bg3); border: 1px solid var(--border); border-radius: 7px;
-  display: flex; align-items: center; justify-content: center;
-  touch-action: none; user-select: none; transition: all 0.1s;
-  min-width: 0; min-height: 0;
-}
-.dpad-btn:hover { background: var(--border); }
-.dpad-btn.active { background: var(--accent); border-color: var(--accent); }
-.dpad-arrow { display: inline-block; font-size: 18px; line-height: 1; color: var(--fg2); transform: rotate(var(--rot, 0deg)); }
-.dpad-btn.active .dpad-arrow { color: #fff; }
-.dpad-center { background: var(--bg); border-radius: 7px; }
-
-.hidden { display: none !important; }
 
 /* ── Readouts: fixed 2-column grid, one line each, never wraps ── */
 .ctrl-info {
@@ -91,12 +60,16 @@
 .ctrl-info span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ctrl-info strong { color: var(--fg); font-weight: 600; }
 
-/* ── Max-speed slider (drive card only): single fixed-height line ── */
-.ctrl-max-speed {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 12px; color: var(--fg2); flex-shrink: 0;
-  height: 20px; white-space: nowrap; min-width: 0;
+/* ── Max-speed slider (drive card only): vertical, left of the joystick ── */
+.ctrl-vslider {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; flex-shrink: 0; width: 34px; padding: 2px 0;
+  font-size: 11px; color: var(--fg2); white-space: nowrap;
 }
-.ctrl-max-speed label { white-space: nowrap; flex-shrink: 0; }
-.ctrl-max-speed strong { color: var(--fg); }
-.ctrl-max-speed input[type="range"] { flex: 1; min-width: 24px; accent-color: var(--accent); }
+.ctrl-vslider-val strong { color: var(--fg); font-weight: 600; font-size: 12px; }
+.ctrl-vslider-label { color: var(--fg3); }
+.ctrl-vslider input[type="range"] {
+  flex: 1; min-height: 40px;
+  writing-mode: vertical-lr; direction: rtl;   /* bottom→top vertical slider */
+  accent-color: var(--accent);
+}

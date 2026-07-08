@@ -146,6 +146,7 @@ if [ ! -f /opt/ros/jazzy/setup.bash ]; then
   wait_for_apt
   apt-get install -y --no-install-recommends \
     ros-jazzy-ros-base \
+    ros-jazzy-rmw-cyclonedds-cpp \
     ros-jazzy-rviz2 \
     ros-jazzy-rqt \
     ros-jazzy-rqt-common-plugins \

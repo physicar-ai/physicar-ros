@@ -878,3 +878,107 @@
     padding: 6px 4px;
 }
 .cert-gate-skip:hover { color: #ccc; }
+
+/* ═══ Control panel (Studio) — native drive/look/velocity + camera/lidar ═══ */
+/* Palette vars consumed by control.css (.cc/.ctrl-* and .dpad-*) and the tiles
+   below — tuned to the kiosk gradient theme, same language as /app. */
+:root {
+    --bg: #14142a;
+    --bg2: rgba(255,255,255,0.05);
+    --bg3: rgba(255,255,255,0.09);
+    --fg: #e1e4ea; 
+    --fg2: #9aa0b0; 
+    --fg3: #6a7080;
+    --accent: #7e57c2; 
+    --accent-hover: #6a3cb5;
+    --green: #22c55e; 
+    --red: #ef4444; 
+    --orange: #f59e0b;
+    --border: rgba(255,255,255,0.12); 
+    --radius: 8px;
+}
+#panel-studio { padding: 8px; }
+#panel-studio.active { display: flex; flex-direction: row; gap: 8px; }
+
+/* ── Left column: Drive / Look cards + Velocity strip ── */
+.studio-left { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.studio-left .cc { flex: 1; min-height: 0; }
+
+/* Vertical max-speed slider — absolutely positioned at the left edge so the
+   Drive joystick stays exactly centered like the Look joystick below it. */
+#ctrl-drive-area { position: relative; }
+.ctrl-vmax {
+    position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+    height: 92%;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+}
+.ctrl-vmax-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg3); }
+.ctrl-vmax-val { font-size: 11px; font-weight: 600; color: var(--fg); font-family: 'SF Mono','Consolas',monospace; }
+/* Plain-div vertical slider (native range styling is unreliable on the
+   kiosk chromium): track + fill + thumb, driven by pointer events. */
+.ctrl-vmax-slot { flex: 1; position: relative; width: 20px; min-height: 40px; touch-action: none; cursor: pointer; }
+.vmax-track {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 4px;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.14); border-radius: 2px;
+}
+.vmax-fill {
+    position: absolute; left: 50%; bottom: 0; width: 4px;
+    transform: translateX(-50%);
+    background: var(--accent); border-radius: 2px;
+}
+.vmax-thumb {
+    position: absolute; left: 50%; width: 14px; height: 14px; border-radius: 50%;
+    transform: translate(-50%, 50%);
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(126,87,194,0.25);
+}
+
+/* ── Right column: camera (locked 4:3 → no letterboxing) + lidar ── */
+.studio-right { flex: 0 0 292px; display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+.st-cam, .st-lidar {
+    position: relative; background: #0a0a0f;
+    border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden;
+}
+.st-cam { flex: 0 0 auto; width: 100%; aspect-ratio: 4 / 3; }
+.st-cam img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-lidar { flex: 1; min-height: 0; }
+.st-lidar canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* Overlay chips on the sensor tiles */
+.st-overlay {
+    position: absolute; top: 8px; left: 8px; z-index: 2;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: rgba(255,255,255,0.78);
+    background: rgba(10,10,15,0.55); backdrop-filter: blur(4px);
+    padding: 3px 9px; border-radius: 999px;
+    pointer-events: none;
+}
+.st-sel-tr { position: absolute; top: 6px; right: 8px; display: flex; gap: 4px; z-index: 2; }
+.st-select {
+    appearance: none; -webkit-appearance: none;
+    background: rgba(10,10,15,0.55) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'><path d='M0 0l4 5 4-5z' fill='%239aa0b0'/></svg>") no-repeat right 7px center;
+    backdrop-filter: blur(4px);
+    color: #d5d8e0; border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px; font-size: 11px; font-weight: 600;
+    padding: 3px 20px 3px 10px; line-height: 1.2;
+}
+.st-select:focus { outline: none; border-color: var(--accent); }
+.st-select option { background: #1a1a2e; color: #d5d8e0; }
+
+/* Connection-lost overlay (core.js DeviceWatcher) */
+.conn-lost-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 5000; display: none; align-items: center; justify-content: center; padding: 1rem; }
+.conn-lost-overlay.show { display: flex; }
+.conn-lost { background: #1f2233; border: 1px solid var(--border); border-radius: 12px; padding: 2rem 2.5rem; text-align: center; max-width: 360px; }
+.conn-lost-title { font-size: 1.1rem; font-weight: 600; color: var(--fg); margin-top: 1rem; }
+.conn-lost-body { font-size: 0.9rem; color: var(--fg2); margin-top: 0.4rem; }
+.conn-spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto; animation: connSpin 0.9s linear infinite; }
+@keyframes connSpin { to { transform: rotate(360deg); } }
+
+/* core.js showToast (sensor modules) — separate from kiosk's own #toast */
+.toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; }
+.toast-container .toast { position: static; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.82rem; color: #fff; max-width: 320px; opacity: 1; transform: none; }
+.toast-container .toast.info { background: var(--accent); }
+.toast-container .toast.error { background: var(--red); }

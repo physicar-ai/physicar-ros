@@ -144,7 +144,7 @@ apt-get install -y \
   bluez bluez-tools \
   dkms git \
   ca-certificates curl jq avahi-daemon \
-  xorg xinit unclutter feh mesa-utils \
+  xorg xinit unclutter-xfixes feh mesa-utils \
   fonts-noto fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji \
   nginx openssl \
   xvfb x11vnc novnc openbox tint2 xterm \
@@ -296,6 +296,7 @@ apt-get update -y
 wait_for_apt
 apt-get install -y \
   ros-jazzy-ros-base \
+  ros-jazzy-rmw-cyclonedds-cpp \
   ros-jazzy-rviz2 \
   ros-jazzy-rqt \
   ros-jazzy-rqt-common-plugins \

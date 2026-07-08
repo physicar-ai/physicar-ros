@@ -8,28 +8,15 @@ const CTRL = {
 
   // State
   maxSpeed: 1.0,             // m/s, adjustable
-  mode: { drive: 'continuous', cam: 'continuous' },
   joy: { drive: { x: 0, y: 0 }, cam: { x: 0, y: 0 } },
-  dpad: { drive: null, cam: null },
   _sendTimer: null,
   _joyDragging: { drive: false, cam: false },
   _joyPointer: { drive: null, cam: null },
 
   init() {
-    // Restore saved modes
-    const savedDrive = localStorage.getItem('ctrl-mode-drive');
-    const savedCam = localStorage.getItem('ctrl-mode-cam');
-    if (savedDrive === 'continuous' || savedDrive === 'discrete') this.mode.drive = savedDrive;
-    if (savedCam === 'continuous' || savedCam === 'discrete') this.mode.cam = savedCam;
-
     this._initJoystick('drive');
     this._initJoystick('cam');
-    this._initDpad('drive');
-    this._initDpad('cam');
     this._initKeyboard();
-    // Apply restored modes to UI
-    this.setMode('drive', this.mode.drive, true);
-    this.setMode('cam', this.mode.cam, true);
     this._sendTimer = setInterval(() => this._sendCommands(), 1000 / this.SEND_HZ);
     this._openStream('/speed');    // pre-connect before the first input
     this._openStream('/steering');
@@ -42,29 +29,6 @@ const CTRL = {
         if (ws && ws.readyState === WebSocket.OPEN) { try { ws.send('{}'); } catch (e) {} }
       }
     }, 25000);
-  },
-
-  setMode(group, mode, _skipSave) {
-    this.mode[group] = mode;
-    if (!_skipSave) localStorage.setItem(`ctrl-mode-${group}`, mode);
-    // Update UI buttons
-    document.querySelectorAll(`.ctrl-mode[data-group="${group}"]`).forEach(b => {
-      b.classList.toggle('active', b.dataset.mode === mode);
-    });
-    // Toggle panels
-    const joyEl = $(group === 'drive' ? 'ctrl-drive-joy' : 'ctrl-cam-joy');
-    const dpadEl = $(group === 'drive' ? 'ctrl-drive-dpad' : 'ctrl-cam-dpad');
-    if (mode === 'continuous') {
-      joyEl.classList.remove('hidden');
-      dpadEl.classList.add('hidden');
-    } else {
-      joyEl.classList.add('hidden');
-      dpadEl.classList.remove('hidden');
-    }
-    // Reset values
-    this.joy[group] = { x: 0, y: 0 };
-    this.dpad[group] = null;
-    this._drawJoystick(group);
   },
 
   setMaxSpeed(val) {
@@ -203,34 +167,6 @@ const CTRL = {
     }
   },
 
-  // ─── D-Pad ────────────────────────────────────────────────
-  _initDpad(group) {
-    const svg = (group === 'drive' ? 'ctrl-drive-dpad' : 'ctrl-cam-dpad');
-    const el = $(svg);
-    if (!el) return;
-
-    const btns = el.querySelectorAll('.dpad-btn');
-    btns.forEach(btn => {
-      const dir = btn.dataset.dir;
-
-      const activate = (e) => {
-        e.preventDefault();
-        this.dpad[group] = dir;
-        btn.classList.add('active');
-      };
-      const deactivate = (e) => {
-        e.preventDefault();
-        this.dpad[group] = null;
-        btn.classList.remove('active');
-      };
-
-      btn.addEventListener('pointerdown', activate);
-      btn.addEventListener('pointerup', deactivate);
-      btn.addEventListener('pointerleave', deactivate);
-      btn.addEventListener('pointercancel', deactivate);
-    });
-  },
-
   // ─── Keyboard ─────────────────────────────────────────────
   _keys: {},
 
@@ -276,55 +212,19 @@ const CTRL = {
 
     let speed = 0, steer = 0, pan = 0, tilt = 0;
 
-    // Keyboard override
+    // Keyboard override, else joystick: y = speed, x = steering
     const kb = this._getKeyboardDrive();
     if (kb) {
       speed = kb.speed;
       steer = kb.steer;
-    } else if (this.mode.drive === 'continuous') {
-      // Joystick: y = speed, x = steering
+    } else {
       speed = this.joy.drive.y * this.maxSpeed;
       steer = -this.joy.drive.x * this.MAX_STEER;
-    } else {
-      // D-pad
-      const d = this.dpad.drive;
-      if (d) {
-        const map = {
-          'fwd':   { s:  1, st: 0 },
-          'fwd-r': { s:  1, st: -1 },
-          'right': { s:  0, st: -1 },
-          'bwd-r': { s: -1, st: -1 },
-          'bwd':   { s: -1, st: 0 },
-          'bwd-l': { s: -1, st: 1 },
-          'left':  { s:  0, st: 1 },
-          'fwd-l': { s:  1, st: 1 },
-        };
-        const m = map[d];
-        if (m) { speed = m.s * this.maxSpeed; steer = m.st * this.MAX_STEER; }
-      }
     }
 
     // Camera
-    if (this.mode.cam === 'continuous') {
-      pan = -this.joy.cam.x * this.MAX_PAN;
-      tilt = this.joy.cam.y * this.MAX_TILT;
-    } else {
-      const d = this.dpad.cam;
-      if (d) {
-        const map = {
-          'up':    { p: 0,  t: 1 },
-          'up-r':  { p: -1, t: 1 },
-          'right': { p: -1, t: 0 },
-          'dn-r':  { p: -1, t: -1 },
-          'dn':    { p: 0,  t: -1 },
-          'dn-l':  { p: 1,  t: -1 },
-          'left':  { p: 1,  t: 0 },
-          'up-l':  { p: 1,  t: 1 },
-        };
-        const m = map[d];
-        if (m) { pan = m.p * this.MAX_PAN; tilt = m.t * this.MAX_TILT; }
-      }
-    }
+    pan = -this.joy.cam.x * this.MAX_PAN;
+    tilt = this.joy.cam.y * this.MAX_TILT;
 
     // Round to avoid float noise
     speed = Math.round(speed * 100) / 100;

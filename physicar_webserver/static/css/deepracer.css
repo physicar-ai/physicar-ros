@@ -1,15 +1,17 @@
 /* ===== DeepRacer page =====
- * Embedded-first design: this page usually lives in the /app center iframe
- * (roughly 400–700px wide), so the DEFAULT layout is a single vertical
- * column that scrolls — nothing squeezes side by side. On genuinely wide
- * viewports (standalone tab, ≥720px) the models list docks to the left.
- * Type and chrome are fixed sizes; rows wrap instead of overflowing.
+ * Embedded-first design: this page lives in a fixed 4:3 panel of the /app
+ * stack (and occasionally a standalone tab). The layout is sized to the
+ * viewport EXACTLY — the page itself never scrolls (no iframe scrollbar):
+ * controls bar on top, models docked left, viz + probabilities filling the
+ * right. Anything that can outgrow the space (model list, probability
+ * chart) scrolls internally instead. Type and chrome are fixed sizes; rows
+ * wrap instead of overflowing.
  */
 
-body { height: 100vh; overflow-y: auto; }
+body { height: 100vh; overflow: hidden; }
 
 .stage {
-  min-height: 100%;
+  height: 100%;
   display: flex; flex-direction: column;
   gap: 8px;
   padding: 8px;
@@ -65,18 +67,15 @@ body { height: 100vh; overflow-y: auto; }
 .dr-active-state.loaded { background: rgba(126,87,194,0.18); color: var(--accent); }
 .dr-active-state.running { background: rgba(34,197,94,0.18); color: var(--green, #22c55e); }
 
-/* ── Body: single column by default (embedded); sidebar docks left when wide ── */
-.dr-body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
-.dr-sidebar { display: flex; flex-direction: column; flex-shrink: 0; }
-.dr-sidebar .model-list { max-height: 132px; }   /* ~4 rows, then scrolls */
-.dr-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
-
-@media (min-width: 720px) {
-  .dr-body { flex-direction: row; }
-  .dr-sidebar { width: 240px; overflow-y: auto; }
-  .dr-sidebar .model-list { max-height: none; flex: 1; }
-  .dr-main { flex: 1; }
+/* ── Body: models docked left, viz + probabilities right ── */
+.dr-body { display: flex; flex-direction: row; gap: 8px; flex: 1; min-height: 0; }
+.dr-sidebar {
+  display: flex; flex-direction: column; flex-shrink: 0;
+  width: clamp(180px, 38%, 420px); min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
 }
+.dr-sidebar .model-list { flex: 1; }
+.dr-main { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; min-height: 0; }
 
 /* Model list */
 .model-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
@@ -107,13 +106,13 @@ body { height: 100vh; overflow-y: auto; }
 
 /* Action visualization */
 .dr-viz { flex-shrink: 0; display: flex; flex-direction: column; }
-.dr-action-canvas { width: 100%; aspect-ratio: 5/2; max-height: 220px; background: #0a0a0a; border-radius: 6px; display: block; }
+.dr-action-canvas { width: 100%; aspect-ratio: 5/2; max-height: clamp(80px, 30vh, 300px); background: #0a0a0a; border-radius: 6px; display: block; }
 .dr-action-info { display: flex; gap: 6px 16px; font-size: 12px; margin-top: 5px; flex-shrink: 0; flex-wrap: wrap; }
 .dr-action-info span { color: var(--fg2); white-space: nowrap; }
 .dr-action-info strong { color: var(--fg); font-weight: 600; }
 
 /* Probabilities — takes the remaining height, scrolls inside */
-.dr-probs { flex: 1; display: flex; flex-direction: column; min-height: 140px; }
+.dr-probs { flex: 1; display: flex; flex-direction: column; min-height: 60px; }
 .dr-probs-scroll { flex: 1; overflow-y: auto; min-height: 0; }
 .dr-prob-chart { display: flex; flex-direction: column; gap: 4px; padding-top: 3px; }
 .dr-prob-row { display: flex; align-items: center; gap: 7px; font-size: 12px; height: 20px; flex-shrink: 0; }

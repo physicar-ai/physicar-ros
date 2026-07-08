@@ -11,6 +11,7 @@
       #boot-splash.hidden{opacity:0;pointer-events:none}
     </style>
     <link rel="stylesheet" href="/static/css/kiosk.css">
+    <link rel="stylesheet" href="/static/css/control.css">
     <link rel="stylesheet" href="/static/css/joy_settings.css">
 </head>
 <body>
@@ -18,13 +19,12 @@
     <div class="container">
         <div class="sidebar">
             <h1 onclick="location.reload()" style="cursor:pointer;">PHYSICAR AI</h1>
-            <div class="nav-section-label">System</div>
             <button class="nav-btn active" data-panel="network">Network</button>
             <button class="nav-btn" data-panel="settings">Settings</button>
-            <div class="nav-section-label">Apps</div>
-            <button class="nav-btn nav-btn-apps" data-panel="display-home"><span class="nav-btn-title">Home</span><span class="nav-btn-sub">/ :8000</span></button>
-            <button class="nav-btn nav-btn-apps" data-panel="display-vnc"><span class="nav-btn-title">VNC</span><span class="nav-btn-sub">/vnc :6080</span></button>
-            <button class="nav-btn nav-btn-apps" data-panel="display-myapp"><span class="nav-btn-title">My App</span><span class="nav-btn-sub">/myapp :5000</span></button>
+            <button class="nav-btn" data-panel="studio">Console</button>
+            <button class="nav-btn" data-panel="display-vnc">VNC</button>
+            <button class="nav-btn" data-panel="display-myapp">My App</button>
+            <button class="nav-btn" data-panel="display-deepracer">DeepRacer</button>
             
             <!-- Battery Status -->
             <div class="battery-status">
@@ -166,15 +166,119 @@
                 </div>
             </div>
             
-            <!-- Display Panels -->
-            <div class="panel" id="panel-display-home" style="overflow:hidden;">
-                <iframe class="iframe-panel" id="iframe-home" src="about:blank" allow="autoplay"></iframe>
+            <!-- Control: native drive/look/velocity + camera/lidar (no iframe; instant) -->
+            <div class="panel" id="panel-studio">
+                <!-- id/class match /app so control.js gates sending on .active -->
+                <div class="studio-left" id="page-control">
+                    <div class="cc">
+                        <div class="cc-head">Drive</div>
+                        <div class="ctrl-area" id="ctrl-drive-area">
+                            <div class="ctrl-vmax">
+                                <strong class="ctrl-vmax-val" id="ctrl-max-speed-val">1.0</strong>
+                                <div class="ctrl-vmax-slot" id="vmax-slot">
+                                    <div class="vmax-track"></div>
+                                    <div class="vmax-fill" id="vmax-fill"></div>
+                                    <div class="vmax-thumb" id="vmax-thumb"></div>
+                                </div>
+                                <span class="ctrl-vmax-label">Max</span>
+                            </div>
+                            <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
+                                <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
+                            </div>
+                            <div class="ctrl-dpad hidden" id="ctrl-drive-dpad">
+                                <div class="dpad-grid">
+                                    <button class="dpad-btn" data-dir="fwd-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="fwd"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="fwd-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
+                                    <div class="dpad-center"></div>
+                                    <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="bwd-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="bwd"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="bwd-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ctrl-info">
+                            <span>Speed: <strong id="ctrl-speed">0.00</strong> m/s</span>
+                            <span>Steer: <strong id="ctrl-steer">0</strong>&deg;</span>
+                        </div>
+                    </div>
+                    <div class="cc">
+                        <div class="cc-head">Look</div>
+                        <div class="ctrl-area" id="ctrl-cam-area">
+                            <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
+                                <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
+                            </div>
+                            <div class="ctrl-dpad hidden" id="ctrl-cam-dpad">
+                                <div class="dpad-grid">
+                                    <button class="dpad-btn" data-dir="up-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="up"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="up-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
+                                    <div class="dpad-center"></div>
+                                    <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="dn-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="dn"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
+                                    <button class="dpad-btn" data-dir="dn-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ctrl-info">
+                            <span>Pan: <strong id="ctrl-pan">0</strong>&deg;</span>
+                            <span>Tilt: <strong id="ctrl-tilt">0</strong>&deg;</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="studio-right">
+                    <div class="st-cam">
+                        <img id="p-camera" alt="">
+                        <div class="st-overlay">Camera</div>
+                        <div class="st-sel-tr">
+                            <select id="cam-res" class="st-select" onchange="changeCameraRes()">
+                                <option value="480" selected>480p</option>
+                                <option value="320">320p</option>
+                                <option value="160">160p</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="st-lidar">
+                        <canvas id="p-lidar"></canvas>
+                        <div class="st-overlay">LiDAR</div>
+                        <div class="st-sel-tr">
+                            <select id="lidar-step" class="st-select" onchange="changeLidarStep()">
+                                <option value="0.5">0.5&deg;</option>
+                                <option value="1">1&deg;</option>
+                                <option value="3" selected>3&deg;</option>
+                                <option value="5">5&deg;</option>
+                                <option value="10">10&deg;</option>
+                            </select>
+                            <select id="lidar-range" class="st-select" onchange="changeLidarRange()">
+                                <option value="2">2m</option>
+                                <option value="4" selected>4m</option>
+                                <option value="8">8m</option>
+                                <option value="16">16m</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <!-- sensors.js updateState() also writes battery; the sidebar already
+                     shows it, keep invisible stubs so the handler doesn't throw -->
+                <div style="display:none">
+                    <span id="p-battery"></span><span id="p-voltage"></span><div id="p-battery-fill"></div>
+                    <span id="p-linear"></span><span id="p-angular"></span>
+                </div>
             </div>
+
+            <!-- Display Panels (iframe apps) -->
             <div class="panel" id="panel-display-vnc" style="overflow:hidden;">
                 <iframe class="iframe-panel" id="iframe-vnc" src="about:blank" allow="autoplay"></iframe>
             </div>
             <div class="panel" id="panel-display-myapp" style="overflow:hidden;">
                 <iframe class="iframe-panel" id="iframe-myapp" src="about:blank" allow="autoplay"></iframe>
+            </div>
+            <div class="panel" id="panel-display-deepracer" style="overflow:hidden;">
+                <iframe class="iframe-panel" id="iframe-deepracer" src="about:blank" allow="autoplay"></iframe>
             </div>
 
             <!-- Settings Panel -->
@@ -407,7 +511,103 @@
     -->
 
     <script src="/static/vendor/qrcode.min.js"></script>
+    <script src="/static/js/core.js"></script>
+    <script src="/static/js/control.js"></script>
+    <script src="/static/js/sensors.js"></script>
     <script src="/static/js/joy_settings.js"></script>
     <script src="/static/js/kiosk.js"></script>
+    <script>
+    /* ── Studio panel lifecycle + last-panel restore ──
+       Streams (SSE/MJPEG) and the control send-loop run only while the
+       Studio panel is visible, mirroring how app iframes load on demand. */
+    (function () {
+        'use strict';
+        const LS_KEY = 'kiosk-panel';
+        let ctrlInited = false;
+        let studioActive = false;
+
+        function studioEnter() {
+            if (studioActive) return;
+            studioActive = true;
+            document.getElementById('page-control').classList.add('active');
+            if (!ctrlInited) {
+                ctrlInited = true;
+                ['cam-res', 'lidar-step', 'lidar-range'].forEach(id => {
+                    const v = localStorage.getItem(id);
+                    if (v && $(id)) $(id).value = v;
+                });
+                CTRL.init();
+                // Kiosk is joystick-only: force continuous without saving, so
+                // the /app page's saved mode preference is untouched.
+                CTRL.setMode('drive', 'continuous', true);
+                CTRL.setMode('cam', 'continuous', true);
+            }
+            requestAnimationFrame(() => { CTRL._drawJoystick('drive'); CTRL._drawJoystick('cam'); });
+            startStateStream();
+            startLidarStream();
+            startCameraStream();
+        }
+
+        function studioLeave() {
+            if (!studioActive) return;
+            studioActive = false;
+            document.getElementById('page-control').classList.remove('active');
+            if (stateES) { stateES.close(); stateES = null; }
+            if (lidarES) { lidarES.close(); lidarES = null; }
+            _stopCameraStream();
+            const cam = $('p-camera');
+            if (cam) cam.removeAttribute('src');
+        }
+
+        document.querySelectorAll('.nav-btn[data-panel]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const panel = btn.dataset.panel;
+                try { localStorage.setItem(LS_KEY, panel); } catch (e) {}
+                if (panel === 'studio') studioEnter(); else studioLeave();
+            });
+        });
+
+        // Custom vertical max-speed slider (form-control styling is unreliable
+        // on this chromium, so it is plain divs + pointer events).
+        (function () {
+            const slot = document.getElementById('vmax-slot');
+            if (!slot) return;
+            const fill = document.getElementById('vmax-fill');
+            const thumb = document.getElementById('vmax-thumb');
+            const label = document.getElementById('ctrl-max-speed-val');
+            const MIN = 0.5, MAX = 3.0;
+            let val = 1.0;
+            function render() {
+                const f = (val - MIN) / (MAX - MIN);
+                fill.style.height = (f * 100) + '%';
+                thumb.style.bottom = (f * 100) + '%';
+                label.textContent = val.toFixed(1);
+            }
+            function setFromY(clientY) {
+                const r = slot.getBoundingClientRect();
+                let f = 1 - (clientY - r.top) / r.height;
+                f = Math.max(0, Math.min(1, f));
+                val = Math.round((MIN + f * (MAX - MIN)) * 10) / 10;
+                CTRL.setMaxSpeed(val);
+                render();
+            }
+            let drag = false;
+            slot.addEventListener('pointerdown', e => { drag = true; slot.setPointerCapture(e.pointerId); setFromY(e.clientY); });
+            slot.addEventListener('pointermove', e => { if (drag) setFromY(e.clientY); });
+            slot.addEventListener('pointerup', () => { drag = false; });
+            slot.addEventListener('pointercancel', () => { drag = false; });
+            render();
+        })();
+
+        // Restore the last-clicked menu on load (kiosk.js wired the panel
+        // switching onclicks above, so a synthetic click does everything).
+        let saved = null;
+        try { saved = localStorage.getItem(LS_KEY); } catch (e) {}
+        if (saved && saved !== 'network') {
+            const btn = document.querySelector('.nav-btn[data-panel="' + saved + '"]');
+            if (btn) btn.click();
+        }
+    })();
+    </script>
 </body>
 </html>

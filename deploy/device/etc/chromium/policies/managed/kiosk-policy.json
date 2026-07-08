@@ -1,4 +1,7 @@
 {
+  "AllowFileSelectionDialogs": false,
+  "URLBlocklist": ["*"],
+  "URLAllowlist": ["localhost", "127.0.0.1"],
   "TranslateEnabled": false,
   "OfferTranslationEnabled": false,
   "PasswordManagerEnabled": false,

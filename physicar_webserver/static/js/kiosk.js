@@ -396,9 +396,9 @@
         // when navigating away — keeps idle CPU/battery low and ensures
         // re-clicking an already-active app gives a clean reload.
         const iframeSrcs = {
-            'display-home': '/app',   // main app page (control + tabs + sensors)
             'display-vnc': '/vnc',
-            'display-myapp': '/myapp'
+            'display-myapp': '/myapp',
+            'display-deepracer': '/deepracer'
         };
 
         // Monotonic token: any in-flight reload that doesn't match the

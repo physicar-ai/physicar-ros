@@ -748,14 +748,13 @@ export DISPLAY=:1
 source /opt/ros/jazzy/setup.bash
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
-# Loopback-pinned UDP DDS transport (fastdds-lo.xml):
-#  - interfaceWhiteList 127.0.0.1 → hotspot/wifi/eth interface changes are
-#    invisible to DDS. With default transports Fast DDS re-scans interfaces
-#    on change, and running participants silently stop delivering data when
-#    ap0/wlan0 appear or bounce (camera/lidar/battery freeze while the
-#    processes look alive).
-#  - no SHM → no zombie /dev/shm ports after unclean node death.
-export FASTRTPS_DEFAULT_PROFILES_FILE="$PHYSICAR_ROS_DIR/deploy/device/fastdds-lo.xml"
+# CycloneDDS pinned to loopback (cyclonedds.xml): all topics are machine-
+# local; binding lo with unicast-only discovery keeps hotspot/wifi/eth
+# interface changes invisible to DDS. Replaces Fast DDS, whose reliable-
+# channel state wedged long-running participants into announce-only mode
+# (camera/driver stop delivering while the processes look alive).
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI="file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml"
 rm -f /dev/shm/fastrtps_* 2>/dev/null
 
 # Absorb the boot-time discovery burst: 13+ DDS participants exchange SEDP
@@ -869,7 +868,12 @@ fi
         --user-data-dir=/tmp/chromium-kiosk \
         https://localhost/kiosk &>/dev/null &
 
-      DISPLAY=:0 unclutter -idle 0.1 -root &>/dev/null &
+      # XFixes-based global cursor hiding: starts hidden and stays hidden on
+      # touch input (even over select dropdowns, which grab the pointer),
+      # but real mouse movement shows the cursor — so a plugged-in USB
+      # mouse works normally.
+      pgrep -f unclutter-xfixes >/dev/null || \
+        DISPLAY=:0 unclutter-xfixes --timeout 2 --start-hidden --hide-on-touch &>/dev/null &
 
       if [ "$FIRST" = "1" ]; then
         SPLASH_PID=$(cat /run/physicar/splash.pid 2>/dev/null)

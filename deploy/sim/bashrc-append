@@ -3,9 +3,10 @@
 export DISPLAY=:1
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export PHYSICAR_ROS_DIR=/opt/physicar/src/physicar-ros
-# Same loopback-pinned DDS profile as the device — identical transport
-# behavior in SIM and on hardware, and no Docker /dev/shm pressure.
-export FASTRTPS_DEFAULT_PROFILES_FILE=$PHYSICAR_ROS_DIR/deploy/device/fastdds-lo.xml
+# Same loopback-pinned CycloneDDS setup as the device — identical
+# middleware and transport behavior in SIM and on hardware.
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI=file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml
 export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml
 export NAV2_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/nav2_params.yaml
 export GZ_PARTITION=physicar

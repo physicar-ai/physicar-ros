@@ -91,70 +91,91 @@
 <link rel="stylesheet" href="/static/css/app.css">
 <link rel="stylesheet" href="/static/css/control.css">
 <style>
-/* ── /app layout — every boundary is a RATIO, so resizing the window keeps
-   the exact same composition:
-   ┌─────────┬──────────────────────┬─────────┐
-   │         │ MyApp VNC DeepRacer  │         │
-   │ Control │   (selected iframe)  │ Sensors │
-   ├─────────┴──────────────────────┤         │
-   │ Simulator (sim mode only)      │         │
-   └────────────────────────────────┴─────────┘ */
+/* ── /app layout — multi-select badge bar + stacked panels:
+   ┌──────────────────────────────────┬─────────┐
+   │ SIMULATOR CONTROL MYAPP VNC DR   │         │
+   ├──────────────────────────────────┤         │
+   │ selected panels stacked in that  │ Sensors │
+   │ fixed order, each at a fixed     │         │
+   │ aspect ratio (vertical scroll)   │         │
+   └──────────────────────────────────┴─────────┘ */
 body{display:flex;flex-direction:row;height:100vh}
 
 /* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
-.main{display:flex;flex-direction:column;min-width:0;container-type:size}
+.main{display:flex;flex-direction:column;min-width:0}
 
-.top{flex:58;display:flex;flex-direction:row;min-height:0}
-
-/* Control column — 27% of the main area width by default (drag-adjustable) */
-.ctrl-col{width:27%;flex-shrink:0}
-
-/* Vertical divider: Control | Center (drag) */
-.vdivider{
-  width:6px;cursor:col-resize;background:var(--border);
-  flex-shrink:0;position:relative;z-index:10;transition:background .15s;
-}
-.vdivider:hover,.vdivider.dragging{background:var(--accent)}
-
-/* Horizontal divider: top | Simulator (drag; sim mode only) */
-.hdivider{
-  height:6px;cursor:row-resize;background:var(--border);
-  flex-shrink:0;position:relative;z-index:10;transition:background .15s;
-  display:none;
-}
-.hdivider:hover,.hdivider.dragging{background:var(--accent)}
-body.sim-mode .hdivider{display:block}
-
-/* Center: tab bar + selected service iframe */
-.center{flex:1;display:flex;flex-direction:column;min-width:0;container-type:inline-size}
+/* Badge bar: multi-select service toggles */
 .tabbar{
   display:flex;align-items:center;gap:6px;flex-shrink:0;
   padding:8px;background:var(--bg2);border-bottom:1px solid var(--border);
+  overflow-x:auto;
 }
 .tab{
   padding:5px 14px;border-radius:999px;font-size:13px;font-weight:600;
   color:var(--fg3);background:var(--bg3);border:1px solid var(--border);
-  transition:all .15s;white-space:nowrap;
+  transition:all .15s;white-space:nowrap;flex-shrink:0;
 }
 .tab:hover{color:var(--fg2);border-color:var(--fg3)}
 .tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
-.tab-spacer{flex:1}
-.tab-open{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:28px;height:28px;border-radius:6px;color:var(--fg2);
+
+/* Stacked panels — fixed aspect ratios, so the stack can outgrow the
+   viewport and scrolls vertically */
+.stack{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;gap:8px;padding:8px;
 }
-.tab-open:hover{background:var(--bg3);color:var(--fg)}
-.tab-open svg{width:16px;height:16px}
-.view{flex:1;min-height:0;position:relative;background:#111}
-.view iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+.stack-panel{
+  display:none;flex-direction:column;flex-shrink:0;
+  background:#111;border:1px solid var(--border);border-radius:10px;overflow:hidden;
+}
+.stack-panel.on{display:flex}
+#panel-control{background:var(--bg)}
 
-/* Simulator row — 42% of the main area height (sim mode only) */
-.sim-row{flex:42;display:none;position:relative;background:#111;border-top:1px solid var(--border);min-height:0}
-.sim-row iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
-body.sim-mode .sim-row{display:block}
+/* Slim identity strip on every panel */
+.sp-head{
+  height:24px;flex-shrink:0;display:flex;align-items:center;gap:8px;
+  padding:0 10px;font-size:10px;font-weight:700;letter-spacing:.08em;
+  color:var(--fg3);background:var(--bg2);border-bottom:1px solid var(--border);
+  cursor:pointer;user-select:none;
+}
 
-/* Focused iframe (clicks/keyboard go there) → accent outline */
-.view.focused,.sim-row.focused{box-shadow:inset 0 0 0 2px var(--accent)}
+/* The body below the strip carries the EXACT aspect ratio (the strip is
+   excluded, so the embedded page gets a true 5:2 / 4:3 viewport) */
+.sp-body{position:relative;width:100%}
+#panel-simulator .sp-body{aspect-ratio:5/2}
+#panel-control .sp-body{aspect-ratio:5/2;min-height:206px}
+#panel-myapp .sp-body,#panel-vnc .sp-body,#panel-deepracer .sp-body{aspect-ratio:4/3}
+.sp-body iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+.sp-actions{margin-left:auto;display:flex;gap:2px}
+.sp-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:5px;color:var(--fg2);
+}
+.sp-btn:hover{background:var(--bg3);color:var(--fg)}
+.sp-btn svg{width:13px;height:13px}
+
+/* SIMULATOR exists only in sim mode (no /sim/ on real robots) */
+body:not(.sim-mode) .tab-sim{display:none}
+body:not(.sim-mode) #panel-simulator{display:none}
+
+/* Control fills its panel as a card row: Drive | Look */
+#page-control{position:absolute;inset:0;flex-direction:row}
+
+/* Focused (= interactive) card → accent border + lit header strip */
+.stack-panel.focused{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.stack-panel.focused .sp-head{background:var(--accent);color:#fff;border-bottom-color:var(--accent)}
+.stack-panel.focused .sp-btn{color:rgba(255,255,255,.85)}
+.stack-panel.focused .sp-btn:hover{background:rgba(255,255,255,.18);color:#fff}
+
+/* Click-to-interact shield: iframes swallow wheel events, so an inactive
+   card is covered by this transparent layer — wheel over it scrolls the
+   stack, a click hands focus (and the pointer) to the iframe below */
+.sp-shield{position:absolute;inset:0;z-index:4;cursor:pointer;transition:background .15s}
+.sp-shield:hover{background:rgba(126,87,194,.07)}
+.stack-panel.focused .sp-shield{display:none}
+
+/* Nothing selected */
+.stack-empty{display:none;padding:48px 16px;text-align:center;color:var(--fg3);font-size:14px}
 
 /* ── Divider ── */
 .divider{
@@ -180,74 +201,47 @@ body.sim-mode .sim-row{display:block}
 <body>
 
 <div class="main" id="main">
-  <div class="top">
+  <div class="tabbar" id="tabbar"></div>
 
-    <!-- Control (inline; id/class kept — control.js gates sending on #page-control.active) -->
-    <div class="ctrl-col active" id="page-control">
+  <div class="stack" id="stack">
+    <!-- SIMULATOR (sim mode only) -->
+    <div class="stack-panel" id="panel-simulator">
+      <div class="sp-head">SIMULATOR</div>
+      <div class="sp-body"><iframe id="frame-simulator" title="Simulator" allow="autoplay"></iframe><div class="sp-shield" data-frame="frame-simulator" title="Click to interact"></div></div>
+    </div>
+
+    <!-- CONTROL (inline; id/class kept — control.js gates sending on #page-control.active) -->
+    <div class="stack-panel" id="panel-control">
+    <div class="sp-head">CONTROL</div>
+    <div class="sp-body">
+    <div class="ctrl-col" id="page-control">
       <!-- Drive (speed / steering) -->
       <div class="cc">
-        <div class="cc-head">
-          Drive
-          <div class="cc-spacer"></div>
-          <div class="ctrl-mode-switch">
-            <button class="ctrl-mode active" data-group="drive" data-mode="continuous" title="Joystick (continuous)" onclick="CTRL.setMode('drive','continuous')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
-            <button class="ctrl-mode" data-group="drive" data-mode="discrete" title="D-pad (discrete)" onclick="CTRL.setMode('drive','discrete')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z"/></svg></button>
-          </div>
+        <div class="cc-head">Drive</div>
+        <div class="ctrl-area-row">
+        <div class="ctrl-vslider" title="Max speed (m/s)">
+          <span class="ctrl-vslider-val"><strong id="ctrl-max-speed-val">1.0</strong></span>
+          <input type="range" id="ctrl-max-speed" min="0.5" max="3.0" step="0.1" value="1.0" oninput="CTRL.setMaxSpeed(this.value)">
+          <span class="ctrl-vslider-label">Max</span>
         </div>
         <div class="ctrl-area" id="ctrl-drive-area">
           <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
             <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
           </div>
-          <div class="ctrl-dpad hidden" id="ctrl-drive-dpad">
-            <div class="dpad-grid">
-              <button class="dpad-btn" data-dir="fwd-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="fwd"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="fwd-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
-              <div class="dpad-center"></div>
-              <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="bwd-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="bwd"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="bwd-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
-            </div>
-          </div>
+        </div>
         </div>
         <div class="ctrl-info">
           <span>Speed: <strong id="ctrl-speed">0.00</strong> m/s</span>
           <span>Steer: <strong id="ctrl-steer">0</strong>°</span>
         </div>
-        <div class="ctrl-max-speed">
-          <label>Max: <strong id="ctrl-max-speed-val">1.0</strong> m/s</label>
-          <input type="range" id="ctrl-max-speed" min="0.1" max="3.0" step="0.1" value="1.0" oninput="CTRL.setMaxSpeed(this.value)">
-        </div>
       </div>
 
       <!-- Look (camera pan / tilt) -->
       <div class="cc">
-        <div class="cc-head">
-          Look
-          <div class="cc-spacer"></div>
-          <div class="ctrl-mode-switch">
-            <button class="ctrl-mode active" data-group="cam" data-mode="continuous" title="Joystick (continuous)" onclick="CTRL.setMode('cam','continuous')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg></button>
-            <button class="ctrl-mode" data-group="cam" data-mode="discrete" title="D-pad (discrete)" onclick="CTRL.setMode('cam','discrete')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 3h5v6.5H21v5h-6.5V21h-5v-6.5H3v-5h6.5z"/></svg></button>
-          </div>
-        </div>
+        <div class="cc-head">Look</div>
         <div class="ctrl-area" id="ctrl-cam-area">
           <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
             <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
-          </div>
-          <div class="ctrl-dpad hidden" id="ctrl-cam-dpad">
-            <div class="dpad-grid">
-              <button class="dpad-btn" data-dir="up-l"><span class="dpad-arrow" style="--rot:-45deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="up"><span class="dpad-arrow" style="--rot:0deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="up-r"><span class="dpad-arrow" style="--rot:45deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="left"><span class="dpad-arrow" style="--rot:-90deg">&#9650;</span></button>
-              <div class="dpad-center"></div>
-              <button class="dpad-btn" data-dir="right"><span class="dpad-arrow" style="--rot:90deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="dn-l"><span class="dpad-arrow" style="--rot:-135deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="dn"><span class="dpad-arrow" style="--rot:180deg">&#9650;</span></button>
-              <button class="dpad-btn" data-dir="dn-r"><span class="dpad-arrow" style="--rot:135deg">&#9650;</span></button>
-            </div>
           </div>
         </div>
         <div class="ctrl-info">
@@ -256,28 +250,37 @@ body.sim-mode .sim-row{display:block}
         </div>
       </div>
     </div>
-
-    <div class="vdivider" id="ctrl-divider"></div>
-
-    <!-- Center: service tabs (single select) + iframe -->
-    <div class="center">
-      <div class="tabbar" id="tabbar">
-        <div class="tab-spacer"></div>
-        <button class="tab-open" id="btn-open-tab" title="Open in new tab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        </button>
-      </div>
-      <div class="view" id="view">
-        <iframe id="view-frame" title="Service" allow="autoplay; camera; microphone"></iframe>
-      </div>
     </div>
-  </div>
+    </div>
 
-  <div class="hdivider" id="sim-divider"></div>
+    <!-- MYAPP -->
+    <div class="stack-panel" id="panel-myapp">
+      <div class="sp-head">MYAPP
+        <div class="sp-actions">
+          <button class="sp-btn" id="btn-reload-myapp" title="Reload">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+          <button class="sp-btn" id="btn-open-myapp" title="Open in new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
+    </div>
 
-  <!-- Simulator (sim mode only) -->
-  <div class="sim-row" id="sim-row">
-    <iframe id="sim-frame" title="Simulator" allow="autoplay"></iframe>
+    <!-- VNC -->
+    <div class="stack-panel" id="panel-vnc">
+      <div class="sp-head">VNC</div>
+      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
+    </div>
+
+    <!-- DEEPRACER -->
+    <div class="stack-panel" id="panel-deepracer">
+      <div class="sp-head">DEEPRACER</div>
+      <div class="sp-body"><iframe id="frame-deepracer" title="DeepRacer" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-deepracer" title="Click to interact"></div></div>
+    </div>
+
+    <div class="stack-empty" id="stack-empty">Select a view above</div>
   </div>
 </div>
 
@@ -340,50 +343,60 @@ body.sim-mode .sim-row{display:block}
 (function(){
   'use strict';
 
-  /* ── Center services (single-select tabs) ── */
-  const MONITORS = [
-    { id: 'myapp',     label: 'MyApp',     path: '/myapp/'    },
+  /* ── Stacked service panels (multi-select badges) ──
+     Fixed stacking order: SIMULATOR → CONTROL → MYAPP → VNC → DEEPRACER.
+     SIMULATOR is sim-mode only (real robots have no /sim/). */
+  const SERVICES = [
+    { id: 'simulator', label: 'SIMULATOR', path: '/sim/',     sim: true },
+    { id: 'control',   label: 'CONTROL' },
+    { id: 'myapp',     label: 'MYAPP',     path: '/myapp/'    },
     { id: 'vnc',       label: 'VNC',       path: '/vnc/'      },
-    { id: 'deepracer', label: 'DeepRacer', path: '/deepracer' },
+    { id: 'deepracer', label: 'DEEPRACER', path: '/deepracer' },
   ];
+  const DEFAULT_SEL = ['simulator', 'control', 'myapp'];
   const KEY = 'app-view';
 
-  /* tab is persisted; all split ratios start at their defaults (session only):
-     ratio     — main : sensors (5:2)
-     ctrlRatio — control column share of the main width
-     simRatio  — simulator row share of the main height */
-  let state = { tab: 'myapp', ratio: 5 / 7, ctrlRatio: 0.27, simRatio: 0.42 };
+  let simMode = false;
+
+  /* selection is persisted; the main:sensors ratio starts at its default
+     (drag-adjustable, deliberately session-only) */
+  let ratio = 5 / 7;
+  let sel = new Set(DEFAULT_SEL);
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && MONITORS.some(m => m.id === s.tab)) state.tab = s.tab;
+    if (s && Array.isArray(s.sel)) sel = new Set(s.sel.filter(id => SERVICES.some(m => m.id === id)));
+    else if (s && SERVICES.some(m => m.id === s.tab)) sel.add(s.tab);   // pre-multiselect schema
   } catch(e){}
-  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ tab: state.tab })); }catch(e){} }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ sel: [...sel] })); }catch(e){} }
 
   const main    = document.getElementById('main');
   const right   = document.getElementById('right');
   const divider = document.getElementById('divider');
   const tabbar  = document.getElementById('tabbar');
-  const frame   = document.getElementById('view-frame');
+  const ctrlCol = document.getElementById('page-control');
+  const empty   = document.getElementById('stack-empty');
 
-  const tabs = {};
-  const tabSpacer = tabbar.querySelector('.tab-spacer');
-  MONITORS.forEach(m => {
+  const tabs = {}, panels = {}, frames = {};
+  SERVICES.forEach(m => {
     const b = document.createElement('button');
-    b.className = 'tab';
+    b.className = 'tab' + (m.sim ? ' tab-sim' : '');
     b.textContent = m.label;
-    b.addEventListener('click', () => { state.tab = m.id; save(); render(); });
-    tabbar.insertBefore(b, tabSpacer);
-    tabs[m.id] = b;
+    b.addEventListener('click', () => {
+      sel.has(m.id) ? sel.delete(m.id) : sel.add(m.id);
+      save(); render();
+    });
+    tabbar.appendChild(b);
+    tabs[m.id]   = b;
+    panels[m.id] = document.getElementById('panel-' + m.id);
+    if (m.path) frames[m.id] = document.getElementById('frame-' + m.id);
   });
 
-  // Open the selected service in a full browser tab. Inside the VS Code
-  // webview the iframe sandbox blocks window.open (returns null) — relay to
-  // the extension instead, which opens the system browser via openExternal.
-  document.getElementById('btn-open-tab').addEventListener('click', () => {
-    const m = MONITORS.find(x => x.id === state.tab);
-    if (!m) return;
+  // Open MyApp in a full browser tab. Inside the VS Code webview the iframe
+  // sandbox blocks window.open (returns null) — relay to the extension
+  // instead, which opens the system browser via openExternal.
+  document.getElementById('btn-open-myapp').addEventListener('click', () => {
     // the session token reaches the new tab via the physicar_session cookie (no URL exposure)
-    const url = new URL(m.path, location.href).href;
+    const url = new URL('/myapp/', location.href).href;
     let w = null;
     try { w = window.open(url, '_blank', 'noopener'); } catch(e){}
     if (!w && window.parent !== window) {
@@ -391,29 +404,41 @@ body.sim-mode .sim-row{display:block}
     }
   });
 
+  // Reload MyApp in place (same-origin → keeps the page it navigated to;
+  // falls back to re-setting src if the frame is somehow inaccessible)
+  document.getElementById('btn-reload-myapp').addEventListener('click', () => {
+    const f = document.getElementById('frame-myapp');
+    try { f.contentWindow.location.reload(); }
+    catch(e) { f.src = f.getAttribute('src'); }
+  });
+
   function render(){
-    const m = MONITORS.find(x => x.id === state.tab);
-    MONITORS.forEach(x => tabs[x.id].classList.toggle('active', x.id === state.tab));
-    if (m && frame.getAttribute('src') !== m.path) frame.src = m.path;
+    let any = false;
+    SERVICES.forEach(m => {
+      const on    = sel.has(m.id);
+      const shown = on && (!m.sim || simMode);   // sim tab/panel are display:none outside sim mode
+      tabs[m.id].classList.toggle('active', on);
+      panels[m.id].classList.toggle('on', on);
+      if (m.path) {
+        // load on show, unload on hide (frees hidden VNC/sim streams —
+        // matches the old single-iframe tab-switch resource profile)
+        const f = frames[m.id];
+        const src = f.getAttribute('src');
+        if (shown) { if (src !== m.path) f.src = m.path; }
+        else if (src && src !== 'about:blank') f.src = 'about:blank';
+      }
+      if (m.id === 'control') ctrlCol.classList.toggle('active', on);   // gates CTRL sending
+      if (shown) any = true;
+    });
+    empty.style.display = any ? 'none' : 'block';
+    updateFocus(true);   // control's glow depends on its selection
   }
 
-  /* ── Split ratios (all ratio-based → window resizes keep proportions;
-     all drag-adjustable, deliberately session-only) ── */
-  const topEl   = document.querySelector('.top');
-  const ctrlCol = document.getElementById('page-control');
-  const simRow  = document.getElementById('sim-row');
-
+  /* ── Split ratio: main | sensors (drag-adjustable, session-only) ── */
   function applyRatio(){
-    main.style.width  = 'calc(' + (state.ratio * 100).toFixed(2) + '% - 3px)';
-    right.style.width = 'calc(' + ((1 - state.ratio) * 100).toFixed(2) + '% - 3px)';
+    main.style.width  = 'calc(' + (ratio * 100).toFixed(2) + '% - 3px)';
+    right.style.width = 'calc(' + ((1 - ratio) * 100).toFixed(2) + '% - 3px)';
     main.style.flex = 'none';
-  }
-  function applyCtrlRatio(){
-    ctrlCol.style.width = (state.ctrlRatio * 100).toFixed(2) + '%';
-  }
-  function applySimRatio(){
-    topEl.style.flex  = String(((1 - state.simRatio) * 100).toFixed(2));
-    simRow.style.flex = String((state.simRatio * 100).toFixed(2));
   }
 
   /* Generic divider drag: onMove receives the pointer position and updates
@@ -452,37 +477,51 @@ body.sim-mode .sim-row{display:block}
 
   // main | sensors (vertical boundary across the window)
   makeDrag(divider, (cx) => {
-    state.ratio = Math.max(0.2, Math.min(0.8, cx / document.body.clientWidth));
+    ratio = Math.max(0.2, Math.min(0.8, cx / document.body.clientWidth));
     applyRatio();
   });
-  // control | center (vertical boundary inside .top)
-  makeDrag(document.getElementById('ctrl-divider'), (cx) => {
-    const r = topEl.getBoundingClientRect();
-    state.ctrlRatio = Math.max(0.12, Math.min(0.55, (cx - r.left) / r.width));
-    applyCtrlRatio();
-  });
-  // top | simulator (horizontal boundary inside .main)
-  makeDrag(document.getElementById('sim-divider'), (_cx, cy) => {
-    const r = main.getBoundingClientRect();
-    state.simRatio = Math.max(0.12, Math.min(0.7, 1 - (cy - r.top) / r.height));
-    applySimRatio();
+
+  /* ── Click-to-interact cards ──
+     .focused on a panel = it owns the pointer/keyboard. For iframe cards
+     that means shield hidden + accent border; when NO iframe is focused,
+     the keyboard goes to the parent document — i.e. the inline CONTROL
+     card — so that card glows instead. Tracked via an activeElement poll
+     (cross-origin safe): clicking anywhere in the parent document pulls
+     focus off the iframe, which re-arms its shield. */
+  let lastFocused = null;
+  function updateFocus(force){
+    const ae = document.activeElement;
+    const target = (ae && ae.tagName === 'IFRAME') ? ae : null;
+    if (!force && target === lastFocused) return;
+    lastFocused = target;
+    document.querySelectorAll('.stack-panel.focused').forEach(el => el.classList.remove('focused'));
+    if (target) {
+      const holder = target.closest('.stack-panel');
+      if (holder) holder.classList.add('focused');
+    } else if (panels.control.classList.contains('on')) {
+      panels.control.classList.add('focused');
+    }
+  }
+  setInterval(() => updateFocus(false), 250);
+
+  document.querySelectorAll('.sp-shield').forEach(sh => {
+    sh.addEventListener('click', () => {
+      const f = document.getElementById(sh.dataset.frame);
+      if (f) f.focus();
+      updateFocus(true);   // immediate — don't wait for the poll tick
+    });
   });
 
-  /* ── Focused-iframe outline (activeElement poll — cross-origin safe) ── */
-  (function(){
-    let last = null;
-    setInterval(() => {
-      const ae = document.activeElement;
-      const target = (ae && ae.tagName === 'IFRAME') ? ae : null;
-      if (target === last) return;
-      last = target;
-      document.querySelectorAll('.view.focused, .sim-row.focused').forEach(el => el.classList.remove('focused'));
-      if (target) {
-        const holder = target.closest('.view') || target.closest('.sim-row');
-        if (holder) holder.classList.add('focused');
-      }
-    }, 250);
-  })();
+  // Card header strip also activates its card (control: the click itself
+  // already pulled focus off any iframe — just refresh immediately)
+  document.querySelectorAll('.stack-panel').forEach(p => {
+    p.querySelector('.sp-head').addEventListener('click', (e) => {
+      if (e.target.closest('.sp-btn')) return;   // header action buttons
+      const f = p.querySelector('.sp-body iframe');
+      if (f) f.focus();
+      updateFocus(true);
+    });
+  });
 
   /* ── Control (inline) ── */
   CTRL.init();
@@ -501,19 +540,18 @@ body.sim-mode .sim-row{display:block}
   startLidarStream();
   startCameraStream();
 
-  /* ── Mode: show the simulator row only in sim mode ── */
+  /* ── Mode: SIMULATOR badge/panel exist only in sim mode ── */
   (async function(){
     const mode = await detectMode();   // adds body.sim-mode when sim
     if (mode === 'sim') {
-      document.getElementById('sim-frame').src = '/sim/';
+      simMode = true;
       document.title = 'PHYSICAR App (SIM)';
+      render();                        // sim panel becomes visible → load /sim/
     }
   })();
 
   render();
   applyRatio();
-  applyCtrlRatio();
-  applySimRatio();
 })();
 </script>
 </body>
