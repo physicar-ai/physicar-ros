@@ -1,4 +1,8 @@
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        /* Kiosk is touch-only: block text selection globally so joystick
+           drags never spawn selection handles / the Copy bubble. Text entry
+           fields and the S/N readout (user-select: all) re-enable it. */
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        input, textarea { user-select: text; -webkit-user-select: text; }
         html { background: #1a1a2e; }
         body.touch-mode, body.touch-mode * { cursor: none !important; }
         body {

@@ -355,9 +355,9 @@ window.createJoyPanel = function createJoyPanel(opts) {
       const stepper = (def) => {
         const v = mapping[def.key] ?? def.min;
         return `<div class="joy-step" data-key="${def.key}">
-          <button type="button" class="joy-step-btn" data-dir="-1" aria-label="Decrease">−</button>
-          <span class="joy-step-val">${fmt(def, v)}</span>
           <button type="button" class="joy-step-btn" data-dir="1" aria-label="Increase">+</button>
+          <span class="joy-step-val">${fmt(def, v)}</span>
+          <button type="button" class="joy-step-btn" data-dir="-1" aria-label="Decrease">−</button>
         </div>`;
       };
       // Unit (m/s, deg) is shown next to the row name rather than inside
