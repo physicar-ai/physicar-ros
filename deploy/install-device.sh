@@ -522,15 +522,60 @@ chmod 0755 /etc/NetworkManager/dispatcher.d/90-physicar-cert
 
 systemctl enable NetworkManager
 systemctl start NetworkManager
+sleep 3
+
+# ── Migrate imager Wi-Fi credentials into NetworkManager ──
+# The stock image's Wi-Fi (from Raspberry Pi Imager) lives in cloud-init's
+# netplan as a networkd/wpa_supplicant config. Once networkd is retired
+# below, that connection would vanish and the device goes hotspot-only
+# ("Wi-Fi stopped working after install"). Recreate each SSID/PSK found
+# there as an NM profile so the same network reconnects under NM.
+if [ -f /etc/netplan/50-cloud-init.yaml ]; then
+python3 - <<'__MIGRATE_WIFI__'
+import subprocess, yaml
+cfg = yaml.safe_load(open('/etc/netplan/50-cloud-init.yaml')) or {}
+aps = ((cfg.get('network', {}).get('wifis', {}) or {}).get('wlan0', {}) or {}).get('access-points', {}) or {}
+have = subprocess.run(['nmcli', '-t', '-f', 'NAME', 'connection', 'show'],
+                      capture_output=True, text=True).stdout.splitlines()
+for ssid, opts in aps.items():
+    if ssid in have:
+        continue
+    psk = None
+    if isinstance(opts, dict):
+        psk = opts.get('password') or (opts.get('auth') or {}).get('password')
+    cmd = ['nmcli', 'connection', 'add', 'type', 'wifi', 'con-name', ssid,
+           'ifname', 'wlan0', 'ssid', ssid, 'connection.autoconnect', 'yes']
+    if psk:
+        cmd += ['wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', str(psk)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    print('  migrated Wi-Fi profile:', ssid, r.returncode, (r.stdout or r.stderr).strip())
+__MIGRATE_WIFI__
+fi
 
 # ── Switch to netplan ──
 [ -f /etc/netplan/50-cloud-init.yaml ] && cp /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.bak
+
+# Stop cloud-init regenerating the deleted netplan on every boot. Without
+# this the networkd configs come back at next boot and fight NetworkManager
+# for wlan0 — two supplicants on one radio, connect/disconnect loops on the
+# hotspot and STA ("unstable, keeps dropping").
+mkdir -p /etc/cloud/cloud.cfg.d
+echo 'network: {config: disabled}' > /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
 
 ln -sf "$DEPLOY_DIR/etc/netplan/01-netcfg.yaml" /etc/netplan/01-netcfg.yaml
 
 rm -f /etc/netplan/50-cloud-init.yaml 2>/dev/null || true
 netplan generate 2>/dev/null || true
 netplan apply 2>/dev/null || true
+sleep 2
+
+# ── Retire systemd-networkd — one manager per interface ──
+# NetworkManager owns everything from here (netplan renderer above).
+# Leaving networkd enabled produces the dual-manager instability.
+systemctl stop 'netplan-wpa-*' 2>/dev/null || true
+systemctl disable --now systemd-networkd.service systemd-networkd.socket \
+  systemd-networkd-wait-online.service 2>/dev/null || true
+nmcli device connect wlan0 2>/dev/null || true
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  4. Nginx                                                                  │
