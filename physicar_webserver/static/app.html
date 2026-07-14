@@ -35,8 +35,14 @@
   (function () {
     var SESSION_KEY = "physicar_session";
     var WEEK = 7 * 24 * 3600;  // matches the session token TTL
+    // Tunnel hosts get a fresh random label every session, so a Max-Age cookie
+    // would outlive its origin and pile up on dead labels in the cookie jar.
+    // There: session cookie (dies with the browser). Stable origins
+    // (device.physicar.ai, *.app.github.dev, localhost) keep the 7-day TTL.
+    var EPHEMERAL_HOST = /\.(trycloudflare|physicarcs)\.com$/i.test(location.hostname);
     function setCookie(token) {
-      var attrs = "; Path=/; Max-Age=" + WEEK
+      var attrs = "; Path=/"
+        + (EPHEMERAL_HOST ? "" : "; Max-Age=" + WEEK)
         + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
       try { document.cookie = SESSION_KEY + "=" + encodeURIComponent(token) + attrs; } catch (_) {}
     }

@@ -60,6 +60,10 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
         python3 /home/physicar/physicar_ws/app.py
         ```
     - `/home/physicar/physicar_ws/myapp/run.log`: execution log of the auto-start script.
+- PhysiCar account session
+    - When the user signs in, the session token is available in the `physicar_session` cookie, which rides automatically on every same-origin request — including MyApp pages, `fetch`, WebSocket handshakes, and open-in-new-tab.
+    - Backend: read it per request/connection — e.g. Flask `request.cookies.get("physicar_session")` — and create `physicar.Client(token=...)` from it. Never cache one token globally: on a shared robot, different users' requests would run on one account.
+    - Page JS: `physicarSession.token()` is auto-injected into every `/myapp/` HTML page by nginx (no setup code).
 
 ## ROS 2 Interfaces
 
