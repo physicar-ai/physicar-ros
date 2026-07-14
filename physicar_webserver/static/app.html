@@ -146,13 +146,19 @@ body{display:flex;flex-direction:row;height:100vh}
 }
 
 /* The body below the strip carries the EXACT aspect ratio (the strip is
-   excluded, so the embedded page gets a true 5:2 / 4:3 viewport) */
+   excluded, so the embedded page gets a true 2:1 / 5:2 / 4:3 viewport) */
 .sp-body{position:relative;width:100%}
-#panel-simulator .sp-body{aspect-ratio:5/2}
+#panel-simulator .sp-body{aspect-ratio:2/1}
 #panel-control .sp-body{aspect-ratio:5/2;min-height:206px}
 #panel-myapp .sp-body,#panel-vnc .sp-body,#panel-deepracer .sp-body{aspect-ratio:4/3}
 .sp-body iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
-.sp-actions{margin-left:auto;display:flex;gap:2px}
+.sp-actions{margin-left:auto;display:flex;gap:2px;align-items:center}
+#sim-world-select{
+  height:18px;max-width:150px;font-size:10px;font-weight:600;
+  color:var(--fg2);background:var(--bg3);border:1px solid var(--border);
+  border-radius:5px;padding:0 2px;
+}
+.stack-panel.focused #sim-world-select{color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.4)}
 .sp-btn{
   display:flex;align-items:center;justify-content:center;
   width:20px;height:20px;border-radius:5px;color:var(--fg2);
@@ -212,8 +218,19 @@ body:not(.sim-mode) #panel-simulator{display:none}
   <div class="stack" id="stack">
     <!-- SIMULATOR (sim mode only) -->
     <div class="stack-panel" id="panel-simulator">
-      <div class="sp-head">SIMULATOR</div>
+      <div class="sp-head">SIMULATOR
+        <div class="sp-actions">
+          <select id="sim-world-select" title="Switch world"></select>
+          <button class="sp-btn" id="btn-import-sim" title="Import world">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button class="sp-btn" id="btn-respawn-sim" title="Respawn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+      </div>
       <div class="sp-body"><iframe id="frame-simulator" title="Simulator" allow="autoplay"></iframe><div class="sp-shield" data-frame="frame-simulator" title="Click to interact"></div></div>
+      <input type="file" id="sim-import-input" accept=".tar.gz,.gz" style="display:none">
     </div>
 
     <!-- CONTROL (inline; id/class kept — control.js gates sending on #page-control.active) -->
@@ -440,6 +457,52 @@ body:not(.sim-mode) #panel-simulator{display:none}
     updateFocus(true);   // control's glow depends on its selection
   }
 
+  /* ── SIMULATOR 헤더 컨트롤 — /sim 페이지(동일 오리진 iframe)의 검증된 로직 호출.
+     /sim 자체 툴바(Respawn/월드/Import)는 임베드 시 숨고 여기가 대신한다.
+     업로드 진행률·월드 전환 폴링·리로드는 전부 sim 페이지 코드가 그대로 수행. ── */
+  (function () {
+    const frame = document.getElementById('frame-simulator');
+    if (!frame) return;
+    const sel = document.getElementById('sim-world-select');
+    const impInput = document.getElementById('sim-import-input');
+    function simWin() {
+      try {
+        const w = frame.contentWindow;
+        return (w && typeof w.doRespawn === 'function') ? w : null;
+      } catch (e) { return null; }
+    }
+    async function refreshWorlds() {
+      try {
+        const d = await (await fetch('/sim/api/worlds')).json();
+        sel.innerHTML = '';
+        (d.worlds || []).forEach(w => {
+          const o = document.createElement('option');
+          o.value = w.file;
+          o.textContent = w.name;
+          if (w.name === d.current) o.selected = true;
+          sel.appendChild(o);
+        });
+      } catch (e) { /* sim 미기동 — 다음 load에서 재시도 */ }
+    }
+    sel.addEventListener('change', () => {
+      const w = simWin();
+      if (w) w.switchWorld(sel.value);
+      else refreshWorlds();   // iframe 미로드 — 선택 원복
+    });
+    document.getElementById('btn-respawn-sim').addEventListener('click', () => {
+      const w = simWin();
+      if (w) w.doRespawn();
+    });
+    document.getElementById('btn-import-sim').addEventListener('click', () => impInput.click());
+    impInput.addEventListener('change', () => {
+      const w = simWin();
+      if (w && impInput.files[0]) w.handleFile(impInput.files[0]);
+      impInput.value = '';
+    });
+    // 월드 전환/업로드 후 sim 페이지가 스스로 리로드 → 목록 재동기화
+    frame.addEventListener('load', refreshWorlds);
+  })();
+
   /* ── Split ratio: main | sensors (drag-adjustable, session-only) ── */
   function applyRatio(){
     main.style.width  = 'calc(' + (ratio * 100).toFixed(2) + '% - 3px)';
@@ -522,7 +585,7 @@ body:not(.sim-mode) #panel-simulator{display:none}
   // already pulled focus off any iframe — just refresh immediately)
   document.querySelectorAll('.stack-panel').forEach(p => {
     p.querySelector('.sp-head').addEventListener('click', (e) => {
-      if (e.target.closest('.sp-btn')) return;   // header action buttons
+      if (e.target.closest('.sp-actions')) return;   // header action controls
       const f = p.querySelector('.sp-body iframe');
       if (f) f.focus();
       updateFocus(true);
