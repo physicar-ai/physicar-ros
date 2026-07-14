@@ -59,13 +59,27 @@ Topic parity — ALL topics available in both real and SIM modes:
 """
 
 import os
+import sys
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import (
+    PackageNotFoundError,
+    get_package_prefix,
+    get_package_share_directory,
+)
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, TimerAction
 from launch.substitutions import Command
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+
+
+def _have_executable(package, executable):
+    """True when `ros2 launch` will be able to resolve package/executable."""
+    try:
+        prefix = get_package_prefix(package)
+    except PackageNotFoundError:
+        return False
+    return os.access(os.path.join(prefix, 'lib', package, executable), os.X_OK)
 
 
 def generate_launch_description():
@@ -240,17 +254,31 @@ def generate_launch_description():
         ]
     )
 
-    return LaunchDescription([
-        # Gazebo bridge (Gz ↔ ROS2 topics)
-        gz_bridge,
-        image_republish,
-        # ROS nodes only — no hardware, no system processes
-        robot_state_publisher,
-        cmd_vel_adapter,
-        scan_filter,
-        laser_odom,
-        ekf_node,
-        deepracer_node,
-        webserver_node,
-        topic_watchdog,
-    ])
+    # A missing executable aborts the ENTIRE launch during startup (respawn
+    # cannot help — the process never starts), taking the webserver and every
+    # healthy node down with it. Typical cause: source updated without a
+    # rebuild. Skip missing nodes loudly so the rest of the robot stays up;
+    # the boot script detects the gap and rebuilds.
+    actions = []
+    for pkg, exe, action, label in [
+        ('ros_gz_bridge', 'parameter_bridge', gz_bridge, 'gz_bridge'),
+        ('image_transport', 'republish', image_republish, 'image_republish'),
+        ('robot_state_publisher', 'robot_state_publisher',
+         robot_state_publisher, 'robot_state_publisher'),
+        ('physicar_bringup', 'cmd_vel_adapter_node.py',
+         cmd_vel_adapter, 'cmd_vel_adapter'),
+        ('physicar_bringup', 'scan_filter_node', scan_filter, 'scan_filter'),
+        ('physicar_laser_odom', 'laser_odom_node', laser_odom, 'laser_odom'),
+        ('robot_localization', 'ekf_node', ekf_node, 'ekf_node'),
+        ('physicar_deepracer', 'deepracer_node', deepracer_node, 'deepracer'),
+        ('physicar_webserver', 'webserver_node.py', webserver_node, 'webserver'),
+        ('physicar_bringup', 'topic_watchdog_node',
+         topic_watchdog, 'topic_watchdog'),
+    ]:
+        if _have_executable(pkg, exe):
+            actions.append(action)
+        else:
+            print(f"[sim.launch] SKIPPING {label}: executable '{exe}' not found "
+                  f"in package '{pkg}' — run colcon build to restore it",
+                  file=sys.stderr)
+    return LaunchDescription(actions)

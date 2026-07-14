@@ -21,8 +21,13 @@ Launches all hardware drivers for the real robot
 """
 
 import os
+import sys
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import (
+    PackageNotFoundError,
+    get_package_prefix,
+    get_package_share_directory,
+)
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -33,6 +38,15 @@ from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+
+
+def _have_executable(package, executable):
+    """True when `ros2 launch` will be able to resolve package/executable."""
+    try:
+        prefix = get_package_prefix(package)
+    except PackageNotFoundError:
+        return False
+    return os.access(os.path.join(prefix, 'lib', package, executable), os.X_OK)
 
 
 def generate_launch_description():
@@ -314,24 +328,43 @@ def generate_launch_description():
         ]
     )
 
-    return LaunchDescription([
+    # A missing executable aborts the ENTIRE launch during startup (respawn
+    # cannot help — the process never starts), taking the webserver and every
+    # healthy node down with it. Typical cause: source updated without a
+    # rebuild. Skip missing nodes loudly so the rest of the robot stays up;
+    # the boot script detects the gap and rebuilds.
+    actions = [
         declare_use_camera,
         declare_use_lidar,
         declare_serial_port,
-        # System setup
+        # System setup (plain scripts — always present in share/)
         setup_audio,
-        # ROS nodes
-        robot_state_publisher,
-        physicar_driver,
-        rplidar_driver,
-        TimerAction(period=6.0, actions=[scan_filter]),
-        camera_driver,
-        TimerAction(period=11.0, actions=[laser_odom]),
-        TimerAction(period=16.0, actions=[ekf_node]),
-        deepracer_node,
-        joy_node,
-        teleop_node,
-        webserver_node,
-        topic_watchdog,
-        play_intro,
-    ])
+    ]
+    for pkg, exe, action, label in [
+        ('robot_state_publisher', 'robot_state_publisher',
+         robot_state_publisher, 'robot_state_publisher'),
+        ('physicar_bringup', 'physicar_driver_node',
+         physicar_driver, 'physicar_driver'),
+        ('physicar_lidar', 'rplidar_node', rplidar_driver, 'rplidar'),
+        ('physicar_bringup', 'scan_filter_node',
+         TimerAction(period=6.0, actions=[scan_filter]), 'scan_filter'),
+        ('physicar_camera', 'camera_node', camera_driver, 'camera'),
+        ('physicar_laser_odom', 'laser_odom_node',
+         TimerAction(period=11.0, actions=[laser_odom]), 'laser_odom'),
+        ('robot_localization', 'ekf_node',
+         TimerAction(period=16.0, actions=[ekf_node]), 'ekf_node'),
+        ('physicar_deepracer', 'deepracer_node', deepracer_node, 'deepracer'),
+        ('joy', 'joy_node', joy_node, 'joy'),
+        ('physicar_teleop', 'joy_teleop_node', teleop_node, 'teleop'),
+        ('physicar_webserver', 'webserver_node.py', webserver_node, 'webserver'),
+        ('physicar_bringup', 'topic_watchdog_node',
+         topic_watchdog, 'topic_watchdog'),
+    ]:
+        if _have_executable(pkg, exe):
+            actions.append(action)
+        else:
+            print(f"[device.launch] SKIPPING {label}: executable '{exe}' not "
+                  f"found in package '{pkg}' — run colcon build to restore it",
+                  file=sys.stderr)
+    actions.append(play_intro)
+    return LaunchDescription(actions)
