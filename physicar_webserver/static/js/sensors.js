@@ -51,7 +51,7 @@ function updateState(d) {
     fill.className = 'battery-fill' + (pct > 60 ? '' : pct > 20 ? ' medium' : ' low');
   }
   if (d.odom) {
-    const lin = Math.abs(d.odom.velocity?.linear || 0) < 0.01 ? '0.0' : (d.odom.velocity?.linear || 0).toFixed(1);
+    const lin = ((d.odom.velocity?.linear || 0).toFixed(1)).replace(/^-(0(\.0+)?)$/, '$1');
     const ang = Math.abs(d.odom.velocity?.angular || 0) < 0.01 ? '0.0' : (d.odom.velocity?.angular || 0).toFixed(2);
     $('p-linear').textContent = lin + ' m/s';
     $('p-angular').textContent = ang + ' rad/s';
