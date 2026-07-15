@@ -51,8 +51,9 @@ apt-get install -y \
   nginx openbox tint2 alsa-utils python3-dev \
   fonts-noto fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji
 
-# Python bytecode cache -> /tmp (keeps __pycache__ out of the student workspace)
-echo 'export PYTHONPYCACHEPREFIX=/tmp/pycache' > /etc/profile.d/pycache.sh
+# Python bytecode cache -> /opt/physicar/pycache (keeps __pycache__ out of the
+# student workspace; persistent so the prebuild image ships it pre-warmed)
+echo 'export PYTHONPYCACHEPREFIX=/opt/physicar/pycache' > /etc/profile.d/pycache.sh
 
 # noVNC symlink + auto-reconnect patch
 [ -d /usr/share/novnc ] && ln -sf vnc_lite.html /usr/share/novnc/index.html
@@ -389,6 +390,17 @@ rm -rf "$PHYSICAR_WS/log"
 # └─────────────────────────────────────────────────────────────────────────────┘
 
 echo "[7/7] Cleanup..."
+
+# Pre-warm the Python bytecode cache into the image so first boot doesn't pay
+# the compile cost (webserver/sim_api import stacks). Errors are non-fatal —
+# anything skipped just compiles lazily at runtime as before.
+export PYTHONPYCACHEPREFIX=/opt/physicar/pycache
+python3 -m compileall -qq -j0 \
+  /opt/ros/jazzy/lib/python3.12/site-packages \
+  /usr/lib/python3/dist-packages \
+  /usr/local/lib/python3.12/dist-packages \
+  /opt/physicar/src 2>/dev/null || true
+chown -R physicar:physicar /opt/physicar/pycache 2>/dev/null || true
 
 apt-get clean
 rm -rf /var/lib/apt/lists/*

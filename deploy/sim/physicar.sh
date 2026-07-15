@@ -33,6 +33,9 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI="file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml"
 
 UPDATE_SIGNAL="/tmp/.physicar-update-ready"
+BUILD_LOCK="/tmp/.physicar-build.lock"
+# Marker the updater keeps while its own build is in flight (see updater.sh)
+UPDATER_BUILDING="/tmp/.physicar-build-pending"
 
 git config --global --add safe.directory "$PHYSICAR_ROS_DIR" 2>/dev/null || true
 git config --global --add safe.directory "$PHYSICAR_SIM_DIR" 2>/dev/null || true
@@ -49,14 +52,16 @@ do_build() {
     touch "$PHYSICAR_ROS_DIR/physicar_lidar/COLCON_IGNORE" 2>/dev/null || true
 
     echo "[physicar] Building..."
-    cd "$PHYSICAR_WS" && colcon build --symlink-install 2>&1
+    (
+        # Serialize with the updater's safe_build (same lock file): two
+        # concurrent colcon builds in one workspace corrupt each other.
+        flock -x 200
+        cd "$PHYSICAR_WS" && colcon build --symlink-install 2>&1 || {
+            echo "[physicar] Build failed. Retrying clean..."
+            clean_build
+        }
+    ) 200>"$BUILD_LOCK"
     local exit_code=$?
-
-    if [ $exit_code -ne 0 ]; then
-        echo "[physicar] Build failed. Retrying clean..."
-        clean_build
-        exit_code=$?
-    fi
 
     source "$PHYSICAR_WS/install/setup.bash"
     return $exit_code
@@ -99,6 +104,9 @@ cleanup_stray_nodes() {
     # is a live DDS participant that keeps the domain's ports and discovery
     # state busy; enough of them and new nodes fail with "rmw_create_node:
     # failed to create domain". Sweep them before the next launch.
+    # Never sweep while the updater is mid-build: compiler/cmake children can
+    # carry install/ paths on their command lines and would match the pattern.
+    [ -f "$UPDATER_BUILDING" ] && return 0
     pkill -f "$PHYSICAR_WS/install" 2>/dev/null
     pkill -f "launch_params_" 2>/dev/null
     pkill -f "image_transport republish" 2>/dev/null

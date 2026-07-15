@@ -23,6 +23,7 @@ INTERVAL="${PHYSICAR_UPDATE_INTERVAL:-60}"  # default: 1 minute
 SIGNAL_FILE="/tmp/.physicar-update-ready"
 PENDING_UPDATE_FILE="/tmp/.physicar-update-pending"
 PENDING_BUILD_FILE="/tmp/.physicar-build-pending"
+BUILD_LOCK_FILE="/tmp/.physicar-build.lock"
 REPO_REMOTE="https://github.com/PhysiCar/physicar-ros.git"
 MIN_DISK_MB=200  # minimum free disk space to proceed with update
 
@@ -315,7 +316,13 @@ safe_update() {
 # ── safe_build ───────────────────────────────────────────
 # Build with symlink-install. Backs up install/ so a failed or
 # interrupted build can be rolled back on next boot.
+# Serialized against the boot script's self-heal rebuild via BUILD_LOCK_FILE —
+# two concurrent colcon builds in one workspace corrupt each other.
 safe_build() {
+    ( flock -x 200; safe_build_locked ) 200>"$BUILD_LOCK_FILE"
+}
+
+safe_build_locked() {
     local install_dir="$WORKSPACE_DIR/install"
     local backup_dir="$WORKSPACE_DIR/install.bak"
     local build_dir="$WORKSPACE_DIR/build"

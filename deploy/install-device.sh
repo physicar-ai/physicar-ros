@@ -156,8 +156,10 @@ apt-get install -y \
   meson ninja-build python3-ply python3-jinja2 \
   parted pigz pv exfatprogs wget
 
-# Python bytecode cache -> /tmp (keeps __pycache__ out of the student workspace)
-echo 'export PYTHONPYCACHEPREFIX=/tmp/pycache' > /etc/profile.d/pycache.sh
+# Python bytecode cache -> /opt/physicar/pycache (keeps __pycache__ out of the
+# student workspace; persistent so boots don't re-pay the compile cost)
+echo 'export PYTHONPYCACHEPREFIX=/opt/physicar/pycache' > /etc/profile.d/pycache.sh
+mkdir -p /opt/physicar/pycache && chown physicar:physicar /opt/physicar/pycache
 
 # ── PiShrink: shrink SD card images (used by create-device-image.sh) ──
 if [ ! -x /usr/local/bin/pishrink.sh ]; then

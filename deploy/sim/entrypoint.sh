@@ -88,6 +88,23 @@ patch_codeserver_webview_media() {
 }
 patch_codeserver_webview_media || true
 
+
+# Prune orphaned bytecode from the persistent pycache: entries whose source
+# file was deleted or renamed (updates, student edits) would otherwise
+# accumulate forever. Background — boot must not wait. A false delete is
+# harmless (recompiles lazily); the cache stays bounded by the live sources.
+(
+  CACHE="/opt/physicar/pycache"
+  if [ -d "$CACHE" ]; then
+    find "$CACHE" -name '*.pyc' 2>/dev/null | while IFS= read -r pyc; do
+      rel="${pyc#"$CACHE"}"
+      src="$(dirname "$rel")/$(basename "$pyc" | cut -d. -f1).py"
+      [ -f "$src" ] || rm -f "$pyc"
+    done
+    find "$CACHE" -type d -empty -delete 2>/dev/null
+  fi
+) &
+
 # Start supervisord
 supervisord -c "$CONF"
 sleep 2

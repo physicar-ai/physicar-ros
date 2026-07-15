@@ -148,8 +148,10 @@ def generate_launch_description():
     )
 
     # WebServer Node (REST API, direct access on port 8000)
+    # Short stagger only — the UI is unusable until this node serves /app,
+    # so it must come up as early as possible.
     webserver_node = TimerAction(
-        period=4.0,
+        period=1.0,
         actions=[
             Node(
                 package='physicar_webserver',
