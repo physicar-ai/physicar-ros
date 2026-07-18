@@ -338,6 +338,17 @@ if [ -n "$TF_LIB" ] && [ -f "$TF_LIB/libtensorflow_cc.so.2" ]; then
   ln -sf "$TF_LIB/libtensorflow_cc.so.2" /usr/local/lib/libtensorflowlite.so
   ln -sf "$TF_LIB/libtensorflow_cc.so.2" /usr/local/lib/libtensorflow_cc.so.2
   ln -sf "$TF_LIB/libtensorflow_framework.so.2" /usr/local/lib/libtensorflow_framework.so.2
+
+  # libtensorflow_cc.so.2 has a NEEDED on the OpenMP runtime that the pip wheel
+  # bundles under tensorflow.libs/ with a hashed soname (e.g. libomp-e9212f90.so.5).
+  # Without it on the linker/loader path, physicar_deepracer fails to link
+  # ("undefined reference to omp_*"), leaving the package half-installed. This bites
+  # on arm64 (no system LLVM libomp); mirror install-device.sh which already handles it.
+  # Symlink the bundled libomp into /usr/local/lib so ld + ld.so resolve it.
+  for _omp in "$(dirname "$TF_LIB")"/tensorflow.libs/libomp-*.so.*; do
+    [ -f "$_omp" ] && ln -sf "$_omp" /usr/local/lib/"$(basename "$_omp")"
+  done
+
   ldconfig
 fi
 
