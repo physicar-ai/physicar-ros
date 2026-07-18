@@ -130,6 +130,51 @@ patch_codeserver_webview_media() {
 }
 patch_codeserver_webview_media || true
 
+# ── code-server extensions / settings / branding (local & cloud sim) ──
+# Codespaces injects these via devcontainer customizations, which code-server
+# never reads — mirror the device flow (physicar.sh / install-device.sh) so a
+# non-Codespaces sim gets the same IDE out of the box.
+echo "  Installing code-server extensions..."
+for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml; do
+  sudo -u physicar code-server --install-extension "$EXT_ID" \
+    || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
+done
+
+# user settings — symlink to the repo copy (device pattern: future updates
+# take effect without re-running install)
+CS_USER_DIR="/home/physicar/.local/share/code-server/User"
+sudo -u physicar mkdir -p "$CS_USER_DIR"
+ln -sf "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+
+# branding — same assets/logic as install-device.sh, but the sim installs
+# code-server from the deb (/usr/lib), not standalone (/usr/local/lib)
+CS_RES=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/resources/server' -type d 2>/dev/null | head -1)
+if [ -n "$CS_RES" ]; then
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/favicon.ico" "$CS_RES/favicon.ico"
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png" "$CS_RES/code-192.png"
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_RES/code-512.png"
+fi
+CS_MEDIA=$(find /usr/lib /usr/local/lib -path '*code-server*/src/browser/media' -type d 2>/dev/null | head -1)
+if [ -n "$CS_MEDIA" ]; then
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/favicon.ico" "$CS_MEDIA/favicon.ico"
+  _B64=$(base64 -w0 "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png")
+  for _svg in favicon.svg favicon-dark-support.svg; do
+    printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$_B64" > "$CS_MEDIA/$_svg"
+  done
+  for _png in pwa-icon-192.png pwa-icon-maskable-192.png; do
+    [ -f "$CS_MEDIA/$_png" ] && cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png" "$CS_MEDIA/$_png"
+  done
+  for _png in pwa-icon-512.png pwa-icon-maskable-512.png; do
+    [ -f "$CS_MEDIA/$_png" ] && cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_MEDIA/$_png"
+  done
+fi
+# Workbench titlebar icon (.window-appicon) — CSS points at out/media/code-icon.svg
+CS_OUT_MEDIA=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/out/media' -type d 2>/dev/null | head -1)
+if [ -n "$CS_OUT_MEDIA" ] && [ -f "$CS_OUT_MEDIA/code-icon.svg" ]; then
+  _B64=$(base64 -w0 "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png")
+  printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$_B64" > "$CS_OUT_MEDIA/code-icon.svg"
+fi
+
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  2. ROS 2 Jazzy + Gazebo Harmonic                                         │
 # └─────────────────────────────────────────────────────────────────────────────┘
@@ -318,6 +363,11 @@ ln -sf /etc/nginx/sites-available/physicar /etc/nginx/sites-enabled/physicar
 ln -sf "$DEPLOY_DIR/etc/nginx/conf.d/pc-token.conf" /etc/nginx/conf.d/pc-token.conf
 # Empty token map so nginx can load now (entrypoint.sh recreates it on boot).
 touch /tmp/pc-token.map
+# Origin gate include (static; `include`s /tmp/pc-gate.map, which entrypoint.sh
+# fills from $PHYSICAR_ORIGIN_GATE_SECRET on boot — blocks gateway-bypass access).
+ln -sf "$DEPLOY_DIR/etc/nginx/conf.d/pc-gate.conf" /etc/nginx/conf.d/pc-gate.conf
+# Inactive gate map so nginx can load now (entrypoint.sh recreates it on boot).
+printf 'default "pass";\n' > /tmp/pc-gate.map
 # Root (/) snippet so nginx can load now — entrypoint.sh rewrites it on boot
 # (root-code.conf on a local sim, root-404.conf in Codespaces). Copied, not
 # symlinked: fs.protected_symlinks blocks cross-owner symlinks in sticky /tmp.

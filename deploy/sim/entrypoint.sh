@@ -38,6 +38,17 @@ else
 fi
 chmod 644 /tmp/pc-root.conf
 
+# ── Origin gate map (see conf.d/pc-gate.conf) ──
+# Cloud instances get $PHYSICAR_ORIGIN_GATE_SECRET from the control plane; the
+# gate then 403s any request lacking the matching X-PhysiCar-Gate header (blocks
+# gateway-bypassing proxying). Without a secret (localhost/Codespaces) → pass.
+if [ -n "${PHYSICAR_ORIGIN_GATE_SECRET:-}" ]; then
+  printf 'default "deny";\n"%s" "ok";\n' "$PHYSICAR_ORIGIN_GATE_SECRET" > /tmp/pc-gate.map
+else
+  printf 'default "pass";\n' > /tmp/pc-gate.map
+fi
+chmod 644 /tmp/pc-gate.map
+
 STUDENT_WS="/home/physicar/physicar_ws"
 
 # ── code-server webview microphone/camera patch (idempotent, every boot) ──

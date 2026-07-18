@@ -43,6 +43,10 @@ server {
     # is a third-party context — the cookie must be SameSite=None; Secure to be
     # sent on iframe requests. The tunnel is always https, so Secure is safe.
     if ($pc_action = "deny")  { return 403; }
+
+    # ── Origin gate ── (see conf.d/pc-gate.conf) — block gateway-bypassing access.
+    # "deny" only on cloud instances where a secret is provisioned; "pass" elsewhere.
+    if ($pc_origin_gate = "deny") { return 403; }
     if ($pc_action = "grant") { set $grant_target $uri; rewrite ^ /__token_grant last; }
 
     location = /__token_grant {

@@ -225,10 +225,11 @@ server {
             return 302 /login?next=$uri;
         }
 
-        # Bare page load → open the workspace. Requests WITH a query string
-        # (?folder=, ?reconnectionToken= WebSocket, …) must pass through.
+        # Bare page load → open the workspace WITHOUT dirtying the address bar:
+        # rewrite (internal, no 302) so the browser URL stays "/". Requests WITH a
+        # query (?reconnectionToken= WebSocket, …) skip this and pass through.
         if ($args = "") {
-            return 302 /?folder=/home/physicar/physicar_ws;
+            rewrite ^ /?folder=/home/physicar/physicar_ws break;
         }
 
         # Auto-redirect hotspot clients to device.physicar.ai when the
@@ -550,10 +551,11 @@ server {
             return 302 /login?next=$uri;
         }
 
-        # Bare page load → open the workspace. Requests WITH a query string
-        # (?folder=, ?reconnectionToken= WebSocket, …) must pass through.
+        # Bare page load → open the workspace WITHOUT dirtying the address bar:
+        # rewrite (internal, no 302) so the browser URL stays "/". Requests WITH a
+        # query (?reconnectionToken= WebSocket, …) skip this and pass through.
         if ($args = "") {
-            return 302 /?folder=/home/physicar/physicar_ws;
+            rewrite ^ /?folder=/home/physicar/physicar_ws break;
         }
 
         proxy_pass http://code_web;

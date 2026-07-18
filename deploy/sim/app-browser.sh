@@ -64,6 +64,15 @@ wait_port() {
 }
 
 # Non-Codespaces: static localhost bookmark and exit.
+# Cloud/self-hosted sim: the operator hands us the external URL (e.g.
+# https://xxxxx.physicar.dev) — the bookmark must use it, not localhost,
+# because students reach this host through that domain.
+if [ -n "${PHYSICAR_EXTERNAL_URL:-}" ]; then
+  write_bookmark "${PHYSICAR_EXTERNAL_URL%/}/app"
+  set_gate_token ""
+  exit 0
+fi
+
 if [ -z "${CODESPACE_NAME:-}" ]; then
   write_bookmark "http://localhost/app"
   set_gate_token ""

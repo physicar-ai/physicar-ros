@@ -1,0 +1,21 @@
+{
+  "chat.disableAIFeatures": true,
+  "chat.sendElementsToChat.enabled": false,
+  "workbench.startupEditor": "none",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
+  "editor.fontSize": 14,
+  "editor.tabSize": 4,
+  "files.autoSave": "afterDelay",
+  "files.exclude": {".devcontainer": true, ".physicar": true},
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "notebook.defaultKernel": {"id": "python3", "path": "/usr/bin/python3"},
+  "markdown.preview.doubleClickToSwitchToEditor": false,
+  "explorer.compactFolders": false,
+  "simpleBrowser.focusLockIndicator.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "chat.viewSessions.orientation": "stacked",
+  "terminal.integrated.initialHint": false,
+  "security.workspace.trust.enabled": false,
+  "workbench.trustedDomains": ["https://physicar.ai", "https://*.physicar.ai", "https://*.physicar.dev", "https://github.com"]
+}
