@@ -758,7 +758,11 @@ fi
 # code-server user settings
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
 sudo -u physicar mkdir -p "$CS_USER_DIR"
-ln -sf "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+# 심링크 금지: 사용자 설정 저장이 가능해야 한다 (기본값 갱신은 부팅 병합이 담당 — physicar.sh)
+[ -f "$CS_USER_DIR/settings.json" ] && [ ! -L "$CS_USER_DIR/settings.json" ] || {
+  rm -f "$CS_USER_DIR/settings.json"
+  cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+}
 
 # Install boot script (from repo)
 chmod +x "$DEPLOY_DIR/physicar.sh"

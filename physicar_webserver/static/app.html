@@ -29,8 +29,10 @@
         away from top-level tabs, but cookies are shared (the nginx pc_token
         gate proves this in practice).
      In the iframe (third-party context, always an https tunnel) SameSite=None;
-     Secure is mandatory. Also mirrored to localStorage as a fallback for JS in
-     the same partition (physicarSession helper). Sign-out (clear) propagates.
+     Secure is mandatory. Also mirrored to sessionStorage (NOT localStorage —
+     a persistent mirror would outlive the session cookie and leak the previous
+     user's token on shared PCs) as a fallback for JS in the same partition
+     (physicarSession helper). Sign-out (clear) propagates.
      Outside the webview (plain tab) there is no parent — silently a no-op. */
   (function () {
     var SESSION_KEY = "physicar_session";
@@ -52,9 +54,11 @@
       var msg = e.data || {};
       if (msg.type === "physicar-token" && typeof msg.token === "string" && msg.token) {
         setCookie(msg.token);
-        try { localStorage.setItem(SESSION_KEY, msg.token); } catch (_) {}
+        try { sessionStorage.setItem(SESSION_KEY, msg.token); } catch (_) {}
+        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}  /* 레거시 영속 미러 청소 */
       } else if (msg.type === "physicar-token-clear") {
         clearCookie();
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
         try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
       }
     });
@@ -74,7 +78,7 @@
       var _have = null;
       try {
         _have = /(?:^|;\s*)physicar_session=/.test(document.cookie)
-          ? "cookie" : localStorage.getItem(SESSION_KEY);
+          ? "cookie" : sessionStorage.getItem(SESSION_KEY);
       } catch (_) {}
       if (!_have) {
         fetch("/__session", { method: "POST" })
@@ -82,7 +86,7 @@
           .then(function (d) {
             if (d && d.token) {
               setCookie(d.token);
-              try { localStorage.setItem(SESSION_KEY, d.token); } catch (_) {}
+              try { sessionStorage.setItem(SESSION_KEY, d.token); } catch (_) {}
             }
           })
           .catch(function () {});
@@ -336,8 +340,8 @@ body:not(.sim-mode) #panel-simulator{display:none}
     <div class="panel-section panel-section-flush">
       <div class="panel-title">Camera
         <select id="cam-res" onchange="changeCameraRes()">
-          <option value="480" selected>480x360</option>
-          <option value="320">320x240</option>
+          <option value="480">480x360</option>
+          <option value="320" selected>320x240</option>
           <option value="160">160x120</option>
         </select>
       </div>
@@ -582,12 +586,19 @@ body:not(.sim-mode) #panel-simulator{display:none}
   function updateFocus(force){
     const ae = document.activeElement;
     const target = (ae && ae.tagName === 'IFRAME') ? ae : null;
-    if (!force && target === lastFocused) return;
-    lastFocused = target;
+    // 비교 키에 비-iframe activeElement 도 포함 — 머리띠 컨트롤 사이 이동도 감지
+    const key = target || ae;
+    if (!force && key === lastFocused) return;
+    lastFocused = key;
     document.querySelectorAll('.stack-panel.focused').forEach(el => el.classList.remove('focused'));
     if (target) {
       const holder = target.closest('.stack-panel');
       if (holder) holder.classList.add('focused');
+    } else if (ae && ae.closest && ae.closest('.stack-panel')) {
+      // 패널 머리띠의 컨트롤(월드 셀렉트/임포트/리스폰 등)을 조작 중 —
+      // iframe 포커스는 빠졌지만 활성 패널은 그 패널로 유지한다
+      // (없으면 아래 CONTROL 폴백이 발동해 외곽선이 엉뚱한 카드로 튄다)
+      ae.closest('.stack-panel').classList.add('focused');
     } else if (panels.control.classList.contains('on')) {
       panels.control.classList.add('focused');
     }

@@ -144,7 +144,11 @@ done
 # take effect without re-running install)
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
 sudo -u physicar mkdir -p "$CS_USER_DIR"
-ln -sf "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+# 심링크 금지: 사용자 설정 저장이 가능해야 한다 (기본값 갱신은 부팅 병합이 담당 — entrypoint.sh)
+[ -f "$CS_USER_DIR/settings.json" ] && [ ! -L "$CS_USER_DIR/settings.json" ] || {
+  rm -f "$CS_USER_DIR/settings.json"
+  cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+}
 
 # branding — same assets/logic as install-device.sh, but the sim installs
 # code-server from the deb (/usr/lib), not standalone (/usr/local/lib)

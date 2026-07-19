@@ -151,6 +151,54 @@ PYFOLD
 }
 patch_codeserver_default_folder || true
 
+# ── 알림 방해금지(DND) 기본값 시드 (idempotent) ──
+# 우측 하단 알림 팝업을 "에러만" 남기고 숨긴다. DND 는 settings.json 키가 아니라
+# 전역 상태 DB(state.vscdb)의 토글이라 여기서 심는다. 키가 이미 있으면(사용자가
+# 직접 토글했다면) 그 선택을 존중한다. 실패해도 부팅은 계속 (best-effort).
+python3 - <<'PYDND' || true
+import sqlite3, os
+p = os.path.expanduser('~/.local/share/code-server/User/globalStorage/state.vscdb')
+os.makedirs(os.path.dirname(p), exist_ok=True)
+try:
+    db = sqlite3.connect(p, timeout=3)
+    db.execute('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)')
+    cur = db.execute("SELECT value FROM ItemTable WHERE key='notifications.doNotDisturbMode'").fetchone()
+    if cur is None:
+        db.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('notifications.doNotDisturbMode','true')")
+        db.commit()
+    db.close()
+except Exception:
+    pass
+PYDND
+
+# ── settings.json 병합 시드 (심링크 → 실파일 전환) ──
+# 종전 심링크(레포行, root 소유·읽기전용)는 사용자의 설정 저장이 실패하게 만들어
+# "저장 안 된 settings.json" 편집기가 세션마다 복원되는 문제를 낳았다.
+# → 사용자 소유 실파일로 전환하고 부팅마다 관리 기본값을 병합한다
+#   (사용자가 바꾼 키는 사용자 값 우선, 새 기본값 키는 계속 전파).
+python3 - "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" <<'PYSET' || true
+import json, os, sys
+managed_path = sys.argv[1]
+user_path = os.path.expanduser('~/.local/share/code-server/User/settings.json')
+os.makedirs(os.path.dirname(user_path), exist_ok=True)
+try:
+    managed = json.load(open(managed_path))
+except Exception:
+    sys.exit(0)
+user = {}
+if os.path.islink(user_path):
+    os.remove(user_path)   # 구 심링크 제거 (읽기전용 저장 실패의 원인)
+elif os.path.exists(user_path):
+    try:
+        user = json.load(open(user_path))
+    except Exception:
+        user = {}
+merged = {**managed, **user}
+if not os.path.exists(user_path) or merged != user:
+    json.dump(merged, open(user_path, 'w'), indent=2, ensure_ascii=False)
+PYSET
+
+
 
 # Prune orphaned bytecode from the persistent pycache: entries whose source
 # file was deleted or renamed (updates, student edits) would otherwise

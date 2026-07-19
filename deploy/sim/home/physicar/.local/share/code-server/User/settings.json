@@ -16,6 +16,11 @@
   "telemetry.telemetryLevel": "off",
   "chat.viewSessions.orientation": "stacked",
   "terminal.integrated.initialHint": false,
+  "remote.autoForwardPorts": false,
+  "remote.otherPortsAttributes": {"onAutoForward": "silent"},
+  "update.showReleaseNotes": false,
+  "extensions.ignoreRecommendations": true,
+  "workbench.tips.enabled": false,
   "security.workspace.trust.enabled": false,
   "workbench.trustedDomains": ["https://physicar.ai", "https://*.physicar.ai", "https://*.physicar.dev", "https://github.com"]
 }
