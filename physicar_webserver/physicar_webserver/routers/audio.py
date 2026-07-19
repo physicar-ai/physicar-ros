@@ -116,14 +116,26 @@ async def events(request: Request):
 
     async def gen():
         try:
-            # replay current state so a late-joining browser starts playing
+            # replay current state so a late-joining browser starts playing.
+            # 끝난 곡 재재생 사고 방지(리스폰=페이지 리로드→SSE 재구독):
+            #  - duration 을 아는 비루프 곡이 이미 끝났으면 건너뛴다
+            #  - 재생 중인 곡은 offset(경과초)을 실어 이어듣게 한다
+            #  - URL 곡은 duration 미상 → 브라우저의 자연 종료 통지(POST /audio/stop)가
+            #    서버 보관 상태를 지우는 유일한 수단 (gzweb.js onended 참고)
             for item in audio_manager.status():
-                if item["kind"] in ("url", "path", "data"):
-                    yield "data: " + json.dumps({
-                        "type": "play", "id": item["id"],
-                        "url": item["source"] if item["kind"] == "url" else f"/audio/file/{item['id']}",
-                        "volume": item["volume"], "loop": item["loop"],
-                    }) + "\n\n"
+                if item["kind"] not in ("url", "path", "data"):
+                    continue
+                pos = item.get("position") or 0.0
+                dur = item.get("duration")
+                if not item["loop"] and dur is not None and pos > dur:
+                    continue
+                offset = (pos % dur) if (item["loop"] and dur) else pos
+                yield "data: " + json.dumps({
+                    "type": "play", "id": item["id"],
+                    "url": item["source"] if item["kind"] == "url" else f"/audio/file/{item['id']}",
+                    "volume": item["volume"], "loop": item["loop"],
+                    "offset": round(offset, 2),
+                }) + "\n\n"
             while True:
                 if await request.is_disconnected():
                     return

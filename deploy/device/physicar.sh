@@ -720,6 +720,37 @@ CSPFIX
 }
 patch_codeserver_webview_media || true
 
+# ── code-server 기본 폴더 패치 (idempotent, every boot) ──
+# 쿼리 없는 / 를 기본 워크스페이스로 연다. 워크벤치는 folder 를 브라우저
+# 주소창에서만(비동기 시점에) 읽으므로, 서버측 302 는 주소창을 더럽히고
+# 주소창 잠깐 조작은 레이스가 난다 → 번들에 "쿼리 부재 시 기본 폴더" 폴백을
+# 심는 것만이 결정론적 (sim entrypoint.sh 와 동일 패치).
+patch_codeserver_default_folder() {
+  local cs_bin cs_vscode wb
+  cs_bin=$(readlink -f "$(command -v code-server)" 2>/dev/null) || return 0
+  cs_vscode=$(dirname "$cs_bin")/../lib/vscode
+  [ -d "$cs_vscode/out" ] || cs_vscode=/usr/lib/code-server/lib/vscode
+  wb="$cs_vscode/out/vs/code/browser/workbench/workbench.js"
+  [ -f "$wb" ] || { echo "[folder-patch] workbench.js not found"; return 0; }
+  grep -q 'pc-default-folder' "$wb" && return 0
+  sudo python3 - "$wb" <<'PYFOLD'
+import sys
+p = sys.argv[1]
+s = open(p, encoding='utf-8').read()
+old = 'new URL(document.location.href).searchParams.forEach'
+new = ('(()=>{/*pc-default-folder*/const u=new URL(document.location.href);'
+       'u.searchParams.has("folder")||u.searchParams.has("workspace")||u.searchParams.has("ew")||'
+       'u.searchParams.set("folder","/home/physicar/physicar_ws");return u})().searchParams.forEach')
+n = s.count(old)
+if n != 1:
+    print('[folder-patch] WARNING: pattern x%d (expected 1) — skipped, default folder inactive' % n)
+    sys.exit(0)
+open(p, 'w', encoding='utf-8').write(s.replace(old, new))
+print('[folder-patch] default folder patched into workbench.js')
+PYFOLD
+}
+patch_codeserver_default_folder || true
+
 # Pre-install extensions on first boot
 EXT_MARKER="$HOME/.local/share/code-server/.physicar-ext-installed"
 if [ ! -f "$EXT_MARKER" ]; then

@@ -34,15 +34,12 @@
      Outside the webview (plain tab) there is no parent — silently a no-op. */
   (function () {
     var SESSION_KEY = "physicar_session";
-    var WEEK = 7 * 24 * 3600;  // matches the session token TTL
-    // Tunnel hosts get a fresh random label every session, so a Max-Age cookie
-    // would outlive its origin and pile up on dead labels in the cookie jar.
-    // There: session cookie (dies with the browser). Stable origins
-    // (device.physicar.ai, *.app.github.dev, localhost) keep the 7-day TTL.
-    var EPHEMERAL_HOST = /\.(trycloudflare|physicarcs)\.com$/i.test(location.hostname);
+    // 항상 세션 쿠키(Max-Age 없음 — 브라우저 종료 시 소멸). 영속시키지 않는 이유:
+    // 공용 PC 에서 이전 사용자의 토큰이 /myapp 에 며칠씩 남는 위험 > "브라우저
+    // 재시작 후 워크스페이스 안 거치고 myapp 직행"이라는 드문 편의. 어차피
+    // 워크스페이스/앱을 열면 패널(bridge)이 쿠키를 자동으로 다시 심는다.
     function setCookie(token) {
       var attrs = "; Path=/"
-        + (EPHEMERAL_HOST ? "" : "; Max-Age=" + WEEK)
         + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
       try { document.cookie = SESSION_KEY + "=" + encodeURIComponent(token) + attrs; } catch (_) {}
     }
