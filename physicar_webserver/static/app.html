@@ -67,6 +67,30 @@
         window.parent.postMessage({ type: "physicar-token-request" }, "*");
       }
     } catch (_) {}
+
+    /* Cloud sim auto-login: on sim.physicar.ai the gateway's own cookie already
+       identifies the user — exchange it for an API session via same-origin
+       /__session when we hold no token (standalone tab; the extension bridge
+       covers the embedded case). Elsewhere the endpoint doesn't exist →
+       non-OK/throw → silently ignored. */
+    try {
+      var _have = null;
+      try {
+        _have = /(?:^|;\s*)physicar_session=/.test(document.cookie)
+          ? "cookie" : localStorage.getItem(SESSION_KEY);
+      } catch (_) {}
+      if (!_have) {
+        fetch("/__session", { method: "POST" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            if (d && d.token) {
+              setCookie(d.token);
+              try { localStorage.setItem(SESSION_KEY, d.token); } catch (_) {}
+            }
+          })
+          .catch(function () {});
+      }
+    } catch (_) {}
   })();
 </script>
 <script>

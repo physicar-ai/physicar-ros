@@ -96,6 +96,25 @@ patch_codeserver_webview_media() {
   if ! grep -rqF -e "$A_NEW" -e "$B_NEW" -e "$C_NEW" "$cs_vscode/out" 2>/dev/null; then
     echo "[media-patch] WARNING: no known allow-list pattern found in this code-server version — webview mic/cam will stay blocked until the patterns in this function are updated"
   fi
+
+  # CSP 해시 재동기화: 최신 code-server 의 webview index.html 은 인라인 스크립트를
+  # CSP 'sha256-…' 로 고정한다. C 패턴이 그 스크립트를 수정하는 순간 해시가 어긋나
+  # 브라우저가 스크립트를 차단 → webview(확장 패널·커스텀 에디터) 전면 빈 화면.
+  # → 패치된 HTML 마다 인라인 스크립트의 sha256 을 재계산해 CSP 를 맞춘다 (멱등).
+  while IFS= read -r f; do
+    sudo python3 - "$f" <<'PYCSP'
+import sys, re, hashlib, base64
+p = sys.argv[1]
+s = open(p, encoding='utf-8').read()
+m = re.search(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", s, re.S)
+if not m: sys.exit(0)
+h = base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode()
+s2, n = re.subn(r"'sha256-[A-Za-z0-9+/=]+'", "'sha256-" + h + "'", s)
+if n and s2 != s:
+    open(p, 'w', encoding='utf-8').write(s2)
+    print('[media-patch] CSP hash resynced: ' + p)
+PYCSP
+  done < <(grep -rlF "$C_NEW" "$cs_vscode/out" --include='*.html' 2>/dev/null)
 }
 patch_codeserver_webview_media || true
 

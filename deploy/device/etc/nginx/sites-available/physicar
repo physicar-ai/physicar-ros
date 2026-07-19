@@ -225,13 +225,6 @@ server {
             return 302 /login?next=$uri;
         }
 
-        # Bare page load → open the workspace WITHOUT dirtying the address bar:
-        # rewrite (internal, no 302) so the browser URL stays "/". Requests WITH a
-        # query (?reconnectionToken= WebSocket, …) skip this and pass through.
-        if ($args = "") {
-            rewrite ^ /?folder=/home/physicar/physicar_ws break;
-        }
-
         # Auto-redirect hotspot clients to device.physicar.ai when the
         # fetcher has a valid LE cert installed (flag file present).
         # Otherwise serve self-signed in place (browser warning, but no
@@ -241,6 +234,13 @@ server {
         if ($remote_addr ~ "^10\.42\.0\.") { set $code_redir "${code_redir}H"; }
         if ($code_redir = "VH") {
             return 302 https://device.physicar.ai$request_uri;
+        }
+
+        # 쿼리 없는 / 에서 기본 폴더를 "주소창 클린"으로 연다 (sim root-code.conf 와 동일 기법):
+        # 내부 rewrite 로 code-server 의 302(?folder= 주소창 노출)를 막고, sub_filter 로
+        # 주입한 스크립트가 워크벤치가 읽기 전 잠깐 ?folder 를 심었다 load 후 / 로 되돌린다.
+        if ($args = "") {
+            rewrite ^ /?folder=/home/physicar/physicar_ws break;
         }
 
         proxy_pass http://code_web;
@@ -257,6 +257,11 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400s;
+
+        # sub_filter 는 압축 응답엔 못 끼어들므로 오리진 압축을 끈다 (이 경로 한정).
+        proxy_set_header Accept-Encoding "";
+        sub_filter_once on;
+        sub_filter '<head>' '<head><script>(function(){if(!location.search){history.replaceState(null,"","?folder=/home/physicar/physicar_ws");addEventListener("load",function(){history.replaceState(null,"","/")})}})()</script>';
     }
 
     location / {
@@ -551,9 +556,9 @@ server {
             return 302 /login?next=$uri;
         }
 
-        # Bare page load → open the workspace WITHOUT dirtying the address bar:
-        # rewrite (internal, no 302) so the browser URL stays "/". Requests WITH a
-        # query (?reconnectionToken= WebSocket, …) skip this and pass through.
+        # 쿼리 없는 / 에서 기본 폴더를 "주소창 클린"으로 연다 (sim root-code.conf 와 동일 기법):
+        # 내부 rewrite 로 code-server 의 302(?folder= 주소창 노출)를 막고, sub_filter 로
+        # 주입한 스크립트가 워크벤치가 읽기 전 잠깐 ?folder 를 심었다 load 후 / 로 되돌린다.
         if ($args = "") {
             rewrite ^ /?folder=/home/physicar/physicar_ws break;
         }
@@ -572,6 +577,11 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400s;
+
+        # sub_filter 는 압축 응답엔 못 끼어들므로 오리진 압축을 끈다 (이 경로 한정).
+        proxy_set_header Accept-Encoding "";
+        sub_filter_once on;
+        sub_filter '<head>' '<head><script>(function(){if(!location.search){history.replaceState(null,"","?folder=/home/physicar/physicar_ws");addEventListener("load",function(){history.replaceState(null,"","/")})}})()</script>';
     }
 
     location / {
