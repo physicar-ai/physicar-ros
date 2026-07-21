@@ -13,16 +13,10 @@ find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CalibrationStatus.msg"
-  "msg/DeepracerInference.msg"
   "msg/JoyTeleopStatus.msg"
   "msg/TeleopStatus.msg"
   "srv/SetCalibration.srv"
   "srv/GetCalibration.srv"
-  "srv/DeepracerLoadModel.srv"
-  "srv/DeepracerUnloadModel.srv"
-  "srv/DeepracerControl.srv"
-  "srv/DeepracerStatus.srv"
-  "srv/DeepracerSetConfig.srv"
   "srv/GetJoyMapping.srv"
   "srv/SetJoyMapping.srv"
   DEPENDENCIES std_msgs action_msgs builtin_interfaces

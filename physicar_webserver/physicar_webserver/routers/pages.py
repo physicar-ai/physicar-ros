@@ -23,7 +23,6 @@ needs. Served via ``_load_html`` so /static asset references get
 cache-busting ``?v=<mtime>`` query strings.
 
     /app        - main UI (Control + service tabs + Simulator + Sensors)
-    /deepracer  - DeepRacer model runner (loaded as the /app center iframe)
 """
 
 from fastapi import APIRouter
@@ -37,9 +36,4 @@ router = APIRouter(tags=["Pages"])
 @router.get("/app", response_class=HTMLResponse)
 async def app_page():
     return _load_html("app.html")
-
-
-@router.get("/deepracer", response_class=HTMLResponse)
-async def deepracer_page():
-    return _load_html("deepracer.html")
 

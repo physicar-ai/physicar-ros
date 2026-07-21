@@ -8,8 +8,6 @@ export PHYSICAR_ROS_DIR=/opt/physicar/src/physicar-ros
 # middleware and transport behavior in SIM and on hardware.
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml
-export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml
-export NAV2_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/nav2_params.yaml
 export GZ_PARTITION=physicar
 export GZ_CONFIG_PATH=/usr/share/gz
 export GALLIUM_DRIVER=llvmpipe

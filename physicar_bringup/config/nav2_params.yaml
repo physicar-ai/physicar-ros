@@ -4,11 +4,11 @@
 # Usage (host terminal):
 #   # 1. Localization (uses saved map)
 #   ros2 launch nav2_bringup localization_launch.py \
-#       map:=/path/to/map.yaml params_file:=$NAV2_PARAMS_FILE use_sim_time:=true
+#       map:=/path/to/map.yaml params_file:=<this file> use_sim_time:=true
 #
 #   # 2. Navigation
 #   ros2 launch nav2_bringup navigation_launch.py \
-#       params_file:=$NAV2_PARAMS_FILE use_sim_time:=true
+#       params_file:=<this file> use_sim_time:=true
 
 amcl:
   ros__parameters:
@@ -25,7 +25,7 @@ amcl:
     global_frame_id: "map"
     lambda_short: 0.1
     laser_likelihood_max_dist: 2.0
-    laser_max_range: 12.0
+    laser_max_range: 16.0
     laser_min_range: 0.05
     laser_model_type: "likelihood_field"
     max_beams: 60

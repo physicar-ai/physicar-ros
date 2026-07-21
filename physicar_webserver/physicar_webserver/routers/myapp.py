@@ -18,10 +18,9 @@
 """
 MyApp Router — student-facing webapp (:5000) slot management.
 
-``physicar-myapp.service`` runs ``/home/physicar/physicar_ws/myapp/run.sh``.
-This router writes run.sh / run.log under
-``/home/physicar/physicar_ws/myapp/`` and uses ``sudo systemctl`` to control
-the systemd unit (start / stop / restart).
+``physicar-myapp.service`` runs ``/opt/physicar/userdata/myapp.sh``
+(myapp.log next to it) and this router writes those files, using
+``sudo systemctl`` to control the unit (start / stop / restart).
 """
 
 import asyncio
@@ -41,8 +40,8 @@ from physicar_webserver.sim import is_sim_mode
 router = APIRouter(prefix="/settings/myapp", tags=["myapp"])
 
 
-SCRIPT_FILE = Path("/home/physicar/physicar_ws/myapp/run.sh")
-LOG_FILE = Path("/home/physicar/physicar_ws/myapp/run.log")
+SCRIPT_FILE = Path("/opt/physicar/userdata/myapp.sh")
+LOG_FILE = Path("/opt/physicar/userdata/myapp.log")
 CONFIG_DIR = SCRIPT_FILE.parent
 
 _MYAPP_SYSTEMD_UNIT = "physicar-myapp.service"
@@ -70,7 +69,7 @@ def _read_script() -> str:
 
 
 def _write_script(content: str) -> None:
-    """Atomic write of run.sh + chmod 0755."""
+    """Atomic write of myapp.sh + chmod 0755."""
     _ensure_dir()
     if not content.endswith("\n"):
         content = content + "\n"
@@ -81,8 +80,8 @@ def _write_script(content: str) -> None:
 
 
 def _delete_script() -> None:
-    """Remove run.sh AND run.log — clearing the app leaves no stray log
-    behind (same philosophy as the no-pre-created-log service setup)."""
+    """Remove myapp.sh AND myapp.log — clearing the app leaves no stray
+    log behind (same philosophy as the no-pre-created-log service setup)."""
     for f in (SCRIPT_FILE, LOG_FILE):
         try:
             f.unlink()

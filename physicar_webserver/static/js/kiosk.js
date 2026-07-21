@@ -398,7 +398,6 @@
         const iframeSrcs = {
             'display-vnc': '/vnc',
             'display-myapp': '/myapp',
-            'display-deepracer': '/deepracer'
         };
 
         // Monotonic token: any in-flight reload that doesn't match the

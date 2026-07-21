@@ -39,7 +39,6 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import BatteryState, Imu, LaserScan, CompressedImage, JointState, Joy
 from std_msgs.msg import Float64
 from geometry_msgs.msg import Twist
-from physicar_interfaces.msg import DeepracerInference
 
 
 try:
@@ -318,15 +317,6 @@ def process_twist(msg: Twist) -> dict:
         },
     }
 
-def process_deepracer_inference(msg: DeepracerInference) -> dict:
-    """Process DeepracerInference message to dict."""
-    return {
-        "speed": round(msg.speed, 4),
-        "steering_angle": round(msg.steering_angle, 2),
-        "probabilities": [round(p, 4) for p in msg.probabilities],
-        "timestamp": msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9,
-    }
-
 def process_joy(msg: Joy) -> dict:
     """Process Joy message to dict.
 
@@ -386,12 +376,6 @@ TOPIC_CONFIGS: Dict[str, TopicConfig] = {
         msg_type=Float64,
         qos=QOS_RELIABLE,
         processor=process_float64,
-    ),
-    "deepracer_inference": TopicConfig(
-        topic="/deepracer/inference",
-        msg_type=DeepracerInference,
-        qos=QOS_RELIABLE,
-        processor=process_deepracer_inference,
     ),
     "joy": TopicConfig(
         topic="/joy",

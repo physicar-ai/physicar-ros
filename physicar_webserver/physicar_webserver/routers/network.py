@@ -822,7 +822,7 @@ async def _build_snapshot() -> dict:
 
     The endpoint handlers below do blocking subprocess calls (nmcli,
     iw, socket.connect). Running them directly inside the event loop starves
-    every other request — any deepracer/calibration call concurrent with the
+    every other request — any calibration call concurrent with the
     5 s poll cycle hits its 2 s service timeout. So we drive each handler
     through asyncio.to_thread (and bury sync work in a worker thread).
     """

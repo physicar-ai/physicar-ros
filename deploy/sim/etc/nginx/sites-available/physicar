@@ -227,10 +227,10 @@ server {
 
     # ── PhysiCar app (FastAPI :8000) — pages + APIs ──
     # `/` belongs to code-server (or 404 in Codespaces), so every FastAPI
-    # route is listed here explicitly: pages (/app /deepracer), assets
+    # route is listed here explicitly: pages (/app), assets
     # (/static /favicon.ico /docs /redoc /openapi.json)
     # and APIs. Add new top-level FastAPI prefixes to this list.
-    location ~ ^/(app|deepracer|static|docs|redoc|openapi\.json|favicon\.ico|health|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
+    location ~ ^/(app|static|docs|redoc|openapi\.json|favicon\.ico|health|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
         proxy_pass http://fastapi_backend;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

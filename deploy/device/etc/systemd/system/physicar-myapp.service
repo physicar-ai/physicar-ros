@@ -6,7 +6,7 @@ Wants=network-online.target
 # app. Without this the service starts on every boot even with no run.sh and
 # leaves an empty run.log behind. The web UI writes myapp/run.sh then restarts
 # the unit (routers/myapp.py), so the condition is re-evaluated at that point.
-ConditionPathExists=/home/physicar/physicar_ws/myapp/run.sh
+ConditionPathExists=/opt/physicar/userdata/myapp.sh
 
 [Service]
 Type=simple
@@ -17,9 +17,9 @@ Environment=PORT=5000 PYTHONUNBUFFERED=1
 # truncate: lets systemd (root) create+truncate the log itself, so no ExecStartPre
 # is needed and there is no physicar-vs-root ownership clash on first start.
 # (The myapp/ dir itself is guaranteed by routers/myapp.py before run.sh exists.)
-StandardOutput=truncate:/home/physicar/physicar_ws/myapp/run.log
-StandardError=append:/home/physicar/physicar_ws/myapp/run.log
-ExecStart=/bin/bash -ic 'exec bash /home/physicar/physicar_ws/myapp/run.sh'
+StandardOutput=truncate:/opt/physicar/userdata/myapp.log
+StandardError=append:/opt/physicar/userdata/myapp.log
+ExecStart=/bin/bash -ic 'exec bash /opt/physicar/userdata/myapp.sh'
 Restart=on-failure
 RestartSec=2
 KillMode=control-group

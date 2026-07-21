@@ -1,7 +1,7 @@
 # PhysiCar Nginx Configuration (Host)
 # All services on single port 80/443:
-#   code-server(/), App(/app), PhysiCar pages+API(/deepracer +
-#   explicit FastAPI prefixes), noVNC(/vnc), MyApp(/myapp)
+#   code-server(/), App(/app), PhysiCar pages+API(explicit
+#   FastAPI prefixes), noVNC(/vnc), MyApp(/myapp)
 # Authentication: nginx-managed (geo IP, cookie, query string)
 #
 # Two server blocks share an identical set of locations:
@@ -450,10 +450,10 @@ server {
 
     # ── PhysiCar app (FastAPI :8000) — pages + APIs ──
     # `/` belongs to code-server, so every FastAPI route is listed here
-    # explicitly: pages (/app /deepracer), assets
+    # explicitly: pages (/app), assets
     # (/static /favicon.ico /docs /redoc /openapi.json) and APIs. Add new
     # top-level FastAPI prefixes to this list when introducing them.
-    location ~ ^/(app|deepracer|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
+    location ~ ^/(app|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
@@ -756,10 +756,10 @@ server {
 
     # ── PhysiCar app (FastAPI :8000) — pages + APIs ──
     # `/` belongs to code-server, so every FastAPI route is listed here
-    # explicitly: pages (/app /deepracer), assets
+    # explicitly: pages (/app), assets
     # (/static /favicon.ico /docs /redoc /openapi.json) and APIs. Add new
     # top-level FastAPI prefixes to this list when introducing them.
-    location ~ ^/(app|deepracer|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
+    location ~ ^/(app|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }

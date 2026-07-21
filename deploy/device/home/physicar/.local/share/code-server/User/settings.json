@@ -1,5 +1,7 @@
 {
   "chat.disableAIFeatures": true,
+  "code-runner.runInTerminal": true,
+  "code-runner.executorMap": {"shellscript": "cd $dir && ./$fileName", "python": "cd $dir && python3 -u $fileName"},
   "chat.sendElementsToChat.enabled": false,
   "workbench.startupEditor": "none",
   "workbench.welcomePage.walkthroughs.openOnInstall": false,
@@ -7,6 +9,10 @@
   "editor.tabSize": 4,
   "files.autoSave": "afterDelay",
   "python.defaultInterpreterPath": "/usr/bin/python3",
+  "python.analysis.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages",
+    "/opt/physicar/install/physicar_interfaces/lib/python3.12/site-packages"
+  ],
   "simpleBrowser.focusLockIndicator.enabled": false,
   "telemetry.telemetryLevel": "off",
   "chat.viewSessions.orientation": "stacked",

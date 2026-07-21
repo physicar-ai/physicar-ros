@@ -33,7 +33,6 @@ The following run identically to the real robot:
   - scan_filter (/scan → /scan_filtered)
   - laser_odom (LiDAR-based /odom/laser — Point-to-Line ICP)
   - ekf_filter_node (fuses laser_odom + IMU → /odom)
-  - deepracer_node (inference, always runs)
   - webserver_node (REST API on port 8000)
 
 SIM-only processes:
@@ -55,7 +54,7 @@ Audio in SIM:
 Topic parity — ALL topics available in both real and SIM modes:
   /speed, /steering, /camera/pan, /camera/tilt, /audio,
   /imu, /camera/image_raw/compressed, /scan, /scan_filtered, /odom, /clock,
-  /joint_states, /battery_state, /servo/commands, /deepracer/inference
+  /joint_states, /battery_state, /servo/commands
 """
 
 import os
@@ -108,17 +107,6 @@ def generate_launch_description():
     )
 
     # ── Upper-layer nodes (identical to device.launch.py) ──
-
-    # DeepRacer inference node (always runs — same as real robot)
-    deepracer_node = Node(
-        package='physicar_deepracer',
-        executable='deepracer_node',
-        name='deepracer',
-        output='screen',
-        parameters=[{'use_sim_time': True}],
-        respawn=True,
-        respawn_delay=2.0,
-    )
 
     # Scan filter: /scan → /scan_filtered (same as real robot)
     scan_filter = Node(
@@ -272,7 +260,6 @@ def generate_launch_description():
         ('physicar_bringup', 'scan_filter_node', scan_filter, 'scan_filter'),
         ('physicar_laser_odom', 'laser_odom_node', laser_odom, 'laser_odom'),
         ('robot_localization', 'ekf_node', ekf_node, 'ekf_node'),
-        ('physicar_deepracer', 'deepracer_node', deepracer_node, 'deepracer'),
         ('physicar_webserver', 'webserver_node.py', webserver_node, 'webserver'),
         ('physicar_bringup', 'topic_watchdog_node',
          topic_watchdog, 'topic_watchdog'),

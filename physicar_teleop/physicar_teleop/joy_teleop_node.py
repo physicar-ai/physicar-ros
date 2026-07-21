@@ -13,7 +13,7 @@ the driver can pick which input source to apply based on lock state:
 The driver subscribes to BOTH the public `/speed`,`/steering`,`/camera/*`
 and these `/teleop/*` mirrors, then uses the latched
 `/physicar_joy_teleop/status` topic (drive_engaged / camera_engaged fields) to
-decide which one to forward to hardware.  This way deepracer/REST
+decide which one to forward to hardware.  This way REST
 keep publishing freely on the public topics; their messages are simply
 ignored by the driver while the user is holding LB/RB, and resume the
 moment the buttons are released — perfect for "manual rescue back to the
@@ -23,8 +23,7 @@ Press-and-hold semantics:
 
     LB (deadman_button)        - while held, joy_teleop drives /speed and
                                  /steering AND advertises drive_engaged=true so
-                                 other publishers (REST /control, deepracer,
-                                 REST) yield.  Releasing emits a single zero
+                                 other publishers (REST /control) yield.  Releasing emits a single zero
                                  frame and clears drive_engaged.
     RB (camera_assist_button)  - while held, joy_teleop integrates the right
                                  stick into camera pan/tilt AND advertises
@@ -134,7 +133,7 @@ class JoyTeleopNode(Node):
         # NOTE: We deliberately publish to a /teleop/* mirror namespace
         # rather than /speed,/steering,/camera/* directly.  The driver
         # subscribes to both and gates by drive_engaged/camera_engaged so the
-        # public topics keep flowing from deepracer / REST and only get
+        # public topics keep flowing from REST and only get
         # *applied* when the user releases LB/RB.
         self.pub_speed = self.create_publisher(Float64, '/teleop/speed', 10)
         self.pub_steer = self.create_publisher(Float64, '/teleop/steering', 10)
@@ -498,7 +497,7 @@ class JoyTeleopNode(Node):
         # Stale-joy guard: ros-jazzy-joy publishes ~50Hz with autorepeat, so a
         # gap >0.5s means the controller dropped (BT disconnect, USB unplug,
         # node crash).  Treat that as "everything released" so locks fall and
-        # other publishers (deepracer, REST) regain control instead of being
+        # other publishers (REST) regain control instead of being
         # held off by a frozen last frame.
         if self._last_joy_time is not None:
             now = self.get_clock().now()

@@ -31,7 +31,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 # Authentication is handled by nginx (see deploy/).
 # FastAPI listens on 127.0.0.1:8000 and trusts every request that reaches it.
-from physicar_webserver.routers import health, kiosk, info, auth, deepracer
+from physicar_webserver.routers import health, kiosk, info, auth
 from physicar_webserver.routers import hw, calibration, network, bluetooth, myapp
 from physicar_webserver.routers import pages
 from physicar_webserver.routers import audio as audio_router
@@ -201,11 +201,8 @@ app.include_router(bluetooth.router)   # /network/bluetooth
 app.include_router(myapp.router)       # /settings/myapp (host-side :5000 student web app)
 if not _is_sim_mode():
     app.include_router(joy.router)     # /teleop/joy — gamepad (sim has no joy node and no kiosk UI)
-app.include_router(pages.router)       # /deepracer (standalone UI page)
+app.include_router(pages.router)       # /app (standalone UI page)
 app.include_router(audio_router.router)  # /audio (command-based playback + WS PCM16 stream)
-
-# DeepRacer
-app.include_router(deepracer.router)
 
 # Mount static files (for kiosk assets like JS/CSS libraries)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR), follow_symlink=True), name="static")

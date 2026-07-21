@@ -214,16 +214,6 @@ def generate_launch_description():
         respawn_delay=2.0,
     )
 
-    # DeepRacer inference node (always runs)
-    deepracer_node = Node(
-        package='physicar_deepracer',
-        executable='deepracer_node',
-        name='deepracer',
-        output='screen',
-        respawn=True,
-        respawn_delay=2.0,
-    )
-
     # Joystick driver (SDL2-based, normalises Xbox/PS/Switch controllers)
     # Reads /dev/input/jsX directly.
     # SDL_JOYSTICK_HIDAPI=0: disable SDL's HIDAPI backend so SDL falls back
@@ -353,7 +343,6 @@ def generate_launch_description():
          TimerAction(period=11.0, actions=[laser_odom]), 'laser_odom'),
         ('robot_localization', 'ekf_node',
          TimerAction(period=16.0, actions=[ekf_node]), 'ekf_node'),
-        ('physicar_deepracer', 'deepracer_node', deepracer_node, 'deepracer'),
         ('joy', 'joy_node', joy_node, 'joy'),
         ('physicar_teleop', 'joy_teleop_node', teleop_node, 'teleop'),
         ('physicar_webserver', 'webserver_node.py', webserver_node, 'webserver'),

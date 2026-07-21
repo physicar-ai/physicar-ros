@@ -42,10 +42,6 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
 
 ## Apps
 
-### DeepRacer
-- Reinforcement-learning-based autonomous driving app.
-- Model storage location: `/home/physicar/physicar_ws/deepracer/models/<model_name>/`
-
 ### MyApp
 
 - Your own robot web app.
@@ -55,11 +51,11 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
     - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
 
 - Auto-start script
-    - `/home/physicar/physicar_ws/myapp/run.sh`: runs automatically at boot. The command that launches the app on port 5000.
+    - `/opt/physicar/userdata/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
         ```
         python3 /home/physicar/physicar_ws/app.py
         ```
-    - `/home/physicar/physicar_ws/myapp/run.log`: execution log of the auto-start script.
+    - `/opt/physicar/userdata/myapp.log`: execution log of the auto-start script.
 - PhysiCar account session
     - When the user signs in, the session token is available in the `physicar_session` cookie, which rides automatically on every same-origin request — including MyApp pages, `fetch`, WebSocket handshakes, and open-in-new-tab.
     - Backend: read it per request/connection — e.g. Flask `request.cookies.get("physicar_session")` — and create `physicar.Client(token=...)` from it. Never cache one token globally: on a shared robot, different users' requests would run on one account.
@@ -87,17 +83,6 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
 | `/steering` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Steering angle (rad) |
 | `/camera/pan` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Camera pan (rad) |
 | `/camera/tilt` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Camera tilt (rad) |
-
-### DeepRacer
-
-| Name | Kind | Type | Description |
-|------|------|------|-------------|
-| `/deepracer/control` | service | [`DeepracerControl`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerControl.srv) | Start/stop inference |
-| `/deepracer/inference` | topic | [`DeepracerInference`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/msg/DeepracerInference.msg) | Inference result |
-| `/deepracer/load_model` | service | [`DeepracerLoadModel`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerLoadModel.srv) | Load a model |
-| `/deepracer/unload_model` | service | [`DeepracerUnloadModel`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerUnloadModel.srv) | Unload a model |
-| `/deepracer/set_config` | service | [`DeepracerSetConfig`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerSetConfig.srv) | Speed scale, action selection |
-| `/deepracer/status` | service | [`DeepracerStatus`](https://github.com/physicar-ai/physicar-ros/blob/main/physicar_interfaces/srv/DeepracerStatus.srv) | Get status |
 
 ## Web API
 
@@ -141,21 +126,6 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 | `POST` | `/audio/volume` | Change volume of a playing item (`id`, `volume` 0–1) |
 | `GET` | `/audio` | List of currently playing items |
 | `WS` | `/audio/stream` | Realtime PCM16 playback stream (`?sample_rate=24000&channels=1&volume=1.0`), e.g. OpenAI Realtime API voice output. Binary frames = raw PCM16; close = stop |
-
-### DeepRacer
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/deepracer/load_model` | Load a model |
-| `POST` | `/deepracer/unload_model` | Unload a model |
-| `POST` | `/deepracer/control` | Start/stop inference |
-| `POST` | `/deepracer/set_config` | Speed scale / action settings |
-| `GET` | `/deepracer/status` | Get status |
-| `GET` | `/deepracer/inference` | Inference result (`?stream=true`) |
-| `GET` | `/deepracer/models` | List models |
-| `GET` | `/deepracer/models/{name}` | Model details |
-| `DELETE` | `/deepracer/models/{name}` | Delete a model |
-| `POST` | `/deepracer/models/import/{init,chunk,complete,cancel}` | Chunked model upload |
 
 ## License
 

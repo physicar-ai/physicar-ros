@@ -809,7 +809,7 @@ if [ ! -f "$EXT_MARKER" ]; then
     done
     # Old bundled browser extension -> replaced by the Open VSX build
     /usr/local/bin/code-server --uninstall-extension undefined_publisher.physicar-browser-ext &>/dev/null || true
-    for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml; do
+    for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
       /usr/local/bin/code-server --install-extension "$EXT_ID" &>/dev/null || true
     done
     # Marker only on success — installs need internet (Open VSX), which may
@@ -895,7 +895,6 @@ REQUIRED_EXECUTABLES=(
     "physicar_camera/lib/physicar_camera/camera_node"
     "physicar_webserver/lib/physicar_webserver/webserver_node.py"
     "physicar_laser_odom/lib/physicar_laser_odom/laser_odom_node"
-    "physicar_deepracer/lib/physicar_deepracer/deepracer_node"
     "physicar_teleop/lib/physicar_teleop/joy_teleop_node"
 )
 

@@ -1,5 +1,5 @@
 /* ===== PhysiCar page core =====
- * Shared utilities for the standalone pages (/control, /deepracer,
+ * Shared utilities for the standalone pages (/control,
  * /sensors). No routing, no cross-page state, no sensor streaming here —
  * each page loads only what it needs on top of this file.
  */

@@ -24,19 +24,6 @@ try:
 except ImportError:
     HAS_CALIBRATION_SERVICES = False
 
-# Import DeepRacer interfaces
-try:
-    from physicar_interfaces.srv import (
-        DeepracerLoadModel,
-        DeepracerUnloadModel,
-        DeepracerControl,
-        DeepracerStatus,
-        DeepracerSetConfig
-    )
-    HAS_DEEPRACER_INTERFACES = True
-except ImportError:
-    HAS_DEEPRACER_INTERFACES = False
-
 # Import joy teleop mapping services + status message
 try:
     from physicar_interfaces.srv import GetJoyMapping, SetJoyMapping
@@ -95,13 +82,6 @@ class ROSBridge:
         self._get_calibration_client = None
         self._set_calibration_client = None
         
-        # DeepRacer service clients
-        self._deepracer_load_model_client = None
-        self._deepracer_unload_model_client = None
-        self._deepracer_control_client = None
-        self._deepracer_status_client = None
-        self._deepracer_set_config_client = None
-
         # Joy teleop service clients + cached status (joy-only fields)
         self._get_joy_mapping_client = None
         self._set_joy_mapping_client = None
@@ -155,24 +135,6 @@ class ROSBridge:
                     SetCalibration, '/physicar_driver/set_calibration'
                 )
             
-            # DeepRacer service clients
-            if HAS_DEEPRACER_INTERFACES:
-                self._deepracer_load_model_client = self._node.create_client(
-                    DeepracerLoadModel, '/deepracer/load_model'
-                )
-                self._deepracer_unload_model_client = self._node.create_client(
-                    DeepracerUnloadModel, '/deepracer/unload_model'
-                )
-                self._deepracer_control_client = self._node.create_client(
-                    DeepracerControl, '/deepracer/control'
-                )
-                self._deepracer_status_client = self._node.create_client(
-                    DeepracerStatus, '/deepracer/status'
-                )
-                self._deepracer_set_config_client = self._node.create_client(
-                    DeepracerSetConfig, '/deepracer/set_config'
-                )
-
             # Joy teleop mapping service clients
             if HAS_JOY_MAPPING_SERVICES:
                 self._get_joy_mapping_client = self._node.create_client(
@@ -330,7 +292,7 @@ class ROSBridge:
 
         When false, joy_teleop publishes nothing on the /teleop/* topics and
         reports drive_engaged/camera_engaged=false in TeleopStatus. Other
-        publishers (deepracer, REST control) regain the topics immediately.
+        publishers (REST control) regain the topics immediately.
         """
         if not HAS_RCL_PARAM_SERVICES or not self._joy_set_params_client:
             raise Exception("Joy parameter service not available")
@@ -544,162 +506,6 @@ class ROSBridge:
             'message': response.message,
         }
     
-    # ========================================================================
-    # DeepRacer Services
-    # ========================================================================
-    
-    async def deepracer_load_model(self, model_name: str) -> Dict[str, Any]:
-        """Load a DeepRacer model by name."""
-        if not HAS_DEEPRACER_INTERFACES or not self._deepracer_load_model_client:
-            raise Exception("DeepRacer services not available")
-        
-        request = DeepracerLoadModel.Request()
-        request.model_name = model_name
-        
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._deepracer_load_model_client,
-            request,
-            30.0  # Longer timeout for model loading
-        )
-        
-        if response is None:
-            raise Exception("Service call failed or timeout")
-        
-        return {
-            'success': response.success,
-            'message': response.message,
-            'model_path': response.model_path,
-            'action_space_json': response.action_space_json,
-        }
-    
-    async def deepracer_unload_model(self, model_name: str = "") -> Dict[str, Any]:
-        """Unload a DeepRacer model from memory. Empty name = unload all."""
-        if not HAS_DEEPRACER_INTERFACES or not self._deepracer_unload_model_client:
-            raise Exception("DeepRacer services not available")
-        
-        request = DeepracerUnloadModel.Request()
-        request.model_name = model_name
-        
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._deepracer_unload_model_client,
-            request
-        )
-        
-        if response is None:
-            raise Exception("Service call failed or timeout")
-        
-        return {
-            'success': response.success,
-            'message': response.message,
-        }
-    
-    async def deepracer_control(self, start: bool) -> Dict[str, Any]:
-        """Start/stop DeepRacer inference."""
-        if not HAS_DEEPRACER_INTERFACES or not self._deepracer_control_client:
-            raise Exception("DeepRacer services not available")
-        
-        request = DeepracerControl.Request()
-        request.start = start
-        
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._deepracer_control_client,
-            request
-        )
-        
-        if response is None:
-            raise Exception("Service call failed or timeout")
-        
-        return {
-            'success': response.success,
-            'message': response.message,
-        }
-    
-    async def deepracer_status(self) -> Dict[str, Any]:
-        """Get DeepRacer status."""
-        if not HAS_DEEPRACER_INTERFACES or not self._deepracer_status_client:
-            raise Exception("DeepRacer services not available")
-        
-        request = DeepracerStatus.Request()
-        
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._deepracer_status_client,
-            request
-        )
-        
-        if response is None:
-            raise Exception("Service call failed or timeout")
-        
-        return {
-            'success': True,
-            'model_loaded': response.model_loaded,
-            'inference_running': response.inference_running,
-            'model_name': response.model_name,
-            'model_path': response.model_path,
-            'action_count': response.action_count,
-            'action_space_json': response.action_space_json,
-            'loaded_models_json': response.loaded_models_json,
-            'inference_rate': response.inference_rate,
-            'inference_count': response.inference_count,
-            'last_action': response.last_action,
-            # Configuration
-            'action_selection_mode': response.action_selection_mode,
-            'config_source': response.config_source,
-            'camera_pan': response.camera_pan,
-            'camera_tilt': response.camera_tilt,
-            'speed_percent': response.speed_percent,
-        }
-    
-    async def deepracer_set_config(
-        self,
-        key: str,
-        string_value: str = "",
-        float_value: float = 0.0,
-        save_to_file: bool = False,
-    ) -> Dict[str, Any]:
-        """Set DeepRacer configuration.
-        
-        Args:
-            key: 'action_selection', 'pan', 'tilt', or 'all'
-            string_value: For 'action_selection': 'greedy' or 'stochastic'
-            float_value: For 'pan'/'tilt' in degrees
-            save_to_file: Save config to file after applying
-        """
-        if not HAS_DEEPRACER_INTERFACES or not self._deepracer_set_config_client:
-            raise Exception("DeepRacer services not available")
-        
-        request = DeepracerSetConfig.Request()
-        request.key = key
-        request.string_value = string_value
-        request.float_value = float_value
-        request.save_to_file = save_to_file
-        
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            self._executor,
-            self._call_service_sync,
-            self._deepracer_set_config_client,
-            request
-        )
-        
-        if response is None:
-            raise Exception("Service call failed or timeout")
-        
-        return {
-            'success': response.success,
-            'message': response.message,
-        }
 
 
 # Global instance getter

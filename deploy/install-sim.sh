@@ -140,7 +140,7 @@ patch_codeserver_webview_media || true
 # never reads — mirror the device flow (physicar.sh / install-device.sh) so a
 # non-Codespaces sim gets the same IDE out of the box.
 echo "  Installing code-server extensions..."
-for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml; do
+for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
   sudo -u physicar code-server --install-extension "$EXT_ID" \
     || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
 done
@@ -306,12 +306,10 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   websockets aiohttp \
   'ddgs~=9.14' \
   python-multipart watchdog pydantic starlette \
-  'tensorflow==2.17.1' \
   setuptools==70.0.0
 
 # ── Deep learning stack (deeplearning workspace: PyTorch training + ONNX) ──
-# CPU-only torch wheel (no CUDA on sim hosts); protobuf pinned <5 so the
-# legacy TensorFlow 2.17 pipeline keeps working alongside.
+# CPU-only torch wheel (no CUDA on sim hosts).
 echo "  Installing deep learning stack (torch/onnx/gymnasium/sb3)..."
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
@@ -320,60 +318,10 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'onnxruntime~=1.20' \
   'gymnasium~=1.0' \
   'stable-baselines3~=2.7' \
+  'tqdm~=4.69' \
+  'rich~=13.7' \
   'shapely~=2.0' \
-  'protobuf<5'
-
-# ── TFLite C++ headers & library (for physicar_deepracer C++ node) ──
-echo "  Installing TFLite C++ headers..."
-
-TF_VER=$(sudo -u physicar python3 -c "import tensorflow; print(tensorflow.__version__)" 2>/dev/null || echo "2.17.1")
-TF_LIB=$(sudo -u physicar python3 -c "import tensorflow, os; print(os.path.dirname(tensorflow.__file__))" 2>/dev/null)
-
-# 1) TFLite C++ headers from tensorflow source (sparse checkout, arch-independent)
-if [ ! -f /usr/local/include/tensorflow/lite/interpreter.h ]; then
-  TMPD=$(mktemp -d)
-  cd "$TMPD"
-  git init -q
-  git remote add origin https://github.com/tensorflow/tensorflow.git
-  git config core.sparseCheckout true
-  echo "tensorflow/lite/" > .git/info/sparse-checkout
-  git fetch --depth 1 origin "v${TF_VER}" 2>/dev/null
-  git checkout FETCH_HEAD -- tensorflow/lite/ 2>/dev/null
-  cp -r tensorflow /usr/local/include/
-  chmod -R a+rX /usr/local/include/tensorflow/
-  rm -rf "$TMPD"
-  cd /
-fi
-
-# 2) flatbuffers headers (required by TFLite schema)
-if [ ! -f /usr/local/include/flatbuffers/flatbuffers.h ]; then
-  FLATBUF_VER="24.3.25"
-  TMPD=$(mktemp -d)
-  curl -sL "https://github.com/google/flatbuffers/archive/refs/tags/v${FLATBUF_VER}.tar.gz" | tar xz -C "$TMPD"
-  cp -r "$TMPD/flatbuffers-${FLATBUF_VER}/include/flatbuffers" /usr/local/include/
-  chmod -R a+rX /usr/local/include/flatbuffers/
-  rm -rf "$TMPD"
-fi
-
-# 3) Symlink pip tensorflow's libtensorflow_cc.so.2 → /usr/local/lib
-#    (contains all TFLite symbols; SONAME is libtensorflow_cc.so.2)
-if [ -n "$TF_LIB" ] && [ -f "$TF_LIB/libtensorflow_cc.so.2" ]; then
-  ln -sf "$TF_LIB/libtensorflow_cc.so.2" /usr/local/lib/libtensorflowlite.so
-  ln -sf "$TF_LIB/libtensorflow_cc.so.2" /usr/local/lib/libtensorflow_cc.so.2
-  ln -sf "$TF_LIB/libtensorflow_framework.so.2" /usr/local/lib/libtensorflow_framework.so.2
-
-  # libtensorflow_cc.so.2 has a NEEDED on the OpenMP runtime that the pip wheel
-  # bundles under tensorflow.libs/ with a hashed soname (e.g. libomp-e9212f90.so.5).
-  # Without it on the linker/loader path, physicar_deepracer fails to link
-  # ("undefined reference to omp_*"), leaving the package half-installed. This bites
-  # on arm64 (no system LLVM libomp); mirror install-device.sh which already handles it.
-  # Symlink the bundled libomp into /usr/local/lib so ld + ld.so resolve it.
-  for _omp in "$(dirname "$TF_LIB")"/tensorflow.libs/libomp-*.so.*; do
-    [ -f "$_omp" ] && ln -sf "$_omp" /usr/local/lib/"$(basename "$_omp")"
-  done
-
-  ldconfig
-fi
+  'ncnn~=1.0'
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  4. Config Deployment (symlinks)                                           │

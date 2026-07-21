@@ -527,7 +527,7 @@ async def set_joy_enabled(req: JoyEnabledRequest):
     When disabled the node publishes nothing on `/teleop/speed`,
     `/teleop/steering`, `/teleop/camera/pan`, `/teleop/camera/tilt` and
     reports drive_engaged/camera_engaged=false in TeleopStatus.  Other publishers
-    (REST /control, deepracer) regain full control immediately without
+    (REST /control) regain full control immediately without
     needing to be restarted."""
     bridge = get_ros_bridge()
     if not bridge.is_ready:

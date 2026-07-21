@@ -85,7 +85,6 @@ REQUIRED_EXECUTABLES=(
     "physicar_bringup/lib/physicar_bringup/cmd_vel_adapter_node.py"
     "physicar_webserver/lib/physicar_webserver/webserver_node.py"
     "physicar_laser_odom/lib/physicar_laser_odom/laser_odom_node"
-    "physicar_deepracer/lib/physicar_deepracer/deepracer_node"
 )
 
 verify_install() {

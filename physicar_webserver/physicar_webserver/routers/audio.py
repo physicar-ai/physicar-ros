@@ -55,6 +55,11 @@ class StopRequest(BaseModel):
     all: bool = False
 
 
+class DurationRequest(BaseModel):
+    id: str
+    duration: float = Field(gt=0)
+
+
 class VolumeRequest(BaseModel):
     id: str
     volume: float = Field(ge=0.0, le=1.0)
@@ -94,6 +99,15 @@ async def volume(req: VolumeRequest):
     if not audio_manager.set_volume(req.id, req.volume):
         raise HTTPException(404, f"no such sound: {req.id}")
     return {"success": True, "volume": req.volume}
+
+
+@router.post("/audio/duration")
+async def duration(req: DurationRequest):
+    """The sim viewer reports media duration (metadata) — lets the server
+    expire finished URL items instead of replaying them to the next viewer."""
+    if not audio_manager.set_duration(req.id, req.duration):
+        raise HTTPException(404, f"no such sound: {req.id}")
+    return {"success": True}
 
 
 @router.get("/audio")

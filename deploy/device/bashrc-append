@@ -8,8 +8,6 @@ export PHYSICAR_ROS_DIR=/opt/physicar/src/physicar-ros
 # nodes stay immune to interface changes (hotspot/wifi/eth events).
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml
-export SLAM_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/slam_params.yaml
-export NAV2_PARAMS_FILE=$PHYSICAR_ROS_DIR/physicar_bringup/config/nav2_params.yaml
 export XDG_RUNTIME_DIR=/tmp/runtime-$(id -u)
 export VGL_DISPLAY=:0
 export LD_PRELOAD=/usr/lib/libvglfaker.so

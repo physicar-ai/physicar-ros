@@ -235,6 +235,6 @@ sleep 2
 # is autostart=false so that a fresh sim with no run.sh never creates an empty
 # run.log; here we bring it up when the script already exists (e.g. after a
 # container restart). The web UI starts/restarts it on deploy.
-if [ -f "$STUDENT_WS/myapp/run.sh" ]; then
+if [ -f "/opt/physicar/userdata/myapp.sh" ]; then
   supervisorctl -c "$CONF" start myapp 2>/dev/null || true
 fi

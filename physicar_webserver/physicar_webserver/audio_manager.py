@@ -247,6 +247,17 @@ class AudioManager:
                 self._cleanup_files(item)
         self._broadcast({"type": "stop_all"})
 
+    def set_duration(self, item_id: str, duration: float) -> bool:
+        """The sim viewer reports the media duration once metadata loads.
+        Without it a URL item can never be expired or skipped on SSE replay
+        (the server itself never probes remote media)."""
+        with self.lock:
+            item = self.items.get(item_id)
+            if item is None or item.kind == "stream" or not duration or duration <= 0:
+                return False
+            item.duration = float(duration)
+        return True
+
     def set_volume(self, item_id: str, volume: float) -> bool:
         volume = max(0.0, min(1.0, volume))
         with self.lock:
