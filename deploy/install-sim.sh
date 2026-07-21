@@ -55,6 +55,11 @@ apt-get install -y \
 # student workspace; persistent so the prebuild image ships it pre-warmed)
 echo 'export PYTHONPYCACHEPREFIX=/opt/physicar/pycache' > /etc/profile.d/pycache.sh
 
+
+# Non-login shells skip profile.d — /etc/environment covers PAM sessions too
+grep -q PYTHONPYCACHEPREFIX /etc/environment 2>/dev/null || \
+  echo 'PYTHONPYCACHEPREFIX=/opt/physicar/pycache' >> /etc/environment
+
 # noVNC symlink + auto-reconnect patch
 [ -d /usr/share/novnc ] && ln -sf vnc_lite.html /usr/share/novnc/index.html
 sed -i 's|status("Something went wrong, connection is closed");|status("Reconnecting..."); setTimeout(function(){location.reload();},2000); return;|' /usr/share/novnc/vnc_lite.html 2>/dev/null || true
@@ -303,6 +308,20 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   python-multipart watchdog pydantic starlette \
   'tensorflow==2.17.1' \
   setuptools==70.0.0
+
+# ── Deep learning stack (deeplearning workspace: PyTorch training + ONNX) ──
+# CPU-only torch wheel (no CUDA on sim hosts); protobuf pinned <5 so the
+# legacy TensorFlow 2.17 pipeline keeps working alongside.
+echo "  Installing deep learning stack (torch/onnx/gymnasium/sb3)..."
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'onnx~=1.17' \
+  'onnxruntime~=1.20' \
+  'gymnasium~=1.0' \
+  'stable-baselines3~=2.7' \
+  'shapely~=2.0' \
+  'protobuf<5'
 
 # ── TFLite C++ headers & library (for physicar_deepracer C++ node) ──
 echo "  Installing TFLite C++ headers..."

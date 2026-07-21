@@ -159,6 +159,11 @@ apt-get install -y \
 # Python bytecode cache -> /opt/physicar/pycache (keeps __pycache__ out of the
 # student workspace; persistent so boots don't re-pay the compile cost)
 echo 'export PYTHONPYCACHEPREFIX=/opt/physicar/pycache' > /etc/profile.d/pycache.sh
+
+
+# Non-login shells skip profile.d — /etc/environment covers PAM sessions too
+grep -q PYTHONPYCACHEPREFIX /etc/environment 2>/dev/null || \
+  echo 'PYTHONPYCACHEPREFIX=/opt/physicar/pycache' >> /etc/environment
 mkdir -p /opt/physicar/pycache && chown physicar:physicar /opt/physicar/pycache
 
 # ── PiShrink: shrink SD card images (used by create-device-image.sh) ──
@@ -393,6 +398,12 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   python-multipart watchdog pydantic starlette \
   'tensorflow==2.17.1' \
   setuptools==70.0.0
+
+# ── ONNX inference runtime (deeplearning models on the robot) ──
+echo "  Installing ONNX runtime..."
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'onnxruntime~=1.20' \
+  'protobuf<5'
 
 # ── TFLite C++ headers & library (for physicar_deepracer C++ node) ──
 echo "  Installing TFLite C++ headers..."
