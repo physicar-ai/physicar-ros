@@ -380,6 +380,9 @@ ln -sf "$DEPLOY_DIR/etc/nginx/conf.d/pc-token.conf" /etc/nginx/conf.d/pc-token.c
 touch /tmp/pc-token.map
 # Origin gate include (static; `include`s /tmp/pc-gate.map, which entrypoint.sh
 # fills from $PHYSICAR_ORIGIN_GATE_SECRET on boot — blocks gateway-bypass access).
+# Drop the pre-rename symlink first — leaving both makes nginx fail with
+# "map_hash_bucket_size directive is duplicate" (upgrade-in-place images).
+rm -f /etc/nginx/conf.d/pc-gate.conf
 ln -sf "$DEPLOY_DIR/etc/nginx/conf.d/zz-pc-gate.conf" /etc/nginx/conf.d/zz-pc-gate.conf
 # Inactive gate map so nginx can load now (entrypoint.sh recreates it on boot).
 printf 'default "pass";\n' > /tmp/pc-gate.map

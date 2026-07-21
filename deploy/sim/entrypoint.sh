@@ -26,6 +26,17 @@ pkill -f "gz-launch" 2>/dev/null || true
 pkill Xvfb 2>/dev/null || true
 sleep 1
 
+# ── Stale bake self-heal (images built before current layout) ──
+# (a) Root-owned /tmp/pc-*.conf|map baked into the image survive in sticky /tmp
+#     and block the rewrites below → nginx dies (measured on cloud, twice).
+# (b) A leftover /etc/nginx/conf.d/pc-gate.conf symlink from before the
+#     zz-pc-gate.conf rename makes nginx fail: map_hash_bucket_size duplicate.
+sudo rm -f /tmp/pc-root.conf /tmp/pc-gate.map 2>/dev/null || true
+if [ -L /etc/nginx/conf.d/pc-gate.conf ] || [ -e /etc/nginx/conf.d/pc-gate.conf ]; then
+  sudo rm -f /etc/nginx/conf.d/pc-gate.conf 2>/dev/null || true
+  sudo ln -sf "$DEPLOY_DIR/etc/nginx/conf.d/zz-pc-gate.conf" /etc/nginx/conf.d/zz-pc-gate.conf 2>/dev/null || true
+fi
+
 # Select the nginx root (/) snippet BEFORE nginx starts (supervisord child).
 # Codespaces: / is not served (VS Code web is the Codespace itself).
 # Local sim: / proxies code-server (started by supervisord, non-Codespaces only).
