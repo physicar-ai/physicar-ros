@@ -3,6 +3,16 @@
 CONF="/opt/physicar/src/physicar-ros/deploy/sim/supervisord.conf"
 DEPLOY_DIR="$(dirname "$CONF")"
 
+# ── src 트리 소유권 보장 (physicar) ──
+# 이미지 빌드 시 root 로 클론되면 src/ 가 root 소유가 된다 — 그러면 sim_api(physicar)의
+# 월드 임포트(share/ 쓰기)가 PermissionError → 502 로 죽고, updater 의 git fetch 도
+# .git 에 못 써서 태그 업데이트가 전면 불능이 된다 (둘 다 실사례). entrypoint 는
+# physicar 로 실행되므로 sudo(NOPASSWD)로 부팅마다 멱등 보정한다.
+if [ -d /opt/physicar/src ]; then
+  sudo mkdir -p /opt/physicar/src/physicar-sim/share/worlds 2>/dev/null || true
+  sudo chown -R physicar:physicar /opt/physicar/src 2>/dev/null || true
+fi
+
 # ── Stop any previous stack first (script is safe to re-run) ──
 # A SIGTERM'd supervisord needs several seconds to stop its children; starting
 # a new instance too early fails with "Another program is already listening on
