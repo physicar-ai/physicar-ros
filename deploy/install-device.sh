@@ -383,6 +383,14 @@ grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
   echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
 export PIP_CONSTRAINT=/etc/pip/constraints.txt
 
+# CPU torch (+ matching torchvision) MUST come before ultralytics below:
+# from the default index, ultralytics resolves the CUDA torch build and drags
+# in several GB of nvidia-* wheels a Pi can never use — and the later
+# 'torch~=2.11' request is then already "satisfied" by the CUDA build, so the
+# CPU wheel never lands (observed: torch 2.12.1+cu130 on a fresh install).
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'torch~=2.11' torchvision --index-url https://download.pytorch.org/whl/cpu
+
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'physicar~=1.0' \
   'flask~=3.1' \
@@ -651,6 +659,26 @@ patch_codeserver_webview_media() {
   done < <(grep -rlF -e "$A_OLD" -e "$B_OLD" -e "$C_OLD" "$cs_vscode/out" 2>/dev/null)
   echo "[media-patch] patched $n file(s) under $cs_vscode/out"
 
+  # Pattern C edits the inline bootstrap script of the webview pre/index.html,
+  # whose sha256 is pinned in the same file's CSP meta tag. Recompute the hash
+  # or the browser blocks the script and every webview renders blank
+  # (extension panels, app.physicar viewer). Same resync as physicar.sh so the
+  # device is consistent immediately after install, not only after next boot.
+  while IFS= read -r f; do
+    python3 - "$f" <<'CSPFIX' || true
+import sys, re, hashlib, base64
+p = sys.argv[1]
+t = open(p, encoding='utf-8').read()
+m = re.search(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", t, re.S)
+if m:
+    h = base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode()
+    new, n = re.subn(r"'sha256-[A-Za-z0-9+/=]+'", "'sha256-%s'" % h, t)
+    if n and new != t:
+        open(p, "w", encoding="utf-8").write(new)
+        print("[media-patch] CSP hash updated in " + p)
+CSPFIX
+  done < <(find "$cs_vscode/out" -path '*webview*/pre/index.html' 2>/dev/null)
+
   # Silent-failure guard: after patching, at least one file must carry one of
   # the patched allow-lists. If none do, a code-server update changed the
   # pattern shape (it happened at 4.12x already) — warn loudly so it shows up
@@ -758,6 +786,28 @@ chown -R physicar:physicar "$PHYSICAR_WS"
 # truncate it (systemd would otherwise create it root-owned on first boot).
 sudo -u physicar mkdir -p /opt/physicar/userdata
 sudo -u physicar touch /opt/physicar/userdata/physicar.log
+
+# Student workspace — code-server (physicar-code.service), nginx /code
+# rewrites and bashrc all point at ~/physicar_ws, but nothing on a fresh
+# install created it: code-server then opened a nonexistent folder. In
+# Codespaces the workspace IS the physicar-for-codespaces checkout, so the
+# device mirrors that by seeding sample_projects from the same repo
+# (physicar branch). Copy-if-absent only — student files are never touched.
+# physicar.sh repeats this seed at boot (marker-gated) for shipped kits.
+mkdir -p /home/physicar/physicar_ws
+if [ ! -d /home/physicar/physicar_ws/sample_projects ]; then
+  TMPD=$(mktemp -d)
+  if git clone --depth 1 --branch physicar \
+      https://github.com/physicar-ai/physicar-for-codespaces.git "$TMPD/pfc" 2>/dev/null; then
+    cp -rn "$TMPD/pfc/sample_projects" /home/physicar/physicar_ws/ 2>/dev/null || true
+    cp -n "$TMPD/pfc/.gitignore" /home/physicar/physicar_ws/ 2>/dev/null || true
+    sudo -u physicar touch /home/physicar/.physicar-ws-seeded
+  else
+    echo "  WARNING: sample_projects seed failed (network?) — physicar.sh retries at boot"
+  fi
+  rm -rf "$TMPD"
+fi
+chown -R physicar:physicar /home/physicar/physicar_ws
 
 # ── Seed ~/.bashrc for physicar user ──
 # Source the repo file directly (not a copy): env changes shipped in future

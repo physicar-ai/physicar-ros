@@ -138,8 +138,11 @@ fi
 
 # ── Disable WiFi power save & USB autosuspend (prevents latency/disconnects) ──
 iw dev wlan0 set power_save off 2>/dev/null || true
+# sysfs is root-owned and this section runs as the physicar user — a bare
+# `>` redirect fails before its own 2>/dev/null applies, spamming the boot
+# log and leaving autosuspend on. Write through sudo like the root section.
 for _usbpwr in /sys/bus/usb/devices/*/power/control; do
-  [ -f "$_usbpwr" ] && echo "on" > "$_usbpwr" 2>/dev/null || true
+  [ -f "$_usbpwr" ] && echo "on" | sudo tee "$_usbpwr" >/dev/null 2>&1 || true
 done
 
 # Run in background — nothing below depends on hotspot being ready
@@ -625,6 +628,23 @@ echo "[physicar] Root initialization complete."
 
 # ────────────────── code-server ──────────────────
 
+# Student workspace: code-server, nginx /code and bashrc all point here.
+# Fresh installs seed it with sample_projects from physicar-for-codespaces
+# (install-device.sh); self-heal here for kits that predate the seed.
+# Marker-gated copy-if-absent — student edits and deliberate deletions are
+# never overridden.
+mkdir -p "$HOME/physicar_ws"
+if [ ! -f "$HOME/.physicar-ws-seeded" ] && [ ! -d "$HOME/physicar_ws/sample_projects" ]; then
+  _PFC=$(mktemp -d)
+  if git clone --depth 1 --branch physicar \
+      https://github.com/physicar-ai/physicar-for-codespaces.git "$_PFC/pfc" &>/dev/null; then
+    cp -rn "$_PFC/pfc/sample_projects" "$HOME/physicar_ws/" 2>/dev/null || true
+    cp -n "$_PFC/pfc/.gitignore" "$HOME/physicar_ws/" 2>/dev/null || true
+    touch "$HOME/.physicar-ws-seeded"
+  fi
+  rm -rf "$_PFC"
+fi
+
 APP_FILE="$HOME/physicar_ws/app.physicar"
 sudo chattr -i "$APP_FILE" 2>/dev/null || true
 echo "https://device.physicar.ai/app" > "$APP_FILE"
@@ -696,7 +716,9 @@ patch_codeserver_webview_media() {
   # or the browser blocks the script and every webview renders blank
   # (extension panels, app.physicar viewer).
   while IFS= read -r f; do
-    python3 - "$f" <<'CSPFIX' || true
+    # sudo: the bundle is root-owned and this section runs as physicar — a
+    # bare python3 write dies on PermissionError, silently eaten by `|| true`.
+    sudo python3 - "$f" <<'CSPFIX' || true
 import sys, re, hashlib, base64
 p = sys.argv[1]
 t = open(p, encoding='utf-8').read()
