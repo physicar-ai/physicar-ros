@@ -792,8 +792,8 @@ sudo -u physicar touch /opt/physicar/userdata/physicar.log
 # install created it: code-server then opened a nonexistent folder. In
 # Codespaces the workspace IS the physicar-for-codespaces checkout, so the
 # device mirrors that by seeding sample_projects from the same repo
-# (physicar branch). Copy-if-absent only — student files are never touched.
-# physicar.sh repeats this seed at boot (marker-gated) for shipped kits.
+# (physicar branch). This is the ONLY time anything writes into the student
+# workspace — boot/update flows never touch it (app.physicar excepted).
 mkdir -p /home/physicar/physicar_ws
 if [ ! -d /home/physicar/physicar_ws/sample_projects ]; then
   TMPD=$(mktemp -d)
@@ -801,9 +801,8 @@ if [ ! -d /home/physicar/physicar_ws/sample_projects ]; then
       https://github.com/physicar-ai/physicar-for-codespaces.git "$TMPD/pfc" 2>/dev/null; then
     cp -rn "$TMPD/pfc/sample_projects" /home/physicar/physicar_ws/ 2>/dev/null || true
     cp -n "$TMPD/pfc/.gitignore" /home/physicar/physicar_ws/ 2>/dev/null || true
-    sudo -u physicar touch /home/physicar/.physicar-ws-seeded
   else
-    echo "  WARNING: sample_projects seed failed (network?) — physicar.sh retries at boot"
+    echo "  WARNING: sample_projects seed failed (network?) — re-run install to seed"
   fi
   rm -rf "$TMPD"
 fi

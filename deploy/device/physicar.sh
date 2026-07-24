@@ -628,23 +628,9 @@ echo "[physicar] Root initialization complete."
 
 # ────────────────── code-server ──────────────────
 
-# Student workspace: code-server, nginx /code and bashrc all point here.
-# Fresh installs seed it with sample_projects from physicar-for-codespaces
-# (install-device.sh); self-heal here for kits that predate the seed.
-# Marker-gated copy-if-absent — student edits and deliberate deletions are
-# never overridden.
-mkdir -p "$HOME/physicar_ws"
-if [ ! -f "$HOME/.physicar-ws-seeded" ] && [ ! -d "$HOME/physicar_ws/sample_projects" ]; then
-  _PFC=$(mktemp -d)
-  if git clone --depth 1 --branch physicar \
-      https://github.com/physicar-ai/physicar-for-codespaces.git "$_PFC/pfc" &>/dev/null; then
-    cp -rn "$_PFC/pfc/sample_projects" "$HOME/physicar_ws/" 2>/dev/null || true
-    cp -n "$_PFC/pfc/.gitignore" "$HOME/physicar_ws/" 2>/dev/null || true
-    touch "$HOME/.physicar-ws-seeded"
-  fi
-  rm -rf "$_PFC"
-fi
-
+# ~/physicar_ws is the student's — it is seeded ONCE by install-device.sh and
+# never written again by boot/update flows. The single exception below is
+# app.physicar, the managed URL pointer file.
 APP_FILE="$HOME/physicar_ws/app.physicar"
 sudo chattr -i "$APP_FILE" 2>/dev/null || true
 echo "https://device.physicar.ai/app" > "$APP_FILE"
