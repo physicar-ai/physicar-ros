@@ -67,6 +67,19 @@ server {
         add_header Cache-Control "no-cache, must-revalidate" always;
     }
 
+    # Heavy viewer assets (meshes/textures/models). gzweb.js stamps their
+    # URLs with ?v=<world asset version>, making them safe to cache forever:
+    # a world re-upload changes the version -> new URLs -> the cache is
+    # bypassed instantly, and the same version means zero requests. Requests
+    # WITHOUT ?v= (from any other client) stay on revalidation, so nothing
+    # can ever cache stale.
+    location ~ ^/sim/(meshes|models)/(.+)$ {
+        alias /opt/physicar/src/physicar-sim/share/$1/$2;
+        set $asset_cache "no-cache, must-revalidate";
+        if ($arg_v) { set $asset_cache "public, max-age=31536000, immutable"; }
+        add_header Cache-Control $asset_cache always;
+    }
+
     # Sim API (world list, status, switch, pose, route, reset)
     location /sim/api/ {
         proxy_pass http://127.0.0.1:9003/;
