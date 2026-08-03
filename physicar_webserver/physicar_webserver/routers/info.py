@@ -51,10 +51,15 @@ def _get_mode() -> str:
     return 'real'
 
 
+# 세대: 클라우드 심은 PHYSICAR_GENERATION('physicar'|'physicar2'|…)을 주입한다.
+# 숫자 접미 = 세대 번호, 무접미('physicar') = 1세대. 실기는 env 없음 → 1.
+_gen_key = os.environ.get("PHYSICAR_GENERATION", "physicar")
+_gen_num = int(_gen_key[8:]) if _gen_key.startswith("physicar") and _gen_key[8:].isdigit() else 1
+
 # Kit Information
 KIT_INFO = {
     "name": "PhysiCar",
-    "generation": 1,
+    "generation": _gen_num,
     "version": "1.0.0",
     "hardware": {
         "board": "Yahboom Robot Expansion Board",
