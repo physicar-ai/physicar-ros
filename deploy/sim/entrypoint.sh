@@ -237,6 +237,15 @@ PYSET
   fi
 ) &
 
+# ── physicar-ext 최신화 (베이크 박제 방지) ─────────────────────────────
+# 확장은 AMI 베이크 시점 버전으로 박히므로, 부팅(신규 생성·재개 모두 이 스크립트를
+# 재실행)마다 마켓플레이스 최신을 확인해 code-server 시작 전에 반영한다.
+# 실패(오프라인·open-vsx 장애)는 무시 — 베이크 버전으로 계속, 부팅을 절대 막지 않는다.
+if [ -z "${CODESPACE_NAME:-}" ]; then
+  timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force \
+    >/dev/null 2>&1 || true
+fi
+
 # Start supervisord
 supervisord -c "$CONF"
 sleep 2
