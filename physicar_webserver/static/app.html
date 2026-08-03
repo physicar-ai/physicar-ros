@@ -123,14 +123,13 @@
 <link rel="stylesheet" href="/static/css/app.css">
 <link rel="stylesheet" href="/static/css/control.css">
 <style>
-/* ── /app layout — multi-select badge bar + stacked panels:
-   ┌──────────────────────────────────┬─────────┐
-   │ SIMULATOR CONTROL MYAPP VNC DR   │         │
-   ├──────────────────────────────────┤         │
-   │ selected panels stacked in that  │ Sensors │
-   │ fixed order, each at a fixed     │         │
-   │ aspect ratio (vertical scroll)   │         │
-   └──────────────────────────────────┴─────────┘ */
+/* ── /app layout — 3열 (경계 2개 모두 드래그 리사이즈, 세션 한정):
+   ┌───────────────────┬────────┬──────────────┐
+   │ CONTROL (고정)     │        │              │
+   ├───────────────────┤ 상태    │ 시뮬레이터    │
+   │ 앱 셀렉트(MyApp/   │ 패널    │ (/sim, sim   │
+   │ VNC) → 선택 패널   │ (고정)  │  모드 전용)   │
+   └───────────────────┴────────┴──────────────┘ */
 body{display:flex;flex-direction:row;height:100vh}
 
 /* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
@@ -174,18 +173,10 @@ body{display:flex;flex-direction:row;height:100vh}
 /* The body below the strip carries the EXACT aspect ratio (the strip is
    excluded, so the embedded page gets a true 2:1 / 5:2 / 4:3 viewport) */
 .sp-body{position:relative;width:100%}
-#panel-simulator .sp-body{aspect-ratio:2/1}
 #panel-control .sp-body{aspect-ratio:5/2;min-height:206px}
 #panel-myapp .sp-body,#panel-vnc .sp-body{aspect-ratio:4/3}
 .sp-body iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
 .sp-actions{margin-left:auto;display:flex;gap:2px;align-items:center}
-#sim-world-select{
-  height:18px;max-width:150px;font-size:10px;font-weight:600;
-  color:var(--fg2);background:var(--bg3);border:1px solid var(--border);
-  border-radius:5px;padding:0 2px;color-scheme:dark;
-}
-#sim-world-select option{background:#1c2130;color:#e7e9f0}
-.stack-panel.focused #sim-world-select{color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.4)}
 .sp-btn{
   display:flex;align-items:center;justify-content:center;
   width:20px;height:20px;border-radius:5px;color:var(--fg2);
@@ -193,9 +184,19 @@ body{display:flex;flex-direction:row;height:100vh}
 .sp-btn:hover{background:var(--bg3);color:var(--fg)}
 .sp-btn svg{width:13px;height:13px}
 
-/* SIMULATOR exists only in sim mode (no /sim/ on real robots) */
-body:not(.sim-mode) .tab-sim{display:none}
-body:not(.sim-mode) #panel-simulator{display:none}
+/* 시뮬레이터 컬럼은 sim 모드에서만 (real 로봇엔 /sim/ 없음) */
+#simcol{display:none;min-width:0;flex-shrink:0;background:#111}
+body.sim-mode #simcol{display:block}
+body:not(.sim-mode) #divider2{display:none}
+#simcol iframe{width:100%;height:100%;border:none;background:#111}
+/* 앱 셀렉트 (Control 아래 표시할 앱 선택) */
+.applabel{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--fg3)}
+#app-select{
+  height:26px;min-width:120px;font-size:13px;font-weight:600;
+  color:var(--fg2);background:var(--bg3);border:1px solid var(--border);
+  border-radius:7px;padding:0 6px;color-scheme:dark;
+}
+#app-select option{background:#1c2130;color:#e7e9f0}
 
 /* Control fills its panel as a card row: Drive | Look */
 #page-control{position:absolute;inset:0;flex-direction:row}
@@ -213,8 +214,6 @@ body:not(.sim-mode) #panel-simulator{display:none}
 .sp-shield:hover{background:rgba(126,87,194,.07)}
 .stack-panel.focused .sp-shield{display:none}
 
-/* Nothing selected */
-.stack-empty{display:none;padding:48px 16px;text-align:center;color:var(--fg3);font-size:14px}
 
 /* ── Divider ── */
 .divider{
@@ -240,46 +239,11 @@ body:not(.sim-mode) #panel-simulator{display:none}
 <body>
 
 <div class="main" id="main">
-  <div class="tabbar" id="tabbar"></div>
+  <div class="tabbar"><span class="applabel">APP</span><select id="app-select" title="Select app"></select></div>
 
   <div class="stack" id="stack">
-    <!-- SIMULATOR (sim mode only) -->
-    <div class="stack-panel" id="panel-simulator">
-      <div class="sp-head">SIMULATOR
-        <div class="sp-actions">
-          <select id="sim-world-select" title="Switch world"></select>
-          <button class="sp-btn" id="btn-import-sim" title="Import world">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          </button>
-          <button class="sp-btn" id="btn-respawn-sim" title="Respawn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="sp-body"><iframe id="frame-simulator" title="Simulator" allow="autoplay"></iframe><div class="sp-shield" data-frame="frame-simulator" title="Click to interact"></div></div>
-      <input type="file" id="sim-import-input" accept=".tar.gz,.gz" style="display:none">
-    </div>
-
-    <!-- MYAPP -->
-    <div class="stack-panel" id="panel-myapp">
-      <div class="sp-head">MYAPP
-        <div class="sp-actions">
-          <button class="sp-btn" id="btn-reload-myapp" title="Reload">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-          <button class="sp-btn" id="btn-open-myapp" title="Open in new tab">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
-    </div>
-
-    <!-- VNC -->
-    <div class="stack-panel" id="panel-vnc">
-      <div class="sp-head">VNC</div>
-      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
-    </div>
+    <!-- SIMULATOR 패널은 제거됨 — 클라우드 심에선 별도 sim.physicar 탭(독립 /sim 화면)이
+         담당한다. 실물 차량과 동일한 앱 구성(MYAPP/VNC/CONTROL)으로 UI 통일. -->
 
     <!-- CONTROL (inline; id/class kept — control.js gates sending on #page-control.active) -->
     <div class="stack-panel" id="panel-control">
@@ -324,7 +288,27 @@ body:not(.sim-mode) #panel-simulator{display:none}
     </div>
     </div>
 
-    <div class="stack-empty" id="stack-empty">Select a view above</div>
+    <!-- MYAPP -->
+    <div class="stack-panel" id="panel-myapp">
+      <div class="sp-head">MYAPP
+        <div class="sp-actions">
+          <button class="sp-btn" id="btn-reload-myapp" title="Reload">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+          <button class="sp-btn" id="btn-open-myapp" title="Open in new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
+    </div>
+
+    <!-- VNC -->
+    <div class="stack-panel" id="panel-vnc">
+      <div class="sp-head">VNC</div>
+      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
+    </div>
+
   </div>
 </div>
 
@@ -380,6 +364,11 @@ body:not(.sim-mode) #panel-simulator{display:none}
   </div>
 </div>
 
+<div class="divider" id="divider2"></div>
+
+<!-- 시뮬레이터 (sim 모드 전용) — 독립 /sim 화면(자체 툴바 포함)을 그대로 임베드 -->
+<div id="simcol"><iframe id="frame-sim" title="Simulator" allow="autoplay"></iframe></div>
+
 <script src="/static/js/core.js"></script>
 <script src="/static/js/control.js"></script>
 <script src="/static/js/sensors.js"></script>
@@ -387,56 +376,44 @@ body:not(.sim-mode) #panel-simulator{display:none}
 (function(){
   'use strict';
 
-  /* ── Stacked service panels (multi-select badges) ──
-     Fixed stacking order: SIMULATOR → MYAPP → VNC → CONTROL.
-     SIMULATOR is sim-mode only (real robots have no /sim/). */
-  const SERVICES = [
-    { id: 'simulator', label: 'SIMULATOR', path: '/sim/',     sim: true },
-    { id: 'myapp',     label: 'MYAPP',     path: '/myapp/'    },
-    { id: 'vnc',       label: 'VNC',       path: '/vnc/'      },
-    { id: 'control',   label: 'CONTROL' },
+  /* ── 레이아웃: [Control 고정 + 선택 앱] | 상태 | 시뮬레이터(sim 전용) ──
+     Control 은 항상 표시(상단 고정), 그 아래는 셀렉트로 고른 앱 하나(My App/VNC).
+     시뮬레이터는 우측 고정 컬럼 — 독립 /sim 화면(자체 툴바 포함)을 그대로 임베드. */
+  const APPS = [
+    { id: 'myapp', label: 'My App', path: '/myapp/' },
+    { id: 'vnc',   label: 'VNC',    path: '/vnc/'   },
   ];
-  // default view per mode (applied after detectMode when nothing is saved)
-  const DEFAULT_SEL = { sim: ['simulator', 'control'], real: ['myapp', 'control'] };
   const KEY = 'app-view';
-
   let simMode = false;
-  let userTouched = false;   // tab clicked before mode detection finished
-
-  /* selection is persisted; the main:sensors ratio starts at its default
-     (drag-adjustable, deliberately session-only) */
-  let ratio = 5 / 7;
-  let savedSel = null;
+  let appId = 'myapp';
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && Array.isArray(s.sel)) savedSel = new Set(s.sel.filter(id => SERVICES.some(m => m.id === id)));
-    else if (s && SERVICES.some(m => m.id === s.tab)) savedSel = new Set([s.tab]);   // pre-multiselect schema
+    if (s && APPS.some(x => x.id === s.app)) appId = s.app;
+    else if (s && Array.isArray(s.sel)) {            // 구 멀티선택 스키마 승계
+      const hit = APPS.find(x => s.sel.includes(x.id)); if (hit) appId = hit.id;
+    }
   } catch(e){}
-  let sel = savedSel || new Set(['control']);   // provisional until detectMode
-  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ sel: [...sel] })); }catch(e){} }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ app: appId })); }catch(e){} }
 
   const main    = document.getElementById('main');
   const right   = document.getElementById('right');
   const divider = document.getElementById('divider');
-  const tabbar  = document.getElementById('tabbar');
+  const divider2= document.getElementById('divider2');
+  const simcol  = document.getElementById('simcol');
   const ctrlCol = document.getElementById('page-control');
-  const empty   = document.getElementById('stack-empty');
+  const appSel  = document.getElementById('app-select');
 
-  const tabs = {}, panels = {}, frames = {};
-  SERVICES.forEach(m => {
-    const b = document.createElement('button');
-    b.className = 'tab' + (m.sim ? ' tab-sim' : '');
-    b.textContent = m.label;
-    b.addEventListener('click', () => {
-      userTouched = true;
-      sel.has(m.id) ? sel.delete(m.id) : sel.add(m.id);
-      save(); render();
-    });
-    tabbar.appendChild(b);
-    tabs[m.id]   = b;
-    panels[m.id] = document.getElementById('panel-' + m.id);
-    if (m.path) frames[m.id] = document.getElementById('frame-' + m.id);
+  const panels = { control: document.getElementById('panel-control') };
+  const frames = {};
+  APPS.forEach(x => {
+    panels[x.id] = document.getElementById('panel-' + x.id);
+    frames[x.id] = document.getElementById('frame-' + x.id);
+    const o = document.createElement('option');
+    o.value = x.id; o.textContent = x.label;
+    appSel.appendChild(o);
   });
+  appSel.value = appId;
+  appSel.addEventListener('change', () => { appId = appSel.value; save(); render(); });
 
   // Open MyApp in a full browser tab. Inside the VS Code webview the iframe
   // sandbox blocks window.open (returns null) — relay to the extension
@@ -460,95 +437,33 @@ body:not(.sim-mode) #panel-simulator{display:none}
   });
 
   function render(){
-    let any = false;
-    SERVICES.forEach(m => {
-      const on    = sel.has(m.id);
-      const shown = on && (!m.sim || simMode);   // sim tab/panel are display:none outside sim mode
-      tabs[m.id].classList.toggle('active', on);
-      panels[m.id].classList.toggle('on', on);
-      if (m.path) {
-        // load on show, unload on hide (frees hidden VNC/sim streams —
-        // matches the old single-iframe tab-switch resource profile)
-        const f = frames[m.id];
-        const src = f.getAttribute('src');
-        if (shown) { if (src !== m.path) f.src = m.path; }
-        else if (src && src !== 'about:blank') f.src = 'about:blank';
-      }
-      if (m.id === 'control') ctrlCol.classList.toggle('active', on);   // gates CTRL sending
-      if (shown) any = true;
+    panels.control.classList.add('on');   // Control 상시 고정
+    ctrlCol.classList.add('active');      // CTRL 전송 게이트
+    APPS.forEach(x => {
+      const on = x.id === appId;
+      panels[x.id].classList.toggle('on', on);
+      // 표시 시 로드, 숨김 시 해제 (숨은 VNC 스트림 자원 회수 — 기존 프로파일 유지)
+      const f = frames[x.id];
+      const src = f.getAttribute('src');
+      if (on) { if (src !== x.path) f.src = x.path; }
+      else if (src && src !== 'about:blank') f.src = 'about:blank';
     });
-    empty.style.display = any ? 'none' : 'block';
-    updateFocus(true);   // control's glow depends on its selection
+    const sf = document.getElementById('frame-sim');
+    if (simMode) { if (sf.getAttribute('src') !== '/sim/') sf.src = '/sim/'; }
+    else if (sf.getAttribute('src') && sf.getAttribute('src') !== 'about:blank') sf.src = 'about:blank';
+    updateFocus(true);
   }
 
-  /* ── SIMULATOR header controls — call the proven logic of the /sim page
-     (same-origin iframe). The /sim toolbar (Respawn/world/Import) hides when
-     embedded and this header takes over; upload progress, switch polling and
-     reloads are all still done by the sim page's own code. ── */
-  (function () {
-    const frame = document.getElementById('frame-simulator');
-    if (!frame) return;
-    const sel = document.getElementById('sim-world-select');
-    const impInput = document.getElementById('sim-import-input');
-    function simWin() {
-      try {
-        const w = frame.contentWindow;
-        return (w && typeof w.doRespawn === 'function') ? w : null;
-      } catch (e) { return null; }
-    }
-    async function refreshWorlds() {
-      try {
-        const d = await (await fetch('/sim/api/worlds')).json();
-        sel.innerHTML = '';
-        (d.worlds || []).forEach(w => {
-          const o = document.createElement('option');
-          o.value = w.file;
-          o.textContent = w.name;
-          if (w.name === d.current) o.selected = true;
-          sel.appendChild(o);
-        });
-      } catch (e) { /* sim not up — retried on the next load */ }
-    }
-    sel.addEventListener('change', () => {
-      const w = simWin();
-      if (w) w.switchWorld(sel.value);
-      else refreshWorlds();   // iframe not loaded — restore the selection
-    });
-    document.getElementById('btn-respawn-sim').addEventListener('click', () => {
-      const w = simWin();
-      if (w) w.doRespawn();
-    });
-    document.getElementById('btn-import-sim').addEventListener('click', () => impInput.click());
-    impInput.addEventListener('change', () => {
-      const w = simWin();
-      if (w && impInput.files[0]) w.handleFile(impInput.files[0]);
-      impInput.value = '';
-    });
-    // After a switch/upload the sim page reloads itself → resync the list
-    frame.addEventListener('load', refreshWorlds);
-    // A script can also switch the world straight through the API without
-    // touching this page — the sim pushes status changes over SSE
-    // (EventSource reconnects by itself if sim_api restarts).
-    const es = new EventSource('/sim/api/events');
-    es.onmessage = (e) => {
-      if (document.activeElement === sel) return;   // dropdown in use
-      try {
-        const d = JSON.parse(e.data);
-        const cur = sel.options[sel.selectedIndex];
-        if (d.current && (!cur || cur.textContent !== d.current)) refreshWorlds();
-      } catch (_) {}
-    };
-  })();
-
-  /* ── Split ratio: main | sensors (drag-adjustable, session-only) ── */
+  /* ── 3열 분할: 경계 두 개 모두 드래그 (세션 한정, 저장 안 함) ── */
+  let b1 = 5/7, b2 = 1;                // real 기본: 앱 71% | 상태 29% (심 없음)
   function applyRatio(){
-    main.style.width  = 'calc(' + (ratio * 100).toFixed(2) + '% - 3px)';
-    right.style.width = 'calc(' + ((1 - ratio) * 100).toFixed(2) + '% - 3px)';
-    main.style.flex = 'none';
+    const r = (simMode ? b2 : 1) - b1;
+    main.style.width  = 'calc(' + (b1 * 100).toFixed(2) + '% - 4px)';
+    right.style.width = 'calc(' + (r  * 100).toFixed(2) + '% - 4px)';
+    if (simMode) simcol.style.width = 'calc(' + ((1 - b2) * 100).toFixed(2) + '% - 4px)';
+    main.style.flex = 'none'; right.style.flex = 'none';
   }
 
-  /* Generic divider drag: onMove receives the pointer position and updates
-     its ratio; iframes are pointer-events-frozen during the drag. */
   function makeDrag(el, onMove){
     let dragging = false;
     function down(e){
@@ -581,9 +496,15 @@ body:not(.sim-mode) #panel-simulator{display:none}
     el.addEventListener('touchstart', down, {passive:false});
   }
 
-  // main | sensors (vertical boundary across the window)
+  // 경계1: 앱 | 상태 — 경계2와 최소 간격 유지
   makeDrag(divider, (cx) => {
-    ratio = Math.max(0.2, Math.min(0.8, cx / document.body.clientWidth));
+    const hi = (simMode ? b2 : 1) - 0.12;
+    b1 = Math.max(0.18, Math.min(hi, cx / document.body.clientWidth));
+    applyRatio();
+  });
+  // 경계2: 상태 | 시뮬레이터 (sim 모드 전용)
+  makeDrag(divider2, (cx) => {
+    b2 = Math.max(b1 + 0.12, Math.min(0.9, cx / document.body.clientWidth));
     applyRatio();
   });
 
@@ -655,16 +576,15 @@ body:not(.sim-mode) #panel-simulator{display:none}
   startLidarStream();
   startCameraStream();
 
-  /* ── Mode: SIMULATOR badge/panel exist only in sim mode ── */
+  /* ── Mode: 시뮬레이터 컬럼은 sim 모드에서만 열린다 ── */
   (async function(){
     const mode = await detectMode();   // adds body.sim-mode when sim
     if (mode === 'sim') {
       simMode = true;
       document.title = 'PHYSICAR App (SIM)';
+      b1 = 0.5; b2 = 0.72;             // 앱 50% | 상태 22% | 심 28%
     }
-    if (!savedSel && !userTouched)
-      sel = new Set(DEFAULT_SEL[mode === 'sim' ? 'sim' : 'real']);
-    render();
+    render(); applyRatio();
   })();
 
   render();
