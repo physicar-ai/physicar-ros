@@ -79,9 +79,12 @@ fi
 # code-server — serves `/` on a local (non-Codespaces) sim. Installed into
 # the image unconditionally; supervisord only starts it when CODESPACE_NAME
 # is unset (in Codespaces VS Code web is the Codespace itself).
+# 버전은 deploy/code-server-version 이 단일 진실 — 여기서 베이크하고,
+# entrypoint.sh 가 부팅마다 기설치 sim 을 같은 핀으로 수렴시킨다.
+CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
 if ! command -v code-server &>/dev/null; then
-  echo "  Installing code-server..."
-  curl -fsSL https://code-server.dev/install.sh | sh
+  echo "  Installing code-server ${CS_PIN:-latest}..."
+  curl -fsSL https://code-server.dev/install.sh | sh -s -- ${CS_PIN:+--version="$CS_PIN"}
 fi
 
 # ── Webview microphone/camera patch ──

@@ -72,6 +72,26 @@ chmod 644 /tmp/pc-gate.map
 
 STUDENT_WS="/home/physicar/physicar_ws"
 
+# ── code-server 버전 수렴 (레포 핀, idempotent) ──
+# deploy/code-server-version 이 단일 진실 — 설치본과 다르면 그 버전을 설치한다.
+# 베이크 박제 방지: AMI 리베이크 없이 핀 한 줄 갱신으로 전 인스턴스가 다음
+# 부팅에 따라온다. 핀을 올리기 전 새 버전 릴리스 tar 를 받아 아래 패치 패턴
+# (B/C·folder)과 브랜딩 경로가 유효한지 반드시 grep 으로 확인할 것.
+# 실패·오프라인·타임아웃은 현재 버전 유지 — 부팅을 절대 막지 않는다 (다음
+# 부팅에 재시도). 이 시점엔 supervisord(=code-server)가 아직 죽어 있어 재시작
+# 이 필요 없다. Codespaces 는 code-server 를 쓰지 않으므로 건너뛴다.
+ROS_DIR="$(dirname "$(dirname "$DEPLOY_DIR")")"
+if [ -z "${CODESPACE_NAME:-}" ]; then
+  CS_PIN=$(tr -d '[:space:]' < "$ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
+  # --version 첫 줄이 설정파일 생성 로그일 수 있어 버전 라인만 골라낸다
+  CS_CUR=$(code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+  if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
+    echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
+    timeout 300 bash -c "curl -fsSL https://code-server.dev/install.sh | sudo sh -s -- --version='$CS_PIN'" \
+      || echo "[code-server] WARNING: update failed — keeping ${CS_CUR:-none}"
+  fi
+fi
+
 # ── code-server webview microphone/camera patch (idempotent, every boot) ──
 # The install script patches once, but a code-server update restores the
 # bundle — re-apply here (no-op when already patched, or in Codespaces
@@ -172,6 +192,43 @@ PYFOLD
 }
 patch_codeserver_default_folder || true
 
+# ── 브랜딩 재적용 (idempotent, every boot) ──
+# 파비콘/PWA/타이틀바 아이콘은 설치 트리 안에 있어 code-server 업데이트가
+# 원복시킨다 — media patch 와 같은 이유로 부팅마다 다시 덮는다 (install-sim.sh
+# 의 브랜딩 블록과 동일 로직, 여기는 physicar 사용자라 sudo 필요).
+brand_codeserver() {
+  local static res media om b64 _svg _png
+  static="$ROS_DIR/physicar_webserver/static"
+  [ -f "$static/favicon.ico" ] || return 0
+  res=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/resources/server' -type d 2>/dev/null | head -1)
+  if [ -n "$res" ]; then
+    sudo cp "$static/favicon.ico" "$res/favicon.ico"
+    sudo cp "$static/img/code-192.png" "$res/code-192.png"
+    sudo cp "$static/img/code-512.png" "$res/code-512.png"
+  fi
+  media=$(find /usr/lib /usr/local/lib -path '*code-server*/src/browser/media' -type d 2>/dev/null | head -1)
+  if [ -n "$media" ]; then
+    sudo cp "$static/favicon.ico" "$media/favicon.ico"
+    b64=$(base64 -w0 "$static/img/code-192.png")
+    for _svg in favicon.svg favicon-dark-support.svg; do
+      printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$b64" | sudo tee "$media/$_svg" >/dev/null
+    done
+    for _png in pwa-icon-192.png pwa-icon-maskable-192.png; do
+      [ -f "$media/$_png" ] && sudo cp "$static/img/code-192.png" "$media/$_png"
+    done
+    for _png in pwa-icon-512.png pwa-icon-maskable-512.png; do
+      [ -f "$media/$_png" ] && sudo cp "$static/img/code-512.png" "$media/$_png"
+    done
+  fi
+  om=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/out/media' -type d 2>/dev/null | head -1)
+  if [ -n "$om" ] && [ -f "$om/code-icon.svg" ]; then
+    b64=$(base64 -w0 "$static/img/code-192.png")
+    printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$b64" | sudo tee "$om/code-icon.svg" >/dev/null
+  fi
+  return 0
+}
+brand_codeserver || true
+
 # ── 알림 방해금지(DND) 기본값 시드 (idempotent) ──
 # 우측 하단 알림 팝업을 "에러만" 남기고 숨긴다. DND 는 settings.json 키가 아니라
 # 전역 상태 DB(state.vscdb)의 토글이라 여기서 심는다. 키가 이미 있으면(사용자가
@@ -244,6 +301,17 @@ PYSET
 if [ -z "${CODESPACE_NAME:-}" ]; then
   timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force \
     >/dev/null 2>&1 || true
+fi
+
+# ── X 락 잔재 제거 (컨테이너 보존형이라 /tmp 가 재시작에도 살아남는다) ──
+# 인스턴스 정지→재개(또는 컨테이너 재시작) 시 이전 Xvfb 의 /tmp/.X1-lock 과
+# /tmp/.X11-unix/X1 이 남아 있으면 Xvfb 가 "Server is already active for display 1"
+# 로 기동을 거부한다. 그러면 openbox/tint2/x11vnc 가 연쇄 FATAL 이 되고 DISPLAY 가
+# 없어 Gazebo 가 렌더를 못 해 시뮬레이터·카메라·라이다가 전부 빈 화면이 된다
+# (2026-08-04 실제 장애). supervisord 시작 전 항상 정리 — 살아있는 X 가 있으면
+# 락을 지워도 소켓 사용 중이라 무해하고, 죽은 잔재만 제거된다.
+if ! pgrep -x Xvfb >/dev/null 2>&1; then
+  rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true
 fi
 
 # Start supervisord

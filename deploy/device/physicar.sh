@@ -658,6 +658,32 @@ fi
 
 # code-server is managed by physicar-code.service
 
+# ── code-server 버전 수렴 (레포 핀, idempotent) ──
+# deploy/code-server-version 이 단일 진실 — 설치본과 다르면 그 버전을 설치하고
+# 서비스를 재시작한다 (이후의 media/folder/브랜딩 재적용이 새 번들에 걸린다).
+# 핀을 올리기 전 새 버전 릴리스 tar 를 받아 패치 패턴(B/C·folder)·브랜딩 경로
+# 유효성을 반드시 grep 으로 확인할 것. 실패·오프라인·타임아웃은 현재 버전 유지
+# — 부팅을 절대 막지 않는다 (다음 부팅에 재시도).
+CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
+# --version 첫 줄이 설정파일 생성 로그일 수 있어 버전 라인만 골라낸다
+CS_CUR=$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
+  echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
+  if timeout 300 bash -c "curl -fsSL https://code-server.dev/install.sh | sudo sh -s -- --method=standalone --prefix=/usr/local --version='$CS_PIN'"; then
+    sudo ln -sf /usr/local/bin/code-server /usr/local/bin/code
+    # 새 버전으로 서비스 전환 후 구버전 디렉토리 제거
+    # (standalone 은 /usr/local/lib/code-server-<ver> 가 버전별로 쌓임 — SD 용량)
+    sudo systemctl restart physicar-code.service 2>/dev/null || true
+    for _d in /usr/local/lib/code-server-*; do
+      if [ -d "$_d" ] && [ "$_d" != "/usr/local/lib/code-server-$CS_PIN" ]; then
+        sudo rm -rf "$_d"
+      fi
+    done
+  else
+    echo "[code-server] WARNING: update failed — keeping ${CS_CUR:-none}"
+  fi
+fi
+
 # ── Webview microphone/camera patch (idempotent, every boot) ──
 # VS Code's webview iframes don't delegate mic/cam permission, blocking
 # getUserMedia in every webview below them (extension panels, app.physicar).
@@ -758,6 +784,43 @@ print('[folder-patch] default folder patched into workbench.js')
 PYFOLD
 }
 patch_codeserver_default_folder || true
+
+# ── 브랜딩 재적용 (idempotent, every boot) ──
+# 파비콘/PWA/타이틀바 아이콘은 설치 트리 안에 있어 code-server 업데이트가
+# 원복시킨다 — media patch 와 같은 이유로 부팅마다 다시 덮는다
+# (install-device.sh 의 브랜딩 블록과 동일 로직, 여기는 physicar 라 sudo 필요).
+brand_codeserver() {
+  local static res media om b64 _svg _png
+  static="$PHYSICAR_ROS_DIR/physicar_webserver/static"
+  [ -f "$static/favicon.ico" ] || return 0
+  res=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/resources/server' -type d 2>/dev/null | head -1)
+  if [ -n "$res" ]; then
+    sudo cp "$static/favicon.ico" "$res/favicon.ico"
+    sudo cp "$static/img/code-192.png" "$res/code-192.png"
+    sudo cp "$static/img/code-512.png" "$res/code-512.png"
+  fi
+  media=$(find /usr/lib /usr/local/lib -path '*code-server*/src/browser/media' -type d 2>/dev/null | head -1)
+  if [ -n "$media" ]; then
+    sudo cp "$static/favicon.ico" "$media/favicon.ico"
+    b64=$(base64 -w0 "$static/img/code-192.png")
+    for _svg in favicon.svg favicon-dark-support.svg; do
+      printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$b64" | sudo tee "$media/$_svg" >/dev/null
+    done
+    for _png in pwa-icon-192.png pwa-icon-maskable-192.png; do
+      [ -f "$media/$_png" ] && sudo cp "$static/img/code-192.png" "$media/$_png"
+    done
+    for _png in pwa-icon-512.png pwa-icon-maskable-512.png; do
+      [ -f "$media/$_png" ] && sudo cp "$static/img/code-512.png" "$media/$_png"
+    done
+  fi
+  om=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/out/media' -type d 2>/dev/null | head -1)
+  if [ -n "$om" ] && [ -f "$om/code-icon.svg" ]; then
+    b64=$(base64 -w0 "$static/img/code-192.png")
+    printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$b64" | sudo tee "$om/code-icon.svg" >/dev/null
+  fi
+  return 0
+}
+brand_codeserver || true
 
 # ── 알림 방해금지(DND) 기본값 시드 (idempotent) ──
 # 우측 하단 알림 팝업을 "에러만" 남기고 숨긴다. DND 는 settings.json 키가 아니라

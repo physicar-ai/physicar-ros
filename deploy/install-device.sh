@@ -611,9 +611,11 @@ echo "[6/7] Service setup..."
 
 systemctl enable --now avahi-daemon
 
-# code-server
+# code-server — 버전은 deploy/code-server-version 이 단일 진실. 여기서는 최초
+# 설치만 하고, 기설치 디바이스는 physicar.sh 가 부팅마다 같은 핀으로 수렴시킨다.
+CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
 if [ ! -f /usr/local/bin/code-server ]; then
-  curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local
+  curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local ${CS_PIN:+--version="$CS_PIN"}
 fi
 # 'code' command (so terminal users can do: code file.sh)
 ln -sf /usr/local/bin/code-server /usr/local/bin/code
