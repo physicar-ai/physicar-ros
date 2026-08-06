@@ -184,11 +184,20 @@ body:not(.sim-mode) #divider2{display:none}
   color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.4)
 }
 
-/* Control — 카드 래퍼 없이 스택 직속: Drive | Look 가로 배치 */
-#page-control{flex-direction:row;flex-shrink:0;aspect-ratio:5/2;min-height:206px}
-/* Look 카드의 좌측 투명 스페이서 — Drive의 속도 슬라이더(34px)와 동일 폭을 차지해
-   두 조이스틱 정사각형이 항상 같은 크기가 되게 한다 */
-.ctrl-vspacer{width:34px;flex-shrink:0}
+/* Control — 콤팩트 스트립: 조이스틱은 조작에 최적인 고정 크기(150px)로 두고
+   수치를 옆 컬럼에 붙인다. "영역을 채우는 최대 정사각형" 방식이 만들던 빈 공간을
+   없애고, 남는 세로 공간은 아래 앱 패널에 돌아간다. 좁은 컬럼에선 그룹이 줄바꿈. */
+#page-control{
+  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
+  gap:12px 32px;padding:10px 8px;flex-shrink:0;
+}
+#page-control .cg{display:flex;align-items:center;gap:10px}
+#page-control .ctrl-joystick-wrap{width:150px;height:150px;flex-shrink:0}
+#page-control .ctrl-vslider{height:150px}
+.cg-side{display:flex;flex-direction:column;gap:8px;min-width:60px}
+.cg-title{font-size:13px;font-weight:600;color:var(--fg)}
+.cg-read{font-size:11px;color:var(--fg3);line-height:1.35}
+.cg-read strong{display:block;font-size:14px;color:var(--fg);font-weight:600}
 
 /* Focused (= interactive) card → accent border + lit header strip */
 .stack-panel.focused{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
@@ -232,43 +241,34 @@ body:not(.sim-mode) #divider2{display:none}
     <!-- SIMULATOR 패널은 제거됨 — 클라우드 심에선 별도 sim.physicar 탭(독립 /sim 화면)이
          담당한다. 실물 차량과 동일한 앱 구성(MYAPP/VNC/CONTROL)으로 UI 통일. -->
 
-    <!-- CONTROL (inline; 카드 래퍼 없이 스택 직속 — control.js gates sending on #page-control.active) -->
-    <div class="ctrl-col" id="page-control">
+    <!-- CONTROL (inline; 콤팩트 스트립 — control.js gates sending on #page-control.active) -->
+    <div class="ctrl-strip" id="page-control">
       <!-- Drive (speed / steering) -->
-      <div class="cc">
-        <div class="cc-head">Drive</div>
-        <div class="ctrl-area-row">
+      <div class="cg">
         <div class="ctrl-vslider" title="Max speed (m/s)">
           <span class="ctrl-vslider-val"><strong id="ctrl-max-speed-val">1.0</strong></span>
           <input type="range" id="ctrl-max-speed" min="0.5" max="3.0" step="0.1" value="1.0" oninput="CTRL.setMaxSpeed(this.value)">
           <span class="ctrl-vslider-label">Max</span>
         </div>
-        <div class="ctrl-area" id="ctrl-drive-area">
-          <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
-            <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
-          </div>
+        <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
+          <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
         </div>
-        </div>
-        <div class="ctrl-info">
-          <span>Speed: <strong id="ctrl-speed">0.00</strong> m/s</span>
-          <span>Steer: <strong id="ctrl-steer">0</strong>°</span>
+        <div class="cg-side">
+          <div class="cg-title">Drive</div>
+          <div class="cg-read">Speed<strong><span id="ctrl-speed">0.00</span> m/s</strong></div>
+          <div class="cg-read">Steer<strong><span id="ctrl-steer">0</span>°</strong></div>
         </div>
       </div>
 
-      <!-- Look (camera pan / tilt) — 스페이서로 Drive와 같은 조이스틱 폭 확보 -->
-      <div class="cc">
-        <div class="cc-head">Look</div>
-        <div class="ctrl-area-row">
-        <div class="ctrl-vspacer"></div>
-        <div class="ctrl-area" id="ctrl-cam-area">
-          <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
-            <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
-          </div>
+      <!-- Look (camera pan / tilt) -->
+      <div class="cg">
+        <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
+          <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
         </div>
-        </div>
-        <div class="ctrl-info">
-          <span>Pan: <strong id="ctrl-pan">0</strong>°</span>
-          <span>Tilt: <strong id="ctrl-tilt">0</strong>°</span>
+        <div class="cg-side">
+          <div class="cg-title">Look</div>
+          <div class="cg-read">Pan<strong><span id="ctrl-pan">0</span>°</strong></div>
+          <div class="cg-read">Tilt<strong><span id="ctrl-tilt">0</span>°</strong></div>
         </div>
       </div>
     </div>
