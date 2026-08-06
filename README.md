@@ -79,7 +79,7 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
 | Name | Kind | Type | Description |
 |------|------|------|-------------|
 | `/cmd_vel` | topic | [`Twist`](https://docs.ros2.org/latest/api/geometry_msgs/msg/Twist.html) | Velocity + steering (Ackermann conversion) |
-| `/speed` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Speed (m/s) |
+| `/speed` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Speed (m/s) — commands expire after the driver's `cmd_timeout` (default 1 s, `0` disables) without renewal; publish periodically for sustained driving |
 | `/steering` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Steering angle (rad) |
 | `/camera/pan` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Camera pan (rad) |
 | `/camera/tilt` | topic | [`Float64`](https://docs.ros2.org/latest/api/std_msgs/msg/Float64.html) | Camera tilt (rad) |
@@ -109,7 +109,7 @@ Query endpoints support real-time streaming via `?stream=true` (camera uses MJPE
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/speed` | Speed command |
+| `POST` | `/speed` | Speed command — `{"value": m/s, "duration": seconds?}`. Without `duration` it expires after `cmd_timeout` (~1 s) unless renewed. With `duration` the server keeps the command alive, publishes 0 at the end, and the response returns after the drive finishes (`stopped`) or when a newer command supersedes it |
 | `POST` | `/steering` | Steering command |
 | `POST` | `/camera/pan` | Camera pan |
 | `POST` | `/camera/tilt` | Camera tilt |

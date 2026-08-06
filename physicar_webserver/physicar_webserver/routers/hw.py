@@ -48,6 +48,12 @@ router = APIRouter(tags=["hw"])
 class SpeedRequest(BaseModel):
     """Speed control request."""
     value: float = Field(..., description="Speed in m/s. Positive=forward, Negative=backward")
+    duration: Optional[float] = Field(
+        None, gt=0.0, le=600.0,
+        description="Seconds to hold this speed (kept alive by the server), then auto-stop. "
+                    "The response returns after the drive finishes ('stopped') or when a "
+                    "newer speed command supersedes it. Without duration the command "
+                    "expires after the driver's cmd_timeout (~1 s) unless renewed.")
 
 
 class SteeringRequest(BaseModel):
@@ -140,7 +146,12 @@ async def get_speed(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    return sm.get_cmd_state()["speed"]
+    # 실측(odom) 우선 — 드라이버 워치독이 차를 세운 뒤에도 낡은 명령값이
+    # "주행 중"으로 보이는 것 방지. odom이 아직 없으면 명령값 폴백.
+    data = sm.get_once("odom")
+    if data is None:
+        return sm.get_cmd_state()["speed"]
+    return data.get("velocity", {}).get("linear", 0.0)
 
 
 @router.get("/steering")
@@ -372,27 +383,95 @@ async def get_lidar(
 # POST — Speed Control
 # =============================================================================
 
+# 드라이버/어댑터의 cmd_timeout(기본 1초) 워치독과 한 쌍:
+# - 단발 POST는 ~1초 뒤 만료 (지속 주행은 루프 재호출 — 샘플들이 이미 이 패턴)
+# - duration이 오면 5Hz keep-alive 재발행으로 살려둔 뒤 0을 발행하고,
+#   응답은 주행 종료까지 블로킹('stopped') 또는 새 명령 등장 시 즉시('superseded')
+# - 세대 카운터(_speed_gen)는 POST·WS 프레임·WS 데드맨 0 발행 전부가 올린다 —
+#   어떤 새 명령/정지도 진행 중 홀드를 즉시 supersede (같은 이벤트 루프라 원자적)
+# - 웹서버가 죽으면 재발행이 끊겨 드라이버 워치독이 차를 세운다 (단대단 보장)
+_speed_gen = 0
+_speed_tasks: set = set()   # 홀드/미러 task 강참조 (GC 방지)
+_KEEPALIVE_PERIOD = 0.2     # 5Hz — cmd_timeout(1.0s)보다 충분히 촘촘히
+
+
+def _bump_speed_gen() -> int:
+    global _speed_gen
+    _speed_gen += 1
+    return _speed_gen
+
+
+def _track_task(task):
+    _speed_tasks.add(task)
+    task.add_done_callback(_speed_tasks.discard)
+    return task
+
+
+async def _speed_hold(gen: int, value: float, duration: float) -> str:
+    loop = asyncio.get_event_loop()
+    end = loop.time() + duration
+    while True:
+        if gen != _speed_gen:
+            return "superseded"
+        remain = end - loop.time()
+        if remain <= 0:
+            break
+        bridge = get_ros_bridge()
+        if bridge.is_ready:
+            bridge.publish_speed(value)
+        await asyncio.sleep(min(_KEEPALIVE_PERIOD, remain))
+    if gen != _speed_gen:
+        return "superseded"
+    bridge = get_ros_bridge()
+    if bridge.is_ready:
+        bridge.publish_speed(0.0)
+        get_state_manager().update_cmd_state(speed=0.0)
+    return "stopped"
+
+
+async def _cmd_mirror_expire(gen: int, timeout: float = 1.2):
+    """단발(비-duration) 명령의 표시 미러 — 드라이버 워치독이 차를 세운 뒤
+    cmd_state가 낡은 속도를 계속 보여주지 않게 한다 (표시만, 발행 없음)."""
+    await asyncio.sleep(timeout)
+    if gen == _speed_gen:
+        get_state_manager().update_cmd_state(speed=0.0)
+
+
 @router.post("/speed", response_model=ControlResponse)
 async def set_speed(request: SpeedRequest):
     """
     Set robot speed (m/s).
-    
+
     Publishes directly to /speed topic.
     No Ackermann conversion - raw speed value.
-    
+
     - Positive = forward
     - Negative = backward
     - 0 = stop
+    - Without duration: expires after the driver's cmd_timeout (~1 s) unless renewed.
+    - With duration (seconds): kept alive for that long, then auto-stop; the
+      response returns after the drive finishes ('stopped') or 'superseded'.
     """
     bridge = get_ros_bridge()
     if not bridge.is_ready:
         raise HTTPException(503, "ROS bridge not ready")
-    
+
+    gen = _bump_speed_gen()
     success = bridge.publish_speed(request.value)
-    
+
     sm = get_state_manager()
     sm.update_cmd_state(speed=request.value)
-    
+
+    if success and request.duration is not None and request.value != 0.0:
+        # 클라이언트가 응답을 기다리다 끊겨도 홀드는 계속돼야 한다 → 독립 task +
+        # shield (핸들러 취소는 전송 포기일 뿐, 정지 보장은 유지)
+        task = _track_task(asyncio.create_task(_speed_hold(gen, request.value, request.duration)))
+        outcome = await asyncio.shield(task)
+        return ControlResponse(success=True, value=request.value, message=outcome)
+
+    if success and request.value != 0.0:
+        _track_task(asyncio.create_task(_cmd_mirror_expire(gen)))
+
     return ControlResponse(success=success, value=request.value)
 
 
@@ -429,6 +508,8 @@ def _make_control_stream(path: str, field: str, publish_name: str, zero_on_close
                     value = float(json.loads(text)["value"])
                 except (ValueError, KeyError, TypeError):
                     continue
+                if field == "speed":
+                    _bump_speed_gen()   # 진행 중 duration 홀드 supersede
                 publish(value)
                 sm.update_cmd_state(**{field: value})
                 sent = True
@@ -436,6 +517,8 @@ def _make_control_stream(path: str, field: str, publish_name: str, zero_on_close
             pass
         finally:
             if zero_on_close and sent and bridge.is_ready:
+                if field == "speed":
+                    _bump_speed_gen()   # 데드맨 0이 최종 상태 — 홀드가 덮어쓰지 못하게
                 publish(0.0)
                 sm.update_cmd_state(**{field: 0.0})
     router.add_api_websocket_route(path, _stream)

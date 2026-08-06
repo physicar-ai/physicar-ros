@@ -135,20 +135,6 @@ body{display:flex;flex-direction:row;height:100vh}
 /* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
 .main{display:flex;flex-direction:column;min-width:0}
 
-/* Badge bar: multi-select service toggles */
-.tabbar{
-  display:flex;align-items:center;gap:6px;flex-shrink:0;
-  padding:8px;background:var(--bg2);border-bottom:1px solid var(--border);
-  overflow-x:auto;
-}
-.tab{
-  padding:5px 14px;border-radius:999px;font-size:13px;font-weight:600;
-  color:var(--fg3);background:var(--bg3);border:1px solid var(--border);
-  transition:all .15s;white-space:nowrap;flex-shrink:0;
-}
-.tab:hover{color:var(--fg2);border-color:var(--fg3)}
-.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
-
 /* Stacked panels — fixed aspect ratios, so the stack can outgrow the
    viewport and scrolls vertically */
 .stack{
@@ -160,7 +146,6 @@ body{display:flex;flex-direction:row;height:100vh}
   background:#111;border:1px solid var(--border);border-radius:10px;overflow:hidden;
 }
 .stack-panel.on{display:flex}
-#panel-control{background:var(--bg)}
 
 /* Slim identity strip on every panel */
 .sp-head{
@@ -173,7 +158,6 @@ body{display:flex;flex-direction:row;height:100vh}
 /* The body below the strip carries the EXACT aspect ratio (the strip is
    excluded, so the embedded page gets a true 2:1 / 5:2 / 4:3 viewport) */
 .sp-body{position:relative;width:100%}
-#panel-control .sp-body{aspect-ratio:5/2;min-height:206px}
 #panel-myapp .sp-body,#panel-vnc .sp-body{aspect-ratio:4/3}
 .sp-body iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
 .sp-actions{margin-left:auto;display:flex;gap:2px;align-items:center}
@@ -189,17 +173,22 @@ body{display:flex;flex-direction:row;height:100vh}
 body.sim-mode #simcol{display:block}
 body:not(.sim-mode) #divider2{display:none}
 #simcol iframe{width:100%;height:100%;border:none;background:#111}
-/* 앱 셀렉트 (Control 아래 표시할 앱 선택) */
-.applabel{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--fg3)}
-#app-select{
-  height:26px;min-width:120px;font-size:13px;font-weight:600;
+/* 앱 셀렉트 — 앱 카드의 헤더 스트립 안에 내장 (카드 정체성 = 셀렉트) */
+.sp-head .app-select{
+  height:18px;min-width:90px;font-size:11px;font-weight:700;letter-spacing:.05em;
   color:var(--fg2);background:var(--bg3);border:1px solid var(--border);
-  border-radius:7px;padding:0 6px;color-scheme:dark;
+  border-radius:5px;padding:0 4px;color-scheme:dark;cursor:pointer;
 }
-#app-select option{background:#1c2130;color:#e7e9f0}
+.sp-head .app-select option{background:#1c2130;color:#e7e9f0}
+.stack-panel.focused .sp-head .app-select{
+  color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.4)
+}
 
-/* Control fills its panel as a card row: Drive | Look */
-#page-control{position:absolute;inset:0;flex-direction:row}
+/* Control — 카드 래퍼 없이 스택 직속: Drive | Look 가로 배치 */
+#page-control{flex-direction:row;flex-shrink:0;aspect-ratio:5/2;min-height:206px}
+/* Look 카드의 좌측 투명 스페이서 — Drive의 속도 슬라이더(34px)와 동일 폭을 차지해
+   두 조이스틱 정사각형이 항상 같은 크기가 되게 한다 */
+.ctrl-vspacer{width:34px;flex-shrink:0}
 
 /* Focused (= interactive) card → accent border + lit header strip */
 .stack-panel.focused{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
@@ -239,16 +228,11 @@ body:not(.sim-mode) #divider2{display:none}
 <body>
 
 <div class="main" id="main">
-  <div class="tabbar"><span class="applabel">APP</span><select id="app-select" title="Select app"></select></div>
-
   <div class="stack" id="stack">
     <!-- SIMULATOR 패널은 제거됨 — 클라우드 심에선 별도 sim.physicar 탭(독립 /sim 화면)이
          담당한다. 실물 차량과 동일한 앱 구성(MYAPP/VNC/CONTROL)으로 UI 통일. -->
 
-    <!-- CONTROL (inline; id/class kept — control.js gates sending on #page-control.active) -->
-    <div class="stack-panel" id="panel-control">
-    <div class="sp-head">CONTROL</div>
-    <div class="sp-body">
+    <!-- CONTROL (inline; 카드 래퍼 없이 스택 직속 — control.js gates sending on #page-control.active) -->
     <div class="ctrl-col" id="page-control">
       <!-- Drive (speed / steering) -->
       <div class="cc">
@@ -271,13 +255,16 @@ body:not(.sim-mode) #divider2{display:none}
         </div>
       </div>
 
-      <!-- Look (camera pan / tilt) -->
+      <!-- Look (camera pan / tilt) — 스페이서로 Drive와 같은 조이스틱 폭 확보 -->
       <div class="cc">
         <div class="cc-head">Look</div>
+        <div class="ctrl-area-row">
+        <div class="ctrl-vspacer"></div>
         <div class="ctrl-area" id="ctrl-cam-area">
           <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
             <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
           </div>
+        </div>
         </div>
         <div class="ctrl-info">
           <span>Pan: <strong id="ctrl-pan">0</strong>°</span>
@@ -285,12 +272,10 @@ body:not(.sim-mode) #divider2{display:none}
         </div>
       </div>
     </div>
-    </div>
-    </div>
 
     <!-- MYAPP -->
     <div class="stack-panel" id="panel-myapp">
-      <div class="sp-head">MYAPP
+      <div class="sp-head"><select class="app-select" title="Select app"></select>
         <div class="sp-actions">
           <button class="sp-btn" id="btn-reload-myapp" title="Reload">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -305,7 +290,7 @@ body:not(.sim-mode) #divider2{display:none}
 
     <!-- VNC -->
     <div class="stack-panel" id="panel-vnc">
-      <div class="sp-head">VNC</div>
+      <div class="sp-head"><select class="app-select" title="Select app"></select></div>
       <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
     </div>
 
@@ -401,19 +386,23 @@ body:not(.sim-mode) #divider2{display:none}
   const divider2= document.getElementById('divider2');
   const simcol  = document.getElementById('simcol');
   const ctrlCol = document.getElementById('page-control');
-  const appSel  = document.getElementById('app-select');
+  const appSels = Array.from(document.querySelectorAll('.app-select'));
 
-  const panels = { control: document.getElementById('panel-control') };
+  const panels = {};
   const frames = {};
   APPS.forEach(x => {
     panels[x.id] = document.getElementById('panel-' + x.id);
     frames[x.id] = document.getElementById('frame-' + x.id);
-    const o = document.createElement('option');
-    o.value = x.id; o.textContent = x.label;
-    appSel.appendChild(o);
   });
-  appSel.value = appId;
-  appSel.addEventListener('change', () => { appId = appSel.value; save(); render(); });
+  appSels.forEach(sel => {
+    APPS.forEach(x => {
+      const o = document.createElement('option');
+      o.value = x.id; o.textContent = x.label;
+      sel.appendChild(o);
+    });
+    sel.value = appId;
+    sel.addEventListener('change', () => { appId = sel.value; save(); render(); });
+  });
 
   // Open MyApp in a full browser tab. Inside the VS Code webview the iframe
   // sandbox blocks window.open (returns null) — relay to the extension
@@ -437,8 +426,8 @@ body:not(.sim-mode) #divider2{display:none}
   });
 
   function render(){
-    panels.control.classList.add('on');   // Control 상시 고정
-    ctrlCol.classList.add('active');      // CTRL 전송 게이트
+    ctrlCol.classList.add('active');      // CTRL 전송 게이트 (Control은 스택 직속 상시 표시)
+    appSels.forEach(sel => { if (sel.value !== appId) sel.value = appId; });
     APPS.forEach(x => {
       const on = x.id === appId;
       panels[x.id].classList.toggle('on', on);
@@ -529,13 +518,8 @@ body:not(.sim-mode) #divider2{display:none}
       const holder = target.closest('.stack-panel');
       if (holder) holder.classList.add('focused');
     } else if (ae && ae.closest && ae.closest('.stack-panel')) {
-      // A panel-header control (world select/import/respawn...) is in use —
-      // iframe focus is gone but the active panel stays with that panel
-      // (otherwise the CONTROL fallback below moves the outline to the
-      // wrong card)
+      // A panel-header control (app select 등) is in use — keep that panel lit
       ae.closest('.stack-panel').classList.add('focused');
-    } else if (panels.control.classList.contains('on')) {
-      panels.control.classList.add('focused');
     }
   }
   setInterval(() => updateFocus(false), 250);
@@ -552,7 +536,7 @@ body:not(.sim-mode) #divider2{display:none}
   // already pulled focus off any iframe — just refresh immediately)
   document.querySelectorAll('.stack-panel').forEach(p => {
     p.querySelector('.sp-head').addEventListener('click', (e) => {
-      if (e.target.closest('.sp-actions')) return;   // header action controls
+      if (e.target.closest('.sp-actions') || e.target.closest('.app-select')) return;   // header controls
       const f = p.querySelector('.sp-body iframe');
       if (f) f.focus();
       updateFocus(true);

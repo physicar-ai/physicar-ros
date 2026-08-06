@@ -134,7 +134,7 @@ def generate_launch_description():
         executable='cmd_vel_adapter_node.py',
         name='cmd_vel_adapter',
         output='screen',
-        parameters=[{'use_sim_time': False}],
+        parameters=[{'use_sim_time': False, 'cmd_timeout': 1.0}],
         respawn=True,
         respawn_delay=2.0,
     )

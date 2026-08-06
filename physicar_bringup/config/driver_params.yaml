@@ -28,6 +28,7 @@ physicar_driver:
 
     # ESC per-car calibration gain (scales duty offset; default 1.0)
     speed_gain: 1.0
+    cmd_timeout: 1.0  # seconds a drive command stays valid without renewal (0 = never expire). Keep >= 2x the slowest publisher period
 
     # Robot physical parameters (from URDF measurements)
     wheel_radius: 0.0375        # meters (37.5mm wheel, 7.5cm diameter)

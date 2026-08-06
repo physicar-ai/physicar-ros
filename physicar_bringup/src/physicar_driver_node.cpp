@@ -633,6 +633,7 @@ public:
     declare_parameter("tilt_center", 0.0);
     declare_parameter("reverse_direction", false);
     declare_parameter("speed_gain", 1.0);
+    declare_parameter("cmd_timeout", 1.0);  // 주행 명령 유효시간(초) — 초과 시 자동 정지, 0=off
     declare_parameter("wheel_radius", 0.0375);
     declare_parameter("wheelbase", 0.18);
     declare_parameter("track_width", 0.16);
@@ -646,6 +647,7 @@ public:
     wheelbase_ = get_parameter("wheelbase").as_double();
     track_width_ = get_parameter("track_width").as_double();
     calibration_file_ = get_parameter("calibration_file").as_string();
+    cmd_timeout_ = get_parameter("cmd_timeout").as_double();
 
     // Hardware init
     board_.reset(new RosmasterBoard(serial_port));
@@ -748,6 +750,20 @@ public:
     battery_low_thresh_ = get_parameter("battery_low_threshold").as_double();
     battery_timer_ = create_timer(1.0 / batt_rate, [this]() { publish_battery(); });
 
+    // 주행 명령 워치독 — 마지막 speed 명령(모든 소스: /speed, /teleop/speed, /cmd_vel이
+    // set_speed로 수렴)이 cmd_timeout 넘게 갱신되지 않으면 자동 정지. 발행자가 죽어도
+    // 차가 마지막 속도로 계속 달리는 것을 차단한다. 조향/카메라는 유지(위험하지 않음).
+    if (cmd_timeout_ > 0.0) {
+      cmd_watchdog_timer_ = create_timer(0.1, [this]() {
+        if (std::abs(target_speed_) >= SPEED_DEADZONE &&
+            (steady_now() - last_drive_cmd_time_) > cmd_timeout_) {
+          RCLCPP_WARN(get_logger(),
+            "drive command stale (>%.1fs) - auto stop", cmd_timeout_);
+          set_speed(0.0);
+        }
+      });
+    }
+
     RCLCPP_INFO(get_logger(), "PhysiCar Driver Node started");
   }
 
@@ -812,6 +828,7 @@ private:
 
   void set_speed(double speed_mps) {
     speed_mps = std::clamp(speed_mps, -MAX_SPEED, MAX_SPEED);
+    last_drive_cmd_time_ = steady_now();   // 워치독 리셋 (0 명령 포함 — 무해)
     target_speed_ = speed_mps;
     current_throttle_ = speed_mps;
 
@@ -1275,6 +1292,9 @@ private:
 
   // Timers & subscriptions (prevent destruction — callback groups hold WeakPtr)
   rclcpp::TimerBase::SharedPtr imu_timer_, joint_timer_, battery_timer_;
+  rclcpp::TimerBase::SharedPtr cmd_watchdog_timer_;
+  double cmd_timeout_ = 1.0;
+  double last_drive_cmd_time_ = 0.0;
   std::vector<rclcpp::SubscriptionBase::SharedPtr> subs_;
 };
 

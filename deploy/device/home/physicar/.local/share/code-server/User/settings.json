@@ -2,7 +2,10 @@
   "chat.disableAIFeatures": true,
   "code-runner.runInTerminal": true,
   "code-runner.ignoreSelection": true,
-  "code-runner.executorMap": {"shellscript": "cd $dir && ./$fileName", "python": "cd $dir && python3 -u $fileName"},
+  "code-runner.executorMap": {
+    "shellscript": "cd $dir && ./$fileName",
+    "python": "cd $dir && python3 -u $fileName"
+  },
   "chat.sendElementsToChat.enabled": false,
   "workbench.startupEditor": "none",
   "workbench.welcomePage.walkthroughs.openOnInstall": false,
@@ -19,10 +22,13 @@
   "chat.viewSessions.orientation": "stacked",
   "terminal.integrated.initialHint": false,
   "remote.autoForwardPorts": false,
-  "remote.otherPortsAttributes": {"onAutoForward": "silent"},
+  "remote.otherPortsAttributes": {
+    "onAutoForward": "silent"
+  },
   "update.showReleaseNotes": false,
   "extensions.ignoreRecommendations": true,
   "workbench.tips.enabled": false,
   "explorer.compactFolders": false,
-  "security.workspace.trust.enabled": false
+  "security.workspace.trust.enabled": false,
+  "breadcrumbs.enabled": false
 }

@@ -34,6 +34,7 @@ Publishes:
 """
 
 import math
+import time
 
 import rclpy
 from rclpy.clock import Clock, ClockType
@@ -53,6 +54,7 @@ class CmdVelAdapterNode(Node):
         self.declare_parameter('wheelbase', 0.18)
         self.declare_parameter('max_steering', 20.0)  # degrees
         self.declare_parameter('max_speed', 3.0)      # m/s
+        self.declare_parameter('cmd_timeout', 1.0)     # 주행 명령 유효시간(초), 0=off
         self.declare_parameter('min_speed', 0.3)       # m/s (ESC dead zone)
 
         self.wheelbase = self.get_parameter('wheelbase').value
@@ -61,10 +63,12 @@ class CmdVelAdapterNode(Node):
         )
         self.max_speed = self.get_parameter('max_speed').value
         self.min_speed = self.get_parameter('min_speed').value
+        self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
 
         # Current state
         self._speed = 0.0      # m/s
         self._steering = 0.0   # rad
+        self._last_speed_cmd = time.monotonic()
 
         qos = QoSProfile(depth=10)
 
@@ -83,6 +87,11 @@ class CmdVelAdapterNode(Node):
 
         # Wall clock — fires even when /clock (sim time) is not yet available
         wall_clock = Clock(clock_type=ClockType.STEADY_TIME)
+
+        # 주행 명령 워치독 — /speed가 cmd_timeout 넘게 갱신되지 않으면 자동 정지
+        # (디바이스 physicar_driver의 cmd_timeout과 동일 계약)
+        if self.cmd_timeout > 0.0:
+            self.create_timer(0.1, self._cmd_watchdog, clock=wall_clock)
 
         # SIM: publish fake full battery (1Hz)
         self._battery_pub = self.create_publisher(BatteryState, '/battery_state', qos)
@@ -106,7 +115,17 @@ class CmdVelAdapterNode(Node):
     def _speed_cb(self, msg: Float64):
         speed = max(-self.max_speed, min(self.max_speed, msg.data))
         self._speed = speed
+        self._last_speed_cmd = time.monotonic()
         self._publish_cmd_vel()
+
+    def _cmd_watchdog(self):
+        if abs(self._speed) < 1e-3:
+            return
+        if (time.monotonic() - self._last_speed_cmd) > self.cmd_timeout:
+            self.get_logger().warn(
+                f'drive command stale (>{self.cmd_timeout:.1f}s) - auto stop')
+            self._speed = 0.0
+            self._publish_cmd_vel()
 
     def _steering_cb(self, msg: Float64):
         self._steering = max(

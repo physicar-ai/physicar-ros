@@ -233,13 +233,20 @@ const CTRL = {
     tilt = Math.round(tilt * 1000) / 1000;
 
     // Send only on change — batched into ONE request per tick (a joystick
-    // drag used to cost up to 4 POSTs/tick through the tunnel proxy)
+    // drag used to cost up to 4 POSTs/tick through the tunnel proxy).
+    // 예외: nonzero speed는 같은 값이라도 0.4s마다 재전송(keep-alive) —
+    // 드라이버 워치독(cmd_timeout ~1s)이 "스틱을 고정한 채 주행 중"인
+    // 차를 세우지 않게 한다. WS 스트림이라 추가 비용은 미미.
     const body = {};
-    if (speed !== this._lastSent.speed || steer !== this._lastSent.steer) {
+    const nowMs = Date.now();
+    const driveChanged = speed !== this._lastSent.speed || steer !== this._lastSent.steer;
+    const driveStale = speed !== 0 && (nowMs - (this._lastSent.driveAt || 0)) > 400;
+    if (driveChanged || driveStale) {
       body.speed = speed;
       body.steering = steer;
       this._lastSent.speed = speed;
       this._lastSent.steer = steer;
+      this._lastSent.driveAt = nowMs;
     }
     if (pan !== this._lastSent.pan || tilt !== this._lastSent.tilt) {
       body.pan = pan;
