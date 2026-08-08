@@ -795,7 +795,7 @@ body:not(.sim-mode) #divider2{display:none}
     if (mode === 'sim') {
       simMode = true;
       document.title = 'PHYSICAR App (SIM)';
-      b1 = 0.22; b2 = 0.72;            // 상태 22% | 앱 50% | 심 28%
+      b1 = 1/6; b2 = 0.5;              // sensors 1 : center 2 : sim 3
       initSimWorldUI();
     }
     render(); applyRatio();

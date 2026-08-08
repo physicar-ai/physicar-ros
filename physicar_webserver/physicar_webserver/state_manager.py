@@ -42,7 +42,7 @@ from geometry_msgs.msg import Twist
 
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageEnhance
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -661,8 +661,30 @@ class StateManager:
     # Camera Image
     # -------------------------------------------------------------------------
     
+    def _sim_brightness(self) -> float:
+        """Sim scene brightness factor (TTL-cached; 1.0 off-sim/unavailable).
+
+        The gz sensor render scene ignores runtime light changes, so the sim
+        exposes one brightness factor and the camera frames are scaled here —
+        instant, and identical to what the web viewer shows (it scales its
+        lights by the same factor; shadows are off in the sim worlds, so
+        pixel scaling is visually equivalent).
+        """
+        now = time.time()
+        if now - getattr(self, "_sim_bright_ts", 0.0) > 2.0:
+            self._sim_bright_ts = now
+            try:
+                import urllib.request
+                with urllib.request.urlopen(
+                        "http://127.0.0.1:9003/brightness", timeout=0.3) as r:
+                    v = float(json.loads(r.read()).get("value", 1.0))
+                self._sim_bright = min(2.0, max(0.2, v))
+            except Exception:
+                self._sim_bright = 1.0    # real robot / sim api down
+        return getattr(self, "_sim_bright", 1.0)
+
     def get_camera_image(self, width: Optional[int] = None, height: Optional[int] = None) -> Optional[bytes]:
-        """Get camera image (optionally resized)."""
+        """Get camera image (optionally resized / brightness-adjusted)."""
         self._ensure_camera_subscription()
         
         with self._camera_buffer.lock:
@@ -671,7 +693,7 @@ class StateManager:
         if raw is None:
             return None
         
-        if width is None and height is None:
+        if width is None and height is None and abs(self._sim_brightness() - 1.0) < 0.01:
             return raw
         
         return self._resize_jpeg(raw, width, height)
@@ -689,27 +711,33 @@ class StateManager:
             return None, last_seq
     
     def _resize_jpeg(self, jpeg_data: bytes, width: Optional[int], height: Optional[int]) -> bytes:
-        """Resize JPEG image (aspect-ratio preserved, width takes priority)."""
-        if not PIL_AVAILABLE or (width is None and height is None):
+        """Resize (aspect-preserved, width priority) and/or brightness-adjust."""
+        f = self._sim_brightness()
+        needs_brightness = abs(f - 1.0) >= 0.01
+        if not PIL_AVAILABLE or (width is None and height is None and not needs_brightness):
             return jpeg_data
         
         try:
             img = Image.open(io.BytesIO(jpeg_data))
             orig_w, orig_h = img.size
             
-            # width has priority, aspect ratio preserved
-            if width:
-                new_w = width
-                new_h = int(orig_h * width / orig_w)
-            else:
-                new_h = height
-                new_w = int(orig_w * height / orig_h)
+            if width or height:
+                # width has priority, aspect ratio preserved
+                if width:
+                    new_w = width
+                    new_h = int(orig_h * width / orig_w)
+                else:
+                    new_h = height
+                    new_w = int(orig_w * height / orig_h)
+                
+                # Don't upscale — only downscale
+                if new_w < orig_w and new_h < orig_h:
+                    img = img.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                elif not needs_brightness:
+                    return jpeg_data
             
-            # Don't upscale — only downscale
-            if new_w >= orig_w or new_h >= orig_h:
-                return jpeg_data
-            
-            img = img.resize((new_w, new_h), Image.Resampling.BILINEAR)
+            if needs_brightness:
+                img = ImageEnhance.Brightness(img.convert("RGB")).enhance(f)
             output = io.BytesIO()
             img.save(output, format='JPEG', quality=80, optimize=False)
             return output.getvalue()
