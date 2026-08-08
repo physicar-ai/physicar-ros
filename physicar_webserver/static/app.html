@@ -178,15 +178,21 @@ body.sim-mode #simcol{display:flex;flex-direction:column}
 body:not(.sim-mode) #divider2{display:none}
 #simcol .sim-body{position:relative;flex:1;min-height:0}
 #simcol iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
-/* World chip styled like the CAMERA/LIDAR selects (bordered box + caret) so
-   it reads as clickable. No centering ghost — it starved the name of width. */
-#sim-world-btn{margin:0 auto;padding:2px 22px 2px 10px;border-radius:4px;font-size:11px;
-  font-weight:600;color:var(--fg);background:var(--bg3);border:1px solid var(--border);
+/* World chip: must read as an interactive select at a glance — raised body
+   (gradient + shadow), visible border, bright caret, hover/press feedback.
+   No centering ghost — it starved the name of width. */
+#sim-world-btn{margin:0 auto;padding:3px 24px 3px 10px;border-radius:5px;font-size:11px;
+  font-weight:600;color:var(--fg);background:linear-gradient(#2c3140, #232734);
+  border:1px solid var(--fg3);
   cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  min-width:0;position:relative;text-align:left}
-#sim-world-btn::after{content:'\25be';position:absolute;right:7px;top:50%;
-  transform:translateY(-50%);color:var(--fg3);font-size:10px}
-#sim-world-btn:hover{border-color:var(--accent);color:var(--fg)}
+  min-width:110px;max-width:min(280px,100%);position:relative;text-align:center;
+  box-shadow:0 1px 3px rgba(0,0,0,.4);
+  transition:border-color .15s, background .15s}
+#sim-world-btn::after{content:'\25be';position:absolute;right:8px;top:50%;
+  transform:translateY(-50%);color:var(--fg);font-size:16px;line-height:1}
+#sim-world-btn:hover{border-color:var(--accent);background:#323748}
+#sim-world-btn:hover::after{color:var(--accent)}
+#sim-world-btn:active{background:#232734;box-shadow:none}
 
 /* World modal — same full-cover treatment as the sensor zoom modal */
 #world-modal .sensor-modal{width:min(440px,92vw)}
@@ -211,6 +217,11 @@ body:not(.sim-mode) #divider2{display:none}
 #wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
 #wm-status.error{color:#f87171}
 #wm-status.success{color:#4ade80}
+#wm-status .wm-ow{margin-left:6px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);
+  background:var(--bg3);color:var(--fg);font-size:11px;cursor:pointer}
+#wm-status .wm-ow:hover{border-color:var(--fg3)}
+#wm-status .wm-ow.danger{background:#7f1d1d;border-color:#b91c1c}
+#wm-status .wm-ow.danger:hover{background:#991b1b}
 /* App switch: standalone pill buttons (badge-bar style) — always visible */
 .app-tabs{display:flex;gap:6px}
 .app-tab{padding:2px 12px;border-radius:999px;font-size:11px;font-weight:600;
@@ -538,7 +549,7 @@ body:not(.sim-mode) #divider2{display:none}
   }
 
   /* ── 3열 분할: [상태 | 앱 | 심] — 경계 두 개 모두 드래그 (세션 한정) ── */
-  let b1 = 0.29, b2 = 1;               // real 기본: 상태 29% | 앱 71% (심 없음)
+  let b1 = 0.2, b2 = 1;                // real default: sensors 1 : center 4 (no sim column)
   function applyRatio(){
     right.style.width = 'calc(' + (b1 * 100).toFixed(2) + '% - 4px)';
     main.style.width  = 'calc(' + (((simMode ? b2 : 1) - b1) * 100).toFixed(2) + '% - 4px)';
@@ -598,14 +609,24 @@ body:not(.sim-mode) #divider2{display:none}
      (cross-origin safe): clicking anywhere in the parent document pulls
      focus off the iframe, which re-arms its shield. */
   let lastFocused = null;
+  // Focus moved → synthesize keyup for the arrows. Without this a key held
+  // across a focus change never delivers its real keyup to the CONTROL
+  // driver and the car keeps driving on a latched key.
+  function releaseArrows(){
+    ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].forEach(k =>
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: k })));
+  }
+  window.addEventListener('blur', releaseArrows);
   function updateFocus(force){
     const ae = document.activeElement;
     const target = (ae && ae.tagName === 'IFRAME') ? ae : null;
     // The compare key includes non-iframe activeElements too, so moving
     // between header controls is also detected
     const key = target || ae;
-    if (!force && key === lastFocused) return;
+    const changed = key !== lastFocused;
+    if (!force && !changed) return;
     lastFocused = key;
+    if (changed) releaseArrows();
     document.querySelectorAll('.stack-panel.focused').forEach(el => el.classList.remove('focused'));
     if (target) {
       const holder = target.closest('.stack-panel');
@@ -633,6 +654,28 @@ body:not(.sim-mode) #divider2{display:none}
       const f = p.querySelector('.sp-body iframe');
       if (f) f.focus();
       updateFocus(true);
+    });
+  });
+
+  /* Sim iframe keyboard passthrough: clicking the 3D view moves keyboard
+     focus INTO the same-origin sim frame, where this document's CONTROL key
+     driver can't hear it. Capture the arrows inside the frame, re-dispatch
+     them here, and stop them locally (capture phase — also keeps the
+     viewer's own arrow-pan from fighting the drive). Result: arrow driving
+     works wherever the user last clicked in app.physicar. MyApp/VNC frames
+     are deliberately NOT forwarded — focused there, the keyboard belongs to
+     the student's app. */
+  const simFrame = document.getElementById('frame-sim');
+  simFrame.addEventListener('load', () => {
+    let doc = null;
+    try { doc = simFrame.contentDocument; } catch (e) { return; }   // cross-origin guard
+    if (!doc) return;
+    ['keydown', 'keyup'].forEach(type => {
+      doc.addEventListener(type, (e) => {
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+        e.preventDefault(); e.stopPropagation();
+        document.dispatchEvent(new KeyboardEvent(type, { key: e.key, code: e.code }));
+      }, true);
     });
   });
 
@@ -764,7 +807,15 @@ body:not(.sim-mode) #divider2{display:none}
         }));
         setSt('Processing...');
         const res = await post('/upload/complete', { upload_id: uploadId });
-        if (!res.ok) throw new Error(res.error || 'Upload failed');
+        if (!res.ok) {
+          if (res.error === 'exists') {
+            // Server kept the session — confirm before replacing, no re-upload
+            owConfirm(res.world, uploadId);
+            uploadId = null;   // keep the catch from cancelling the kept session
+            return;
+          }
+          throw new Error(res.error || 'Upload failed');
+        }
         setSt('World "' + res.world + '" uploaded!', 'success');
         await refresh(true);
         setTimeout(() => switchWorld(res.world + '.world'), 1200);
@@ -772,6 +823,32 @@ body:not(.sim-mode) #divider2{display:none}
         setSt('Upload failed: ' + e.message, 'error');
         if (uploadId) post('/upload/cancel', { upload_id: uploadId }).catch(() => {});
       } finally { impBtn.disabled = false; }
+    }
+
+    // Inline overwrite confirm (native confirm() is dropped in webviews)
+    function owConfirm(world, uploadId){
+      st.className = ''; st.textContent = '';
+      const span = document.createElement('span');
+      span.textContent = 'World "' + world + '" already exists. Replace it?';
+      const rep = document.createElement('button');
+      rep.className = 'wm-ow danger'; rep.textContent = 'Replace';
+      const can = document.createElement('button');
+      can.className = 'wm-ow'; can.textContent = 'Cancel';
+      st.append(span, rep, can);
+      rep.onclick = async () => {
+        setSt('Processing...');
+        try {
+          const res = await post('/upload/complete', { upload_id: uploadId, overwrite: true });
+          if (!res.ok) throw new Error(res.error || 'Upload failed');
+          setSt('World "' + res.world + '" replaced!', 'success');
+          await refresh(true);
+          setTimeout(() => switchWorld(res.world + '.world'), 1200);
+        } catch(e) { setSt('Upload failed: ' + e.message, 'error'); }
+      };
+      can.onclick = () => {
+        post('/upload/cancel', { upload_id: uploadId }).catch(() => {});
+        setSt('Import cancelled.');
+      };
     }
 
     function open(){ setSt(''); refresh(true); modal.style.display = 'flex'; }
@@ -783,7 +860,11 @@ body:not(.sim-mode) #divider2{display:none}
       if (e.key === 'Escape' && modal.style.display !== 'none') close();
     });
     impBtn.addEventListener('click', () => fileIn.click());
-    fileIn.addEventListener('change', () => upload(fileIn.files[0]));
+    fileIn.addEventListener('change', () => {
+      const f = fileIn.files[0];
+      fileIn.value = '';   // same file re-selectable after a cancel
+      upload(f);
+    });
 
     refresh();
     setInterval(() => { if (!document.hidden) refresh(); }, 10000);
