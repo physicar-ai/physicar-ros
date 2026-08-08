@@ -314,7 +314,9 @@ body:not(.sim-mode) #divider2{display:none}
 .right .panel-value{font-size:14px}
 .right .battery-bar{height:8px;border-radius:4px;margin-top:8px}
 .right .panel-restart{padding:6px !important}
-.right .btn-restart{font-size:12px;padding:4px 12px;border-radius:6px;white-space:nowrap}
+.right .btn-restart{font-size:12px;padding:4px 12px;border-radius:6px;white-space:nowrap;
+  color:#f87171;border-color:rgba(248,113,113,.55)}
+.right .btn-restart:hover{color:#fff}
 </style>
 </head>
 <body>
@@ -772,6 +774,14 @@ body:not(.sim-mode) #divider2{display:none}
 
   /* ── Control (inline) ── */
   CTRL.init();
+  // Range sliders (max speed 등) must not hold keyboard focus after use —
+  // a focused slider swallows the arrow keys that should drive the car
+  document.querySelectorAll('.ctrl-strip input[type="range"]').forEach(el => {
+    const drop = () => el.blur();
+    el.addEventListener('pointerup', drop);
+    el.addEventListener('touchend', drop);
+    el.addEventListener('change', drop);
+  });
   const redrawJoysticks = () => { CTRL._drawJoystick('drive'); CTRL._drawJoystick('cam'); };
   requestAnimationFrame(redrawJoysticks);
   // Redraw whenever the control column changes size (window resize, divider drag)

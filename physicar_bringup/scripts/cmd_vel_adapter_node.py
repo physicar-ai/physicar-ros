@@ -69,6 +69,8 @@ class CmdVelAdapterNode(Node):
         self._speed = 0.0      # m/s
         self._steering = 0.0   # rad
         self._last_speed_cmd = time.monotonic()
+        # Standstill steering settle window — see _publish_cmd_vel
+        self._steer_settle_until = 0.0
 
         qos = QoSProfile(depth=10)
 
@@ -119,6 +121,13 @@ class CmdVelAdapterNode(Node):
         self._publish_cmd_vel()
 
     def _cmd_watchdog(self):
+        # Close the standstill settle window: emit one final true-zero Twist
+        # so the tiny carrier velocity does not persist (no parking creep).
+        if (self._steer_settle_until
+                and time.monotonic() >= self._steer_settle_until
+                and abs(self._speed) < 1e-3):
+            self._steer_settle_until = 0.0
+            self._publish_cmd_vel()
         if abs(self._speed) < 1e-3:
             return
         if (time.monotonic() - self._last_speed_cmd) > self.cmd_timeout:
@@ -132,6 +141,9 @@ class CmdVelAdapterNode(Node):
             -self.max_steering_rad,
             min(self.max_steering_rad, msg.data),
         )
+        # Keep the carrier alive briefly so a steering change at standstill —
+        # including a return to 0 — actually reaches the steering joints.
+        self._steer_settle_until = time.monotonic() + 1.2
         self._publish_cmd_vel()
 
 
@@ -142,14 +154,19 @@ class CmdVelAdapterNode(Node):
           linear.x  = speed
           angular.z = speed * tan(steering) / wheelbase
 
-        physicar_driver_node.py cmd_vel_callback inverse:
-          forward: steering = atan(ω * L / v)
-          inverse: ω = v * tan(steering) / L
+        Standstill steering: a Twist cannot express "steering angle at v=0",
+        so a tiny carrier velocity (1 mm/s) conveys the angle. CRITICAL: the
+        carrier must also be used when steering RETURNS TO 0 — the Ackermann
+        plugin treats an exact (0,0) Twist as "stop regulating" and freezes
+        the steering joints wherever they are, which used to leave a wheel
+        pinned at the limit after releasing the keys (verified against the
+        plugin in isolation). The settle window then ends with one true (0,0)
+        so the carrier does not cause perpetual creep while parked.
         """
         twist = Twist()
-        # If speed=0 but steering is non-zero, use a tiny speed to convey angle
         v = self._speed
-        if abs(v) < 0.001 and abs(self._steering) > 0.001:
+        if abs(v) < 0.001 and (abs(self._steering) > 0.001
+                               or time.monotonic() < self._steer_settle_until):
             v = 0.001
         twist.linear.x = v
         twist.angular.z = v * math.tan(self._steering) / self.wheelbase
