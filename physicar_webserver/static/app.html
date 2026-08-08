@@ -247,6 +247,12 @@ body:not(.sim-mode) #divider2{display:none}
   padding:7px;font-size:12px;font-weight:600;cursor:pointer}
 #wm-import:disabled{opacity:.5;cursor:wait}
 #wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
+.wm-linkrow{display:flex;gap:6px}
+.wm-linkrow input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;color:var(--fg);font-size:12px;padding:6px 8px}
+.wm-linkrow button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
+  border-radius:6px;font-size:12px;padding:6px 10px;cursor:pointer}
+.wm-linkrow button:hover{border-color:var(--accent);color:var(--accent)}
 #wm-status.error{color:#f87171}
 #wm-status.success{color:#4ade80}
 #wm-status .wm-ow{margin-left:6px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);
@@ -455,8 +461,16 @@ body:not(.sim-mode) #divider2{display:none}
       <div id="wm-official"></div>
       <div class="wm-sec">CUSTOM WORLD</div>
       <div id="wm-custom"></div>
+      <div class="wm-sec" id="wm-mine-sec" style="display:none">MY WORLDS</div>
+      <div id="wm-mine"></div>
+      <div class="wm-sec" id="wm-classroom-sec" style="display:none">CLASSROOM</div>
+      <div id="wm-classroom"></div>
     </div>
     <div class="wm-foot">
+      <div class="wm-linkrow">
+        <input id="wm-link" placeholder="Paste a shared world link or ID" autocomplete="off" spellcheck="false">
+        <button id="wm-link-go">Load</button>
+      </div>
       <button id="wm-import">&#x2913; Import World (.tar.gz)</button>
       <div id="wm-status"></div>
       <input type="file" id="wm-file" accept=".tar.gz,.gz" style="display:none">
@@ -822,7 +836,7 @@ body:not(.sim-mode) #divider2{display:none}
         row.className = 'wm-row' + (isCurrent ? ' active' : '');
         const name = document.createElement('span');
         name.className = 'wm-name';
-        name.textContent = (isCurrent ? '✓ ' : '') + w.name;
+        name.textContent = (isCurrent ? '✓ ' : '') + (w.display || w.name);
         row.appendChild(name);
         row.onclick = () => { if (!isCurrent) switchWorld(w.file); };
         if (w.deletable) {
@@ -953,7 +967,70 @@ body:not(.sim-mode) #divider2{display:none}
       };
     }
 
-    function open(){ setSt(''); refresh(true); modal.style.display = 'flex'; }
+    /* ── Published worlds (worlds.physicar.ai) — my/classroom 목록 + 원클릭 설치 ──
+       목록은 api 세션(physicarSession — /__session 발급)으로 브라우저가 직접 조회하고,
+       설치는 sim_api 가 R2 에서 직접 내려받는다 (브라우저 릴레이 없음). */
+    const WAPI = 'https://api.physicar.ai';
+    function apiTok(){ return (window.physicarSession && physicarSession.token()) || null; }
+    let installedIds = {};   // world_id → 로컬 world 파일 (목록 대조용)
+
+    function renderCloud(listEl, secEl, list){
+      listEl.innerHTML = '';
+      secEl.style.display = list.length ? '' : 'none';
+      list.forEach(w => {
+        const row = document.createElement('div');
+        const local = installedIds[w.world_id];
+        const isCurrent = local && local.replace(/\.world$/, '') === current;
+        row.className = 'wm-row' + (isCurrent ? ' active' : '');
+        const name = document.createElement('span');
+        name.className = 'wm-name';
+        name.textContent = (isCurrent ? '✓ ' : '') + w.name;
+        row.appendChild(name);
+        row.onclick = () => { if (!isCurrent) installWorld(w.world_id, w.name); };
+        listEl.appendChild(row);
+      });
+    }
+
+    async function refreshCloud(){
+      const tok = apiTok();
+      const mineSec = document.getElementById('wm-mine-sec');
+      const clsSec = document.getElementById('wm-classroom-sec');
+      if (!tok) { mineSec.style.display = 'none'; clsSec.style.display = 'none'; return; }
+      installedIds = {};
+      worlds.forEach(w => { if (w.world_id) installedIds[w.world_id] = w.file; });
+      const get = (p) => fetch(WAPI + p, { headers: { 'Authorization': 'Bearer ' + tok } })
+        .then(r => r.ok ? r.json() : { worlds: [] }).catch(() => ({ worlds: [] }));
+      const [mine, cls] = await Promise.all([get('/worlds/mine'), get('/worlds/classroom')]);
+      renderCloud(document.getElementById('wm-mine'), mineSec, mine.worlds || []);
+      renderCloud(document.getElementById('wm-classroom'), clsSec, cls.worlds || []);
+    }
+
+    async function installWorld(id, nm){
+      setSt('Installing "' + nm + '"...');
+      try {
+        const d = await post('/worlds/install', { world_id: id });
+        if (!d.ok) throw new Error(d.error || 'Install failed');
+        setSt((d.cached ? 'Ready: ' : 'Installed: ') + (d.name || nm), 'success');
+        await refresh(true);
+        switchWorld(d.world);
+      } catch(e) { setSt('Install failed: ' + e.message, 'error'); }
+    }
+
+    const linkIn = document.getElementById('wm-link');
+    const linkGo = document.getElementById('wm-link-go');
+    function loadFromLink(){
+      const m = (linkIn.value || '').match(/([0-9a-f]{32})/);
+      if (!m) { setSt('Paste a shared world link (or 32-char ID).', 'error'); return; }
+      linkIn.value = '';
+      installWorld(m[1], m[1].slice(0, 8) + '…');
+    }
+    linkGo.addEventListener('click', loadFromLink);
+    linkIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); loadFromLink(); }
+      e.stopPropagation();   // 화살표 주행 단축키와 충돌 방지
+    });
+
+    function open(){ setSt(''); refresh(true).then(refreshCloud); modal.style.display = 'flex'; }
     function close(){ modal.style.display = 'none'; fileIn.value = ''; }
     btn.addEventListener('click', open);
     document.getElementById('wm-close').addEventListener('click', close);
