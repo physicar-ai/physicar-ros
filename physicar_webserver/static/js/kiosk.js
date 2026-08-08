@@ -292,7 +292,7 @@
             const layout = symbolMode ? layouts.symbol : (shiftActive ? layouts.upper : layouts.lower);
 
             // Per-keyboard layout adjustments.
-            // Device password disallows spaces (host script strips whitespace),
+            // Console password disallows spaces (host script strips whitespace),
             // so the password keyboard renders without a Space key.
             const layoutFor = (kbId) => {
                 if (kbId !== 'keyboard-pw') return layout;
@@ -368,7 +368,7 @@
             } else if (key === '⌫') {
                 input.value = val.slice(0, -1);
             } else if (key === 'Space') {
-                // Device password disallows spaces (host script strips whitespace).
+                // Console password disallows spaces (host script strips whitespace).
                 if (kbEl && kbEl.id === 'keyboard-pw') return;
                 input.value = val + ' ';
             } else if (key === 'Enter') {
@@ -384,7 +384,7 @@
                     renderKeyboard();
                 }
             }
-            // After any value change in the device-password input,
+            // After any value change in the console-password input,
             // re-validate and gate the Change button.
             if (kbEl && kbEl.id === 'keyboard-pw' && typeof refreshKioskPwUi === 'function') {
                 refreshKioskPwUi();
@@ -1437,7 +1437,7 @@
         });
 
         // ─────────────────────────────────────────────────────────────────────
-        // Change Device Password (kiosk)
+        // Change Console Password (kiosk)
         // ─────────────────────────────────────────────────────────────────────
         let kioskMode = 'real';
         (async function detectMode() {
@@ -1575,7 +1575,7 @@
                     btn.disabled = false;
                     return;
                 }
-                setMsg('Password changed. Device is rebooting…', 'ok');
+                setMsg('Password changed. Robot is rebooting…', 'ok');
             } catch (e) {
                 setMsg('Network error: ' + e.message, 'err');
                 btn.disabled = false;
@@ -1586,7 +1586,7 @@
                 if (typeof showToast === 'function') showToast('Not supported in simulation mode', true);
                 return;
             }
-            if (!await confirmModal('Reset the device password to its default and reboot now?\nAll active sessions will be logged out.')) return;
+            if (!await confirmModal('Reset the console password to its default and reboot now?\nAll active sessions will be logged out.')) return;
             const btn = document.getElementById('btn-pw-reset');
             if (btn) btn.disabled = true;
             if (typeof showToast === 'function') showToast('Resetting password and rebooting…');

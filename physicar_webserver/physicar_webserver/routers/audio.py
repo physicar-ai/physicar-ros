@@ -188,7 +188,7 @@ async def stream(ws: WebSocket):
             if msg.get("type") == "websocket.disconnect":
                 break
             if msg.get("bytes"):
-                # feed in a worker thread — device backend writes to mpv stdin
+                # feed in a worker thread — real backend writes to mpv stdin
                 await loop.run_in_executor(None, audio_manager.stream_feed, item_id, msg["bytes"])
             elif msg.get("text"):
                 try:

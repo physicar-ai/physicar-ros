@@ -972,7 +972,7 @@
 .st-select:focus { outline: none; border-color: var(--accent); }
 .st-select option { background: #1a1a2e; color: #d5d8e0; }
 
-/* Connection-lost overlay (core.js DeviceWatcher) */
+/* Connection-lost overlay (core.js RobotWatcher) */
 .conn-lost-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 5000; display: none; align-items: center; justify-content: center; padding: 1rem; }
 .conn-lost-overlay.show { display: flex; }
 .conn-lost { background: #1f2233; border: 1px solid var(--border); border-radius: 12px; padding: 2rem 2.5rem; text-align: center; max-width: 360px; }

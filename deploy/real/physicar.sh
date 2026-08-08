@@ -872,7 +872,7 @@ PYSET
 
 # Pre-install extensions on first boot
 # v2: jupyter added to the list — bumping the marker makes provisioned
-# devices run the (idempotent) install pass once more on next boot.
+# robots run the (idempotent) install pass once more on next boot.
 EXT_MARKER="$HOME/.local/share/code-server/.physicar-ext-installed-v2"
 if [ ! -f "$EXT_MARKER" ]; then
   (
