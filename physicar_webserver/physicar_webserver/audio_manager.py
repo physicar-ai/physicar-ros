@@ -29,7 +29,7 @@ plus a realtime PCM16 path:
     stream_feed(id, frames) / stream_close(id)
 
 Backends:
-  - device: one mpv process per instance (decoding, buffering, network
+  - real: one mpv process per instance (decoding, buffering, network
     reconnect and live volume all handled by mpv; mixing by ALSA dmix).
     The PCM stream uses mpv's rawaudio demuxer fed via stdin.
   - sim: no speaker — commands are broadcast as SSE events
@@ -76,7 +76,7 @@ class _Item:
         self.loop = loop
         self.started = time.time()
         self.duration: Optional[float] = None
-        # device backend
+        # real backend
         self.proc: Optional[subprocess.Popen] = None
         self.ipc: Optional[str] = None
         # local file backing this item (data temp file, or a registered path)
@@ -122,7 +122,7 @@ class AudioManager:
             except Exception:
                 pass
 
-    # ── mpv helpers (device) ─────────────────────────────────────────────────
+    # ── mpv helpers (real) ─────────────────────────────────────────────────
     def _mpv_ipc(self, item: _Item, *command):
         """Send one command over mpv's JSON IPC socket; returns response dict."""
         if not item.ipc:

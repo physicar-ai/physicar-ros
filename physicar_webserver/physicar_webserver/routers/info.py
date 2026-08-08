@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 def _get_serial() -> str:
-    """Compute device serial number: SHA-256(rpi-serial)[:16].
+    """Compute the robot serial number: SHA-256(rpi-serial)[:16].
 
     Mirrors host-side logic in physicar.sh — same value used for hostname
     suffix (first 8 chars) and default password (last 8 chars).
@@ -36,7 +36,7 @@ def _get_mode() -> str:
     """Determine running mode: 'sim' or 'real'.
     
     sim.launch.py sets sim_mode=True on the webserver node.
-    device.launch.py does not set it, so it defaults to False.
+    real.launch.py does not set it, so it defaults to False.
     """
     try:
         bridge = get_ros_bridge()

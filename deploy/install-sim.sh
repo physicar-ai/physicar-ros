@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Physicar SIM Installer — Ubuntu 24.04
-#  Mirrors deploy/install-device.sh pattern but for simulation environment.
+#  Mirrors deploy/install-real.sh pattern but for simulation environment.
 #  Works on any Ubuntu 24.04 host (Codespaces, local VM, cloud, etc.)
 #
 #  Usage:
@@ -140,7 +140,7 @@ patch_codeserver_webview_media || true
 
 # ── code-server extensions / settings / branding (local & cloud sim) ──
 # Codespaces injects these via devcontainer customizations, which code-server
-# never reads — mirror the device flow (physicar.sh / install-device.sh) so a
+# never reads — mirror the real flow (physicar.sh / install-real.sh) so a
 # non-Codespaces sim gets the same IDE out of the box.
 echo "  Installing code-server extensions..."
 for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
@@ -148,7 +148,7 @@ for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vs
     || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
 done
 
-# user settings — symlink to the repo copy (device pattern: future updates
+# user settings — symlink to the repo copy (real pattern: future updates
 # take effect without re-running install)
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
 sudo -u physicar mkdir -p "$CS_USER_DIR"
@@ -158,7 +158,7 @@ sudo -u physicar mkdir -p "$CS_USER_DIR"
   cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
 }
 
-# branding — same assets/logic as install-device.sh, but the sim installs
+# branding — same assets/logic as install-real.sh, but the sim installs
 # code-server from the deb (/usr/lib), not standalone (/usr/local/lib)
 CS_RES=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/resources/server' -type d 2>/dev/null | head -1)
 if [ -n "$CS_RES" ]; then
@@ -376,7 +376,7 @@ chmod +x "$DEPLOY_DIR/app-browser.sh" 2>/dev/null || true
 
 echo "[5/7] Workspace setup..."
 
-# /opt/physicar/userdata .env (same path as device)
+# /opt/physicar/userdata .env (same path as real)
 mkdir -p "$PHYSICAR_WS/userdata"
 echo "SIM=true" | tee "$PHYSICAR_WS/userdata/.env" > /dev/null
 # Own the whole userdata dir (not just .env) — supervisord runs the `physicar`
@@ -384,7 +384,7 @@ echo "SIM=true" | tee "$PHYSICAR_WS/userdata/.env" > /dev/null
 # causes EACCES and the program fails to spawn (FATAL).
 chown -R physicar:physicar "$PHYSICAR_WS/userdata"
 
-# COLCON_IGNORE for device-only packages
+# COLCON_IGNORE for real-only packages
 touch "$PHYSICAR_ROS_DIR/physicar_camera/COLCON_IGNORE" 2>/dev/null || true
 touch "$PHYSICAR_ROS_DIR/physicar_lidar/COLCON_IGNORE" 2>/dev/null || true
 

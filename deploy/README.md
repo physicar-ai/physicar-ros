@@ -14,7 +14,7 @@ git clone https://github.com/physicar-ai/physicar-sim.git /opt/physicar/src/phys
 sudo bash /opt/physicar/src/physicar-ros/deploy/install-sim.sh
 ```
 
-## Device (Raspberry Pi 5)
+## Real (Raspberry Pi 5)
 
 ### Prerequisites
 
@@ -28,17 +28,17 @@ sudo bash /opt/physicar/src/physicar-ros/deploy/install-sim.sh
 sudo apt-get update && sudo apt-get install -y git
 sudo mkdir -p /opt/physicar/src && sudo chown -R physicar:physicar /opt/physicar
 sudo -u physicar git clone https://github.com/physicar-ai/physicar-ros.git /opt/physicar/src/physicar-ros
-sudo bash /opt/physicar/src/physicar-ros/deploy/install-device.sh
+sudo bash /opt/physicar/src/physicar-ros/deploy/install-real.sh
 sudo reboot
 ```
 
 ### Create a distributable SD image
 
-Clone a set-up device to a flashable image. Run on the device with a USB drive
+Clone a set-up robot to a flashable image. Run on the robot with a USB drive
 plugged in (wiped to exFAT, holds the output; needs `>= max(SD size, used x1.6)`).
 
 ```bash
-sudo bash /opt/physicar/src/physicar-ros/deploy/create-device-image.sh
+sudo bash /opt/physicar/src/physicar-ros/deploy/create-real-image.sh
 ```
 
 Output: `physicar-YYYYMMDD.img.gz` on the USB. Flash with Raspberry Pi Imager; auto-expands on first boot.

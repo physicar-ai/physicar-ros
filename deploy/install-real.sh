@@ -16,7 +16,7 @@ export NEEDRESTART_MODE=a
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PHYSICAR_ROS_DIR="$(dirname "$SCRIPT_DIR")"
 PHYSICAR_WS="$(dirname "$(dirname "$PHYSICAR_ROS_DIR")")"
-DEPLOY_DIR="$SCRIPT_DIR/device"
+DEPLOY_DIR="$SCRIPT_DIR/real"
 
 # ── Helper: wait for apt/dpkg lock before running apt commands ──
 wait_for_apt() {
@@ -166,7 +166,7 @@ grep -q PYTHONPYCACHEPREFIX /etc/environment 2>/dev/null || \
   echo 'PYTHONPYCACHEPREFIX=/opt/physicar/pycache' >> /etc/environment
 mkdir -p /opt/physicar/pycache && chown physicar:physicar /opt/physicar/pycache
 
-# ── PiShrink: shrink SD card images (used by create-device-image.sh) ──
+# ── PiShrink: shrink SD card images (used by create-real-image.sh) ──
 if [ ! -x /usr/local/bin/pishrink.sh ]; then
   wget -qO /usr/local/bin/pishrink.sh \
     https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
@@ -505,7 +505,7 @@ sleep 3
 # ── Migrate imager Wi-Fi credentials into NetworkManager ──
 # The stock image's Wi-Fi (from Raspberry Pi Imager) lives in cloud-init's
 # netplan as a networkd/wpa_supplicant config. Once networkd is retired
-# below, that connection would vanish and the device goes hotspot-only
+# below, that connection would vanish and the robot goes hotspot-only
 # ("Wi-Fi stopped working after install"). Recreate each SSID/PSK found
 # there as an NM profile so the same network reconnects under NM.
 if [ -f /etc/netplan/50-cloud-init.yaml ]; then
@@ -666,7 +666,7 @@ patch_codeserver_webview_media() {
   # whose sha256 is pinned in the same file's CSP meta tag. Recompute the hash
   # or the browser blocks the script and every webview renders blank
   # (extension panels, app.physicar viewer). Same resync as physicar.sh so the
-  # device is consistent immediately after install, not only after next boot.
+  # robot is consistent immediately after install, not only after next boot.
   while IFS= read -r f; do
     python3 - "$f" <<'CSPFIX' || true
 import sys, re, hashlib, base64
@@ -794,7 +794,7 @@ sudo -u physicar touch /opt/physicar/userdata/physicar.log
 # rewrites and bashrc all point at ~/physicar_ws, but nothing on a fresh
 # install created it: code-server then opened a nonexistent folder. In
 # Codespaces the workspace IS the physicar-for-codespaces checkout, so the
-# device mirrors that by seeding sample_projects from the same repo
+# real mirrors that by seeding sample_projects from the same repo
 # (physicar branch). This is the ONLY time anything writes into the student
 # workspace — boot/update flows never touch it (app.physicar excepted).
 mkdir -p /home/physicar/physicar_ws
@@ -814,11 +814,11 @@ chown -R physicar:physicar /home/physicar/physicar_ws
 # ── Seed ~/.bashrc for physicar user ──
 # Source the repo file directly (not a copy): env changes shipped in future
 # updates take effect on the next shell without re-running install.
-grep -qF "deploy/device/bashrc-append" /home/physicar/.bashrc 2>/dev/null || \
+grep -qF "deploy/real/bashrc-append" /home/physicar/.bashrc 2>/dev/null || \
   sudo -u physicar tee -a /home/physicar/.bashrc > /dev/null <<'__BASHRC_HOOK__'
 
 # physicar-ros environment
-. /opt/physicar/src/physicar-ros/deploy/device/bashrc-append
+. /opt/physicar/src/physicar-ros/deploy/real/bashrc-append
 __BASHRC_HOOK__
 
 # echo "DEV=true" | tee /opt/physicar/userdata/.env

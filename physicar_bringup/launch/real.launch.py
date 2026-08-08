@@ -352,7 +352,7 @@ def generate_launch_description():
         if _have_executable(pkg, exe):
             actions.append(action)
         else:
-            print(f"[device.launch] SKIPPING {label}: executable '{exe}' not "
+            print(f"[real.launch] SKIPPING {label}: executable '{exe}' not "
                   f"found in package '{pkg}' — run colcon build to restore it",
                   file=sys.stderr)
     actions.append(play_intro)

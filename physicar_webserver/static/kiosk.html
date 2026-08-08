@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=800, height=480, initial-scale=1.0, user-scalable=no">
     <meta name="color-scheme" content="dark">
-    <title>PHYSICAR DEVICE</title>
+    <title>PHYSICAR CONSOLE</title>
     <style>
       html,body{background:#1a1a2e;margin:0}
       #boot-splash{position:fixed;inset:0;width:800px;height:480px;background:#1a1a2e url('/static/img/splash.png') center/cover no-repeat;z-index:99999;transition:opacity .3s ease}
@@ -71,7 +71,7 @@
                             </div>
                             <div class="connect-node">
                                 <img src="/static/img/network-physicar.png" alt="PhysiCar" class="connect-node-img">
-                                <div class="connect-node-label">PhysiCar Device</div>
+                                <div class="connect-node-label">PhysiCar Robot</div>
                             </div>
                         </div>
                         <div class="connect-cards">
@@ -96,7 +96,7 @@
                             <span class="connect-step-title">Open in browser</span>
                         </div>
                         <div class="connect-url">
-                            <div class="connect-url-value" id="ap-url">https://device.physicar.ai</div>
+                            <div class="connect-url-value" id="ap-url">https://real.physicar.ai</div>
                         </div>
                     </div>
                 </div>
@@ -270,8 +270,8 @@
                             <button class="net-btn" id="btn-toggle-pw" aria-label="Show password">👁</button>
                         </div>
                         <button class="btn-pw-change" id="btn-open-pw-modal" onclick="openPasswordModal()">Change Password</button>
-                        <button class="btn-pw-change" id="btn-pw-reset" onclick="resetDevicePassword()">Reset to Default</button>
-                        <div class="kiosk-pw-hint">Changing the password reboots the device.<br>Hotspot/WiFi/SSH all use this password.</div>
+                        <button class="btn-pw-change" id="btn-pw-reset" onclick="resetConsolePassword()">Reset to Default</button>
+                        <div class="kiosk-pw-hint">Changing the password reboots the robot.<br>Hotspot/WiFi/SSH all use this password.</div>
                     </div>
                 </div>
 
@@ -439,13 +439,13 @@
             </div>
             <div class="status-msg" id="kiosk-pw-status"></div>
             <div class="password-input-wrapper">
-                <input type="password" class="password-input" id="kiosk-pw-new" placeholder="New password (8–63 chars)" autocomplete="new-password" onfocus="kioskPwFocus(this)" oninput="kioskPwSanitize(this)" onkeydown="if(event.key==='Enter')changeDevicePassword()">
+                <input type="password" class="password-input" id="kiosk-pw-new" placeholder="New password (8–63 chars)" autocomplete="new-password" onfocus="kioskPwFocus(this)" oninput="kioskPwSanitize(this)" onkeydown="if(event.key==='Enter')changeConsolePassword()">
                 <button class="btn-show-pw" id="btn-show-kiosk-pw" onclick="toggleKioskPwVisible()">👁</button>
             </div>
             <div class="keyboard" id="keyboard-pw"></div>
             <div class="modal-actions">
                 <button class="btn-cancel" onclick="closePasswordModal()">Cancel</button>
-                <button class="btn-connect" id="btn-pw-change" onclick="changeDevicePassword()">Change</button>
+                <button class="btn-connect" id="btn-pw-change" onclick="changeConsolePassword()">Change</button>
             </div>
         </div>
     </div>

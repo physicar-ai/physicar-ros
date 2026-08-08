@@ -37,7 +37,7 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SIM` | `false` | `false`: run on device (real robot), `true`: run on physicar-sim (simulation environment) |
+| `SIM` | `false` | `false`: run on the real robot, `true`: run on physicar-sim (simulation environment) |
 | `DEV` | `false` | `false`: auto-update enabled, `true`: auto-update disabled, code can be edited directly |
 
 ## Apps

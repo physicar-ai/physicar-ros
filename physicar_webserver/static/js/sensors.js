@@ -13,7 +13,7 @@ let _stateCount = 0, _lidarCount = 0;
 
 /* Reconnect backoff: 3s doubling to 30s (reset on successful connect).
  * Flat 3s retries hammer the tunnel proxy (billable per request) when the
- * backend is down for a while; DeviceWatcher.kick() keeps detection instant. */
+ * backend is down for a while; RobotWatcher.kick() keeps detection instant. */
 const _RETRY_MIN = 3000, _RETRY_MAX = 30000;
 let _stateRetry = _RETRY_MIN, _lidarRetry = _RETRY_MIN, _camRetry = _RETRY_MIN;
 
@@ -35,7 +35,7 @@ function startStateStream() {
     stateES.close(); stateES = null; _stateCount = 0;
     setTimeout(startStateStream, _stateRetry);
     _stateRetry = Math.min(_stateRetry * 2, _RETRY_MAX);
-    DeviceWatcher.kick();
+    RobotWatcher.kick();
   };
 }
 
@@ -87,7 +87,7 @@ function startLidarStream() {
     lidarES.close(); lidarES = null; _lidarCount = 0;
     setTimeout(startLidarStream, _lidarRetry);
     _lidarRetry = Math.min(_lidarRetry * 2, _RETRY_MAX);
-    DeviceWatcher.kick();
+    RobotWatcher.kick();
   };
 }
 function changeLidarRange() {
@@ -218,7 +218,7 @@ async function _startMjpegFetch(width) {
   // Retry on disconnect (backoff; reset where the stream delivers frames)
   _camRetryTimer = setTimeout(() => _startMjpegFetch(width), _camRetry);
   _camRetry = Math.min(_camRetry * 2, _RETRY_MAX);
-  DeviceWatcher.kick();
+  RobotWatcher.kick();
 }
 
 function changeCameraRes() {
@@ -292,17 +292,17 @@ async function restartContainer() {
     return;
   }
   // Hand off to the single connection watcher — it handles overlay, camera, button
-  DeviceWatcher.forceDown();
+  RobotWatcher.forceDown();
 }
 
 /* ===== Watcher hooks: tear down / restore streams around connection loss ===== */
-DeviceWatcher.onDown = () => {
+RobotWatcher.onDown = () => {
   // Kill stale camera stream so last frame doesn't linger
   _stopCameraStream();
   const cam = $('p-camera');
   if (cam) cam.src = '';
 };
-DeviceWatcher.onUp = () => {
+RobotWatcher.onUp = () => {
   startCameraStream();
   const btn = $('btn-restart');
   if (btn) { btn.disabled = false; btn.innerHTML = '&#x21bb; Restart'; }

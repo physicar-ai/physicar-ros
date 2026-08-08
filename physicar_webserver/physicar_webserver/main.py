@@ -218,7 +218,7 @@ _SIM_BLOCKED_PREFIXES = (
     "/network/wifi/connect",
     "/network/wifi/saved",  # DELETE on saved connections
     "/network/bluetooth/",  # All bluetooth mutating endpoints
-    "/auth/password",       # POST: change device password (reboots host)
+    "/auth/password",       # POST: change console password (reboots host)
     "/kiosk/calibration",   # POST endpoints (center/reverse)
 )
 
@@ -296,5 +296,5 @@ async def favicon():
 
 
 # NOTE: `/` is no longer served here. nginx routes `/` to code-server on
-# device and non-Codespaces sim (404 in Codespaces); only the explicit
+# real and non-Codespaces sim (404 in Codespaces); only the explicit
 # page/API locations are proxied to this app.

@@ -3,6 +3,8 @@
 #
 # Launched by physicar.sh in background. Checks for new version tags.
 # On update: force-checkout → signal physicar.sh to rebuild+relaunch.
+# One-shot boot mode (--boot): synchronous update before first launch,
+# so a networked boot comes up already on the latest version.
 #
 # Safety guarantees:
 #   - git diff --quiet: skip update if student has local modifications
@@ -274,7 +276,7 @@ safe_update() {
     check_disk_space || return 1
 
     # 4) Fetch tags with timeout (network failure = skip)
-    if ! timeout 30 git -c gc.auto=0 -C "$REPO_DIR" fetch --tags 2>/dev/null; then
+    if ! timeout "${FETCH_TIMEOUT:-30}" git -c gc.auto=0 -C "$REPO_DIR" fetch --tags 2>/dev/null; then
         log "fetch failed (network unavailable?)"
         return 1
     fi
@@ -415,7 +417,7 @@ safe_update_sim() {
     done
 
     # 4) Fetch tags with timeout
-    if ! timeout 30 git -c gc.auto=0 -C "$sim_dir" fetch --tags 2>/dev/null; then
+    if ! timeout "${FETCH_TIMEOUT:-30}" git -c gc.auto=0 -C "$sim_dir" fetch --tags 2>/dev/null; then
         log "sim: fetch failed (network unavailable?)"
         return 1
     fi
@@ -476,6 +478,24 @@ maybe_reexec() {
     export _UPDATER_SELF_HASH="$new_hash"
 }
 
+# ── Boot mode (--boot) ───────────────────────────────────
+# physicar.sh가 런치 직전에 동기 호출하는 원샷 업데이트: 인터넷이 되면 최신으로
+# 갱신한 뒤 첫 실행이 곧바로 새 버전으로 뜬다 (physicar-ext 자동 갱신과 동일 UX).
+# 오프라인이면 짧은 fetch 타임아웃(10s) 후 기존 코드로 그대로 진행.
+# maybe_reexec 생략 — 새 updater 코드는 다음 부팅부터 적용되면 충분하다.
+if [[ "${1:-}" == "--boot" ]]; then
+    if [[ "${DEV:-}" != "true" ]]; then
+        log "boot update check..."
+        recover_install
+        FETCH_TIMEOUT=10
+        if safe_update; then
+            safe_build
+        fi
+        safe_update_sim
+    fi
+    exit 0
+fi
+
 # ── Main loop ────────────────────────────────────────────
 maybe_reexec "$@"
 
@@ -488,6 +508,14 @@ recover_install
 sleep 120
 
 while true; do
+    # Re-source .env every iteration — DEV=true added mid-run must take effect
+    # without a reboot (env inherited at boot would otherwise stay stale).
+    ENV_FILE="$WORKSPACE_DIR/userdata/.env"
+    if [ -f "$ENV_FILE" ] && bash -n "$ENV_FILE" 2>/dev/null; then
+        set -a; . "$ENV_FILE"; set +a
+    fi
+    INTERVAL="${PHYSICAR_UPDATE_INTERVAL:-60}"
+
     # Skip ALL updates in DEV mode
     if [[ "${DEV:-}" == "true" ]]; then
         sleep "$INTERVAL"

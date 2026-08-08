@@ -1,6 +1,6 @@
-# Device Password Reset
+# Console Password Reset
 
-How to set a new login password on a Device (Raspberry Pi 5) via its SD card when
+How to set a new login password on a real kit (Raspberry Pi 5) via its SD card when
 you don't know the current one. (The password is derived from the board serial, so
 it can't be read off the card — only reset.)
 
@@ -38,11 +38,11 @@ the ext4 root partition is not needed.
    ... ds=nocloud;i=recovery-1
    ```
 
-5. Eject, put the card back in the device, and boot. After **1–2 min**, log in with
+5. Eject, put the card back in the robot, and boot. After **1–2 min**, log in with
    the new password:
 
    ```bash
-   ssh physicar@<device-ip>
+   ssh physicar@<robot-ip>
    ```
 
    The hotspot (`physicar-XXXX`) password becomes the same value.

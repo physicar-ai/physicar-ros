@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-PhysiCar device password helpers.
+PhysiCar console password helpers.
 
 Authentication itself is handled by nginx (see
-deploy/device/etc/nginx/).
+deploy/real/etc/nginx/).
 This module only exposes utilities for code that needs to know the
-device password value (e.g. WiFi hotspot SSID setup, the
+console password value (e.g. WiFi hotspot SSID setup, the
 POST /auth/password endpoint that rewrites the password file).
 
 Password resolution priority (matches physicar.sh):
@@ -21,7 +21,7 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def get_password() -> str:
-    """Get the device password (cached)."""
+    """Get the console password (cached)."""
     password_file = '/opt/physicar/userdata/password'
     if os.path.exists(password_file):
         try:

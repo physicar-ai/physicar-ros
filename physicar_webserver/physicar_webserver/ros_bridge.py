@@ -126,7 +126,7 @@ class ROSBridge:
             # High-level control (Ackermann conversion in driver)
             self._cmd_vel_pub = self._node.create_publisher(Twist, '/cmd_vel', qos)
             
-            # Service clients (calibration) — device only (no servo in SIM)
+            # Service clients (calibration) — real only (no servo in SIM)
             if HAS_CALIBRATION_SERVICES and not is_sim_mode():
                 self._get_calibration_client = self._node.create_client(
                     GetCalibration, '/physicar_driver/get_calibration'

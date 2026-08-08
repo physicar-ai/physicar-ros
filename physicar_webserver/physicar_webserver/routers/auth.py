@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Auth router — only exposes the device-password change endpoint.
+Auth router — only exposes the console-password change endpoint.
 
 All session/login/token authentication is handled by nginx
-(see deploy/device/etc/nginx/).
+(see deploy/real/etc/nginx/).
 """
 
 import os
@@ -25,7 +25,7 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/auth/password")
 async def change_password(req: ChangePasswordRequest):
     """
-    Change the device password (rewrites /opt/physicar/userdata/password and reboots).
+    Change the console password (rewrites /opt/physicar/userdata/password and reboots).
 
     The user is already authenticated by nginx to reach this endpoint, so we
     don't ask for the current password. After a reboot physicar.sh
@@ -34,7 +34,7 @@ async def change_password(req: ChangePasswordRequest):
     Validation: 8-63 chars, ASCII printable, no whitespace.
     """
     from physicar_webserver.sim import reject_in_sim
-    reject_in_sim("change device password")
+    reject_in_sim("change console password")
 
     new_pw = req.new_password or ""
     if not (8 <= len(new_pw) <= 63):
@@ -79,7 +79,7 @@ def _schedule_reboot() -> tuple[bool, str]:
 @router.delete("/auth/password")
 async def reset_password():
     """
-    Reset the device password to its built-in default.
+    Reset the console password to its built-in default.
 
     Removes /opt/physicar/userdata/password and reboots the host. After reboot
     physicar.sh recomputes the password from the serial-number hash
@@ -87,7 +87,7 @@ async def reset_password():
     nginx auth maps so SSH/AP/web all converge on the new value.
     """
     from physicar_webserver.sim import reject_in_sim
-    reject_in_sim("reset device password")
+    reject_in_sim("reset console password")
 
     pw_file = "/opt/physicar/userdata/password"
     try:

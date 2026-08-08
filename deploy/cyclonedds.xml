@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  CycloneDDS config for all device ROS nodes.
+  CycloneDDS config for all PhysiCar ROS nodes.
 
   Every PhysiCar topic is machine-local. Binding lo with unicast-only
   discovery (no multicast, explicit 127.0.0.1 peers) keeps hotspot/wifi/eth

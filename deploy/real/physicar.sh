@@ -97,9 +97,9 @@ SERIAL=$(tr -d '\0' </sys/firmware/devicetree/base/serial-number 2>/dev/null || 
 SERIAL_HASH=$(echo -n "$SERIAL" | sha256sum | head -c 16)
 
 if [ -f "$PHYSICAR_DIR/hostname" ]; then
-  DEVICE_HOSTNAME=$(tr -d '[:space:]' < "$PHYSICAR_DIR/hostname")
+  REAL_HOSTNAME=$(tr -d '[:space:]' < "$PHYSICAR_DIR/hostname")
 else
-  DEVICE_HOSTNAME="physicar-${SERIAL_HASH:0:8}"
+  REAL_HOSTNAME="physicar-${SERIAL_HASH:0:8}"
 fi
 
 if [ -f "$PHYSICAR_DIR/password" ]; then
@@ -128,10 +128,10 @@ fi
 
 # Only update hostname if changed
 _CURRENT_HOSTNAME=$(hostname)
-if [ "$_CURRENT_HOSTNAME" != "$DEVICE_HOSTNAME" ]; then
-  sudo hostnamectl set-hostname "$DEVICE_HOSTNAME"
+if [ "$_CURRENT_HOSTNAME" != "$REAL_HOSTNAME" ]; then
+  sudo hostnamectl set-hostname "$REAL_HOSTNAME"
   sudo sed -i '/127.0.1.1/d' /etc/hosts
-  echo "127.0.1.1	$DEVICE_HOSTNAME" | sudo tee -a /etc/hosts > /dev/null
+  echo "127.0.1.1	$REAL_HOSTNAME" | sudo tee -a /etc/hosts > /dev/null
 fi
 
 # ────────────────── WiFi Hotspot (AP+STA) ──────────────────
@@ -311,9 +311,9 @@ done
   # ── 5. dnsmasq captive-portal DNS ──
   sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
   {
-    echo "address=/$DEVICE_HOSTNAME.local/${_AP_IP}"
-    [ "$DEVICE_HOSTNAME" != "physicar" ] && echo "address=/physicar.local/${_AP_IP}"
-    echo "address=/device.physicar.ai/${_AP_IP}"
+    echo "address=/$REAL_HOSTNAME.local/${_AP_IP}"
+    [ "$REAL_HOSTNAME" != "physicar" ] && echo "address=/physicar.local/${_AP_IP}"
+    echo "address=/real.physicar.ai/${_AP_IP}"
     echo "address=/preview.physicar.ai/${_AP_IP}"
     echo ""
     echo "address=/www.msftconnecttest.com/${_AP_IP}"
@@ -346,7 +346,7 @@ done
     _file_ssid=$(sudo grep -m1 '^ssid=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     _file_psk=$(sudo grep -m1 '^psk=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     _file_iface=$(sudo grep -m1 '^interface-name=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
-    if [ "$_file_ssid" = "$DEVICE_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ] \
+    if [ "$_file_ssid" = "$REAL_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ] \
        && [ "$_file_iface" = "$_AP_IFACE" ] \
        && sudo grep -q '^wps-method=1' "$_HOTSPOT_FILE" 2>/dev/null; then
       _need_write=0
@@ -368,7 +368,7 @@ interface-name=${_AP_IFACE}
 autoconnect=false
 
 [wifi]
-ssid=${DEVICE_HOSTNAME}
+ssid=${REAL_HOSTNAME}
 mode=ap
 ${_ap_band_kf}
 ${_ap_channel_kf}
@@ -403,10 +403,10 @@ HOTSPOT_KF
   # ── 7. Start hotspot ──
   if ! sudo nmcli connection show --active 2>/dev/null | grep -q physicar-hotspot; then
     sudo nmcli connection up physicar-hotspot &>/dev/null && \
-      echo "[physicar] Hotspot: $DEVICE_HOSTNAME (${_AP_IFACE}, ${_AP_IP})" || \
+      echo "[physicar] Hotspot: $REAL_HOSTNAME (${_AP_IFACE}, ${_AP_IP})" || \
       echo "[physicar] WARNING: Hotspot failed to start" >&2
   else
-    echo "[physicar] Hotspot already running: $DEVICE_HOSTNAME"
+    echo "[physicar] Hotspot already running: $REAL_HOSTNAME"
   fi
 
   # ── 8. Update avahi/mDNS to use correct AP interface ──
@@ -530,7 +530,7 @@ sudo nginx -s reload 2>/dev/null || true
 
 # ────────────────── LE Cert Fetcher ──────────────────
 
-CERT_URL="https://device-cert.physicar.ai/current"
+CERT_URL="https://real-cert.physicar.ai/current"
 LE_CRT="/etc/nginx/ssl/le.crt"
 LE_KEY="/etc/nginx/ssl/le.key"
 LE_FP_FILE="/var/lib/physicar/cert-fingerprint"
@@ -542,7 +542,7 @@ le_cert_ok() {
   [ -f "$LE_CRT" ] && [ -f "$LE_KEY" ] || return 1
   sudo openssl x509 -in "$LE_CRT" -noout -checkend 0 >/dev/null 2>&1 || return 1
   sudo openssl x509 -in "$LE_CRT" -noout -ext subjectAltName 2>/dev/null \
-    | grep -q 'device\.physicar\.ai' || return 1
+    | grep -q 'real\.physicar\.ai' || return 1
   return 0
 }
 
@@ -628,12 +628,12 @@ echo "[physicar] Root initialization complete."
 
 # ────────────────── code-server ──────────────────
 
-# ~/physicar_ws is the student's — it is seeded ONCE by install-device.sh and
+# ~/physicar_ws is the student's — it is seeded ONCE by install-real.sh and
 # never written again by boot/update flows. The single exception below is
 # app.physicar, the managed URL pointer file.
 APP_FILE="$HOME/physicar_ws/app.physicar"
 sudo chattr -i "$APP_FILE" 2>/dev/null || true
-echo "https://device.physicar.ai/app" > "$APP_FILE"
+echo "https://real.physicar.ai/app" > "$APP_FILE"
 chmod 444 "$APP_FILE"
 sudo chattr +i "$APP_FILE"
 
@@ -788,7 +788,7 @@ patch_codeserver_default_folder || true
 # ── 브랜딩 재적용 (idempotent, every boot) ──
 # 파비콘/PWA/타이틀바 아이콘은 설치 트리 안에 있어 code-server 업데이트가
 # 원복시킨다 — media patch 와 같은 이유로 부팅마다 다시 덮는다
-# (install-device.sh 의 브랜딩 블록과 동일 로직, 여기는 physicar 라 sudo 필요).
+# (install-real.sh 의 브랜딩 블록과 동일 로직, 여기는 physicar 라 sudo 필요).
 brand_codeserver() {
   local static res media om b64 _svg _png
   static="$PHYSICAR_ROS_DIR/physicar_webserver/static"
@@ -847,7 +847,7 @@ PYDND
 # "저장 안 된 settings.json" 편집기가 세션마다 복원되는 문제를 낳았다.
 # → 사용자 소유 실파일로 전환하고 부팅마다 관리 기본값을 병합한다
 #   (사용자가 바꾼 키는 사용자 값 우선, 새 기본값 키는 계속 전파).
-python3 - "$PHYSICAR_ROS_DIR/deploy/device/home/physicar/.local/share/code-server/User/settings.json" <<'PYSET' || true
+python3 - "$PHYSICAR_ROS_DIR/deploy/real/home/physicar/.local/share/code-server/User/settings.json" <<'PYSET' || true
 import json, os, sys
 managed_path = sys.argv[1]
 user_path = os.path.expanduser('~/.local/share/code-server/User/settings.json')
@@ -947,6 +947,12 @@ do_build() {
     return $exit_code
 }
 
+# Boot-time update: 인터넷이 있으면 최신으로 갱신한 뒤 첫 실행 (updater.sh --boot).
+# 오프라인이면 짧은 타임아웃 후 기존 코드로 그대로 진행.
+if [ "$DEV" != "true" ] && [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
+    bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
+fi
+
 rm -f "$UPDATE_SIGNAL"
 
 # Build only once on first boot (or if install/ is missing)
@@ -957,7 +963,7 @@ else
     source "$PHYSICAR_WS/install/setup.bash"
 fi
 
-# Executables device.launch.py needs. When any is missing, install/ is stale
+# Executables real.launch.py needs. When any is missing, install/ is stale
 # (typically: source pulled without a rebuild) — self-heal with a build
 # instead of letting the launch fail.
 REQUIRED_EXECUTABLES=(
@@ -1024,7 +1030,7 @@ while true; do
     # Re-source per launch: a rebuild may have added packages whose prefixes
     # were not in the environment sourced at boot.
     ( source "$PHYSICAR_WS/install/setup.bash" 2>/dev/null
-      exec ros2 launch physicar_bringup device.launch.py ) &
+      exec ros2 launch physicar_bringup real.launch.py ) &
     LAUNCH_PID=$!
     wait $LAUNCH_PID 2>/dev/null
 

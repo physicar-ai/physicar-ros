@@ -1,6 +1,6 @@
         let selectedSsid = '';
         let passwordVisible = false;
-        let devicePassword = '';
+        let consolePassword = '';
         let modalPasswordVisible = false;
         let shiftActive = false;
         let shiftLocked = false;
@@ -186,7 +186,7 @@
                 apPasswordRaw = data.password || '';
                 document.getElementById('ap-password').textContent = apPasswordVisible ? apPasswordRaw : '••••••••';
                 // ap-url is hard-coded to the fixed cert domain in the HTML
-                // (https://device.physicar.ai) — don't overwrite it with the
+                // (https://real.physicar.ai) — don't overwrite it with the
                 // mDNS name from the backend.
             } catch (e) {
                 console.error('Failed to load AP info:', e);
@@ -373,7 +373,7 @@
                 input.value = val + ' ';
             } else if (key === 'Enter') {
                 if (kbEl && kbEl.id === 'keyboard-pw') {
-                    if (typeof changeDevicePassword === 'function') changeDevicePassword();
+                    if (typeof changeConsolePassword === 'function') changeConsolePassword();
                 } else {
                     connectWifi();
                 }
@@ -932,7 +932,7 @@
                 document.getElementById('ap-ssid').textContent = data.ssid || '-';
                 apPasswordRaw = data.password || '';
                 document.getElementById('ap-password').textContent = apPasswordVisible ? apPasswordRaw : '••••••••';
-                // ap-url stays hard-coded to https://device.physicar.ai in HTML.
+                // ap-url stays hard-coded to https://real.physicar.ai in HTML.
             }
             if ('bt_status' in snap) btApplyStatus(snap.bt_status);
             if ('bt_devices' in snap) btApplyPaired(snap.bt_devices || []);
@@ -953,33 +953,33 @@
             try {
                 const res = await fetch('/network/password');
                 const data = await res.json();
-                devicePassword = data.password;
+                consolePassword = data.password;
             } catch (e) {
-                devicePassword = 'Error';
+                consolePassword = 'Error';
             }
         }
 
         // ─────────────────────────────────────────────────────────────────────
         // Serial Number (S/N) — sha256(rpi-serial)[:16]
         // ─────────────────────────────────────────────────────────────────────
-        let deviceSerial = '';
+        let robotSerial = '';
         let _kioskQrInst = null;
         async function loadSerial() {
             const valEl = document.getElementById('kiosk-sn-value');
             const qrEl = document.getElementById('kiosk-sn-qr');
             if (!valEl || !qrEl) return;
-            if (!deviceSerial) {
+            if (!robotSerial) {
                 try {
                     const r = await fetch('/info');
                     const d = await r.json();
-                    deviceSerial = d.serial || '';
-                } catch { deviceSerial = ''; }
+                    robotSerial = d.serial || '';
+                } catch { robotSerial = ''; }
             }
-            valEl.textContent = deviceSerial || '(unavailable)';
-            if (deviceSerial && typeof QRCode !== 'undefined' && !qrEl.firstChild) {
+            valEl.textContent = robotSerial || '(unavailable)';
+            if (robotSerial && typeof QRCode !== 'undefined' && !qrEl.firstChild) {
                 try {
                     _kioskQrInst = new QRCode(qrEl, {
-                        text: deviceSerial,
+                        text: robotSerial,
                         width: 220,
                         height: 220,
                         colorDark: '#000000',
@@ -995,7 +995,7 @@
         document.getElementById('btn-toggle-pw').onclick = () => {
             passwordVisible = !passwordVisible;
             document.getElementById('password-value').textContent = 
-                passwordVisible ? devicePassword : '••••••••';
+                passwordVisible ? consolePassword : '••••••••';
             document.getElementById('btn-toggle-pw').setAttribute(
                 'aria-label', passwordVisible ? 'Hide password' : 'Show password');
         };
@@ -1446,7 +1446,7 @@
                 const d = await r.json();
                 kioskMode = d.mode || 'real';
                 if (kioskMode === 'sim') {
-                    document.title = 'PHYSICAR DEVICE (SIM)';
+                    document.title = 'PHYSICAR CONSOLE (SIM)';
                     const btn = document.getElementById('btn-pw-change');
                     if (btn) {
                         btn.disabled = true;
@@ -1546,7 +1546,7 @@
             document.getElementById('password-modal').classList.remove('active');
         }
 
-        async function changeDevicePassword() {
+        async function changeConsolePassword() {
             if (kioskMode === 'sim') {
                 if (typeof showToast === 'function') showToast('Not supported in simulation mode', true);
                 return;
@@ -1560,7 +1560,7 @@
             }
             const v = validateKioskPw(np);
             if (!v.ok) { setMsg(v.message, 'err'); return; }
-            if (!await confirmModal('This will reboot the device. Continue?')) return;
+            if (!await confirmModal('This will reboot the robot. Continue?')) return;
             btn.disabled = true;
             setMsg('Saving and rebooting…', 'info');
             try {
@@ -1581,7 +1581,7 @@
                 btn.disabled = false;
             }
         }
-        async function resetDevicePassword() {
+        async function resetConsolePassword() {
             if (kioskMode === 'sim') {
                 if (typeof showToast === 'function') showToast('Not supported in simulation mode', true);
                 return;
@@ -1606,8 +1606,8 @@
         }
 
         // Expose for inline onclick
-        window.changeDevicePassword = changeDevicePassword;
-        window.resetDevicePassword = resetDevicePassword;
+        window.changeConsolePassword = changeConsolePassword;
+        window.resetConsolePassword = resetConsolePassword;
         window.toggleKioskPwVisible = toggleKioskPwVisible;
         window.kioskPwFocus = kioskPwFocus;
         window.kioskPwSanitize = kioskPwSanitize;

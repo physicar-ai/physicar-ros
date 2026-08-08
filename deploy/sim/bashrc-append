@@ -4,7 +4,7 @@ export PYTHONPYCACHEPREFIX=/opt/physicar/pycache
 export DISPLAY=:1
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 export PHYSICAR_ROS_DIR=/opt/physicar/src/physicar-ros
-# Same loopback-pinned CycloneDDS setup as the device — identical
+# Same loopback-pinned CycloneDDS setup as the real kit — identical
 # middleware and transport behavior in SIM and on hardware.
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml

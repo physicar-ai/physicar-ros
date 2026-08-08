@@ -74,17 +74,17 @@ async function detectMode() {
   return window.PHYSICAR_MODE;
 }
 
-/* ===== Device Connection Watcher =====
+/* ===== Robot Connection Watcher =====
  * Single source of truth for backend connectivity.
  * Polls /health every 15s when healthy, 2s while down. The sensor streams
- * call DeviceWatcher.kick() the moment a stream errors, so failure detection
+ * call RobotWatcher.kick() the moment a stream errors, so failure detection
  * stays instant — the slow poll is only a fallback heartbeat. Hidden tabs
  * pause polling entirely (each poll is a billable request when the page is
  * reached through the tunnel proxy) and re-check on return.
  * Shows overlay; pages can hook extra teardown/restore via
- * DeviceWatcher.onDown / DeviceWatcher.onUp callbacks.
+ * RobotWatcher.onDown / RobotWatcher.onUp callbacks.
  */
-const DeviceWatcher = (() => {
+const RobotWatcher = (() => {
   const PERIOD_UP = 15000;
   const PERIOD_DOWN = 2000;
   const FAIL_THRESHOLD = 2;
@@ -98,7 +98,7 @@ const DeviceWatcher = (() => {
     if (overlay) return overlay;
     overlay = document.createElement('div');
     overlay.className = 'conn-lost-overlay';
-    overlay.innerHTML = '<div class="conn-lost"><div class="conn-spinner"></div><div class="conn-lost-title">Connection lost</div><div class="conn-lost-body">Reconnecting to device&hellip;</div></div>';
+    overlay.innerHTML = '<div class="conn-lost"><div class="conn-spinner"></div><div class="conn-lost-title">Connection lost</div><div class="conn-lost-body">Reconnecting to robot&hellip;</div></div>';
     document.body.appendChild(overlay);
     return overlay;
   }

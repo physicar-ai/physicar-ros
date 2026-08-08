@@ -375,7 +375,7 @@ async def internet_status():
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # The host-side cert watcher (physicar.sh, fetch_cert_once loop) keeps
-# /etc/nginx/ssl/le.{crt,key} in sync with https://device-cert.physicar.ai.
+# /etc/nginx/ssl/le.{crt,key} in sync with https://real-cert.physicar.ai.
 # When the on-disk cert is a valid LE cert, /run/physicar/le-cert-valid is
 # touched.  When it's missing/expired/self-signed, that flag is removed and
 # le.{crt,key} are reverted to the self-signed seed.
@@ -427,7 +427,7 @@ async def cert_status():
 
     Returns:
         valid: True iff the host watcher last saw a non-expired LE cert
-               covering device.physicar.ai (i.e. /run/physicar/le-cert-valid
+               covering real.physicar.ai (i.e. /run/physicar/le-cert-valid
                touchfile present).
         is_self_signed: True iff the on-disk cert is the self-signed seed.
         expires_at: unix epoch (seconds, UTC) of cert notAfter, or null.
@@ -679,8 +679,8 @@ async def wifi_connect(request: WifiConnectRequest):
 
 
 @router.get("/password")
-async def device_password():
-    """Get the device password (for AP and login)."""
+async def console_password():
+    """Get the console password (for AP and login)."""
     return {"password": get_password()}
 
 
