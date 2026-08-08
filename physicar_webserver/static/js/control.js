@@ -7,7 +7,7 @@ const CTRL = {
   SEND_HZ: 10,               // control send rate
 
   // State
-  maxSpeed: 1.0,             // m/s, adjustable
+  maxSpeed: 0.5,             // m/s, adjustable
   joy: { drive: { x: 0, y: 0 }, cam: { x: 0, y: 0 } },
   _sendTimer: null,
   _joyDragging: { drive: false, cam: false },
@@ -103,24 +103,32 @@ const CTRL = {
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
-    const halfSize = Math.min(w, h) / 2 * 0.9;   // proportional margin for edge labels
+    const halfSize = Math.min(w, h) / 2 - 2;   // labels live INSIDE the pad
 
     ctx.clearRect(0, 0, w, h);
 
-    // Outer square
+    // Base pad: rounded square with a subtle fill
+    const rad = Math.max(8, halfSize * 0.14);
     ctx.beginPath();
-    ctx.rect(cx - halfSize, cy - halfSize, halfSize * 2, halfSize * 2);
-    ctx.strokeStyle = 'rgba(128,128,128,0.25)';
-    ctx.lineWidth = 2;
+    if (ctx.roundRect) ctx.roundRect(cx - halfSize, cy - halfSize, halfSize * 2, halfSize * 2, rad);
+    else ctx.rect(cx - halfSize, cy - halfSize, halfSize * 2, halfSize * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(128,128,128,0.3)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Cross guides
+    // Cross guides + center dot
     ctx.beginPath();
     ctx.moveTo(cx - halfSize, cy); ctx.lineTo(cx + halfSize, cy);
     ctx.moveTo(cx, cy - halfSize); ctx.lineTo(cx, cy + halfSize);
-    ctx.strokeStyle = 'rgba(128,128,128,0.1)';
+    ctx.strokeStyle = 'rgba(128,128,128,0.12)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(128,128,128,0.35)';
+    ctx.fill();
 
     // Thumb (proportional — the page scales as a fixed 4:3 stage)
     const { x, y } = this.joy[group];
@@ -148,23 +156,23 @@ const CTRL = {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Labels (font/offsets proportional to the joystick size)
-    const fs = Math.max(8, halfSize * 0.09);
-    ctx.font = fs + 'px sans-serif';
-    ctx.fillStyle = 'rgba(128,128,128,0.4)';
+    // Direction labels INSIDE the pad edges (never clipped by the canvas)
+    const fs = Math.max(9, halfSize * 0.11);
+    ctx.font = '600 ' + fs + 'px sans-serif';
+    ctx.fillStyle = 'rgba(150,150,160,0.5)';
+    const inset = fs * 0.6;
     ctx.textAlign = 'center';
-    const off = fs * 0.4;
-    if (group === 'drive') {
-      ctx.fillText('FWD', cx, cy - halfSize - off);
-      ctx.fillText('BWD', cx, cy + halfSize + fs);
-      ctx.fillText('L', cx - halfSize - fs * 0.8, cy + off);
-      ctx.fillText('R', cx + halfSize + fs * 0.8, cy + off);
-    } else {
-      ctx.fillText('UP', cx, cy - halfSize - off);
-      ctx.fillText('DN', cx, cy + halfSize + fs);
-      ctx.fillText('L', cx - halfSize - fs * 0.8, cy + off);
-      ctx.fillText('R', cx + halfSize + fs * 0.8, cy + off);
-    }
+    ctx.textBaseline = 'top';
+    ctx.fillText(group === 'drive' ? 'FWD' : 'UP', cx, cy - halfSize + inset);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(group === 'drive' ? 'BWD' : 'DN', cx, cy + halfSize - inset);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillText('L', cx - halfSize + inset, cy);
+    ctx.textAlign = 'right';
+    ctx.fillText('R', cx + halfSize - inset, cy);
+    ctx.textAlign = 'center';   // restore defaults for other draw passes
+    ctx.textBaseline = 'alphabetic';
   },
 
   // ─── Keyboard ─────────────────────────────────────────────

@@ -20,7 +20,7 @@ let _stateRetry = _RETRY_MIN, _lidarRetry = _RETRY_MIN, _camRetry = _RETRY_MIN;
 function startStateStream() {
   if (stateES) return;
   console.log('[SSE] State: connecting...');
-  stateES = new EventSource('/states?stream=true&include=cmd,odom,battery,imu');
+  stateES = new EventSource('/states?stream=true&include=cmd,odom,battery,imu,myapp');
   stateES.onopen = () => { _stateRetry = _RETRY_MIN; console.log('[SSE] State: connected'); };
   stateES.onmessage = (e) => {
     _stateCount++;
@@ -41,6 +41,9 @@ function startStateStream() {
 
 function updateState(d) {
   Object.assign(_currentState, d);
+  // MyApp liveness rides the state stream (server watches the port from
+  // /proc — no HTTP into the app). Pages that embed MyApp listen for this.
+  if (d.myapp) document.dispatchEvent(new CustomEvent('myapp-status', { detail: d.myapp }));
   if (d.battery) {
     const pct = Math.round(d.battery.percentage || 0);
     const v = (d.battery.voltage || 0).toFixed(1);
@@ -59,8 +62,13 @@ function updateState(d) {
 }
 
 function startLidarStream() {
-  if (lidarES) return;
-  const step = $('lidar-step')?.value || 3;
+  // 'Off' stops the stream entirely (no data, no network) and collapses the
+  // plot, so the panel space goes to the sections below.
+  const off = ($('lidar-range')?.value || '') === 'off';
+  const c = $('p-lidar');
+  if (c) c.style.display = off ? 'none' : '';
+  if (off || lidarES) return;
+  const step = 0.5;   // full resolution — range only changes the display scale
   console.log('[SSE] Lidar: connecting, step=' + step);
   lidarES = new EventSource('/lidar?stream=true&step=' + step);
   lidarES.onopen = () => { _lidarRetry = _RETRY_MIN; console.log('[SSE] Lidar: connected'); };
@@ -82,13 +90,12 @@ function startLidarStream() {
     DeviceWatcher.kick();
   };
 }
-function changeLidarStep() {
-  localStorage.setItem('lidar-step', $('lidar-step').value);
-  if (lidarES) { lidarES.close(); lidarES = null; _lidarCount = 0; }
-  startLidarStream();
-}
 function changeLidarRange() {
   localStorage.setItem('lidar-range', $('lidar-range').value);
+  if ($('lidar-range').value === 'off' && lidarES) {
+    lidarES.close(); lidarES = null; _lidarCount = 0;
+  }
+  startLidarStream();   // applies plot visibility; reconnects unless off
 }
 
 function drawLidar(lidar) {
@@ -133,7 +140,12 @@ function _drawLidarOnCanvas(c, lidar) {
 }
 
 function startCameraStream() {
+  // 'Off' stops the MJPEG stream entirely (no frames, no network) and
+  // collapses the image, so the panel space goes to the sections below.
   const w = $('cam-res')?.value || 480;
+  const img = $('p-camera');
+  if (img) img.style.display = w === 'off' ? 'none' : '';
+  if (w === 'off') { _stopCameraStream(); return; }
   console.log('[CAM] Starting camera stream, width=' + w);
   _startMjpegFetch(w);
 }

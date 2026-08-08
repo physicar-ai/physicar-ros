@@ -433,6 +433,17 @@ class StateManager:
             "tilt": 0.0,
         }
         self._cmd_lock = threading.Lock()
+
+        # MyApp (:5000) liveness — fed by the port watcher task, streamed to
+        # clients as the "myapp" key so pages react to death by push, not by
+        # polling the app themselves.
+        self._myapp_up: Optional[bool] = None
+        self._myapp_seq = 0
+
+    def update_myapp_state(self, up: bool):
+        if up != self._myapp_up:
+            self._myapp_up = up
+            self._myapp_seq += 1
     
     def init(self, node) -> bool:
         """Initialize with ROS2 node."""
@@ -779,9 +790,9 @@ class StateManager:
         if include is None:
             include = ["cmd", "odom", "battery"]
         
-        # Ensure subscriptions
+        # Ensure subscriptions ("cmd" and "myapp" are not ROS topics)
         for key in include:
-            if key != "cmd":
+            if key not in ("cmd", "myapp"):
                 self._ensure_subscription(key)
         
         loop = asyncio.get_event_loop()
@@ -796,6 +807,12 @@ class StateManager:
                 if key == "cmd":
                     result["cmd"] = self.get_cmd_state()
                     changed = True  # cmd always included
+                elif key == "myapp":
+                    if self._myapp_seq != last_seqs[key]:
+                        last_seqs[key] = self._myapp_seq
+                        changed = True
+                    if self._myapp_up is not None:
+                        result["myapp"] = {"up": self._myapp_up}
                 else:
                     buffer = self._buffers.get(key)
                     if buffer:

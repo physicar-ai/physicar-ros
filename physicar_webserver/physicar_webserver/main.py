@@ -20,6 +20,9 @@ PhysiCar Web Server - FastAPI Application
 REST API for robot control and monitoring
 """
 
+import asyncio
+import socket
+import struct
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Request
@@ -61,6 +64,81 @@ def _get_static_dir() -> Path:
 _STATIC_DIR = _get_static_dir()
 
 
+_MYAPP_PORT = 5000
+
+
+def _netlink_port_listening(port: int) -> bool:
+    """LISTEN check via netlink sock_diag — the same kernel API `ss` uses.
+
+    Never touches the app process (no connect, no HTTP). The kernel filters
+    for LISTEN sockets and returns only those few rows; parsing the full
+    /proc/net/tcp text costs ~13ms per read on a connection-heavy box.
+    """
+    NETLINK_SOCK_DIAG = 4
+    SOCK_DIAG_BY_FAMILY = 20
+    NLMSG_DONE, NLMSG_ERROR = 3, 2
+    TCPF_LISTEN = 1 << 10  # TCP_LISTEN state bit
+    for family in (socket.AF_INET, socket.AF_INET6):
+        s = socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_SOCK_DIAG)
+        try:
+            s.settimeout(0.5)
+            req = struct.pack("=BBBxI", family, socket.IPPROTO_TCP, 0, TCPF_LISTEN) + bytes(48)
+            s.send(struct.pack("=IHHII", 16 + len(req), SOCK_DIAG_BY_FAMILY, 0x301, 1, 0) + req)
+            done = False
+            while not done:
+                data = s.recv(65536)
+                if not data:
+                    break
+                off = 0
+                while off + 16 <= len(data):
+                    ln, typ = struct.unpack_from("=IH", data, off)
+                    if ln < 16 or typ in (NLMSG_DONE, NLMSG_ERROR):
+                        done = True
+                        break
+                    # inet_diag_msg: sport is big-endian u16 at offset 4
+                    sport = struct.unpack_from(">H", data, off + 16 + 4)[0]
+                    if sport == port:
+                        return True
+                    off += (ln + 3) & ~3
+        finally:
+            s.close()
+    return False
+
+
+def _proc_port_listening(port: int) -> bool:
+    """Fallback LISTEN check for kernels without sock_diag."""
+    target = "%04X" % port
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path) as f:
+                next(f)  # header line
+                for line in f:
+                    parts = line.split()
+                    if len(parts) > 3 and parts[3] == "0A" \
+                            and parts[1].rsplit(":", 1)[-1] == target:
+                        return True
+        except OSError:
+            pass
+    return False
+
+
+def _myapp_port_listening() -> bool:
+    try:
+        return _netlink_port_listening(_MYAPP_PORT)
+    except OSError:
+        return _proc_port_listening(_MYAPP_PORT)
+
+
+async def _watch_myapp_port():
+    loop = asyncio.get_event_loop()
+    while True:
+        up = await loop.run_in_executor(None, _myapp_port_listening)
+        state_manager.update_myapp_state(up)
+        # A /proc read costs microseconds — 4Hz makes death detection feel
+        # instant (<0.3s to the browser) at zero practical cost.
+        await asyncio.sleep(0.25)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - initialize state manager with ROS bridge."""
@@ -78,8 +156,12 @@ async def lifespan(app: FastAPI):
             print("[PhysiCar API] State Manager initialized")
         else:
             print("[PhysiCar API] WARNING: ROS Bridge failed to initialize")
-    
+
+    myapp_watch = asyncio.create_task(_watch_myapp_port())
+
     yield
+
+    myapp_watch.cancel()
     
     # Shutdown - Cleanup ROS bridge (only if we created it)
     if not getattr(bridge, '_external_node', False):

@@ -871,7 +871,9 @@ PYSET
 
 
 # Pre-install extensions on first boot
-EXT_MARKER="$HOME/.local/share/code-server/.physicar-ext-installed"
+# v2: jupyter added to the list — bumping the marker makes provisioned
+# devices run the (idempotent) install pass once more on next boot.
+EXT_MARKER="$HOME/.local/share/code-server/.physicar-ext-installed-v2"
 if [ ! -f "$EXT_MARKER" ]; then
   (
     for i in $(seq 1 60); do
@@ -880,7 +882,7 @@ if [ ! -f "$EXT_MARKER" ]; then
     done
     # Old bundled browser extension -> replaced by the Open VSX build
     /usr/local/bin/code-server --uninstall-extension undefined_publisher.physicar-browser-ext &>/dev/null || true
-    for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
+    for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy ms-toolsai.jupyter redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
       /usr/local/bin/code-server --install-extension "$EXT_ID" &>/dev/null || true
     done
     # Marker only on success — installs need internet (Open VSX), which may

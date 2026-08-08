@@ -419,7 +419,8 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'tqdm~=4.69' \
   'rich~=13.7' \
   'shapely~=2.0' \
-  'ncnn~=1.0'
+  'ncnn~=1.0' \
+  'ipykernel~=7.3'
 
 # ── libcamera (build from source for RPi camera support) ──
 if ! pkg-config --exists libcamera 2>/dev/null; then

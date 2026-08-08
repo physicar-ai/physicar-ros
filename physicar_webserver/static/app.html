@@ -124,28 +124,33 @@
 <link rel="stylesheet" href="/static/css/control.css">
 <style>
 /* ── /app layout — 3열 (경계 2개 모두 드래그 리사이즈, 세션 한정):
-   ┌───────────────────┬────────┬──────────────┐
-   │ CONTROL (고정)     │        │              │
-   ├───────────────────┤ 상태    │ 시뮬레이터    │
-   │ 앱 셀렉트(MyApp/   │ 패널    │ (/sim, sim   │
-   │ VNC) → 선택 패널   │ (고정)  │  모드 전용)   │
-   └───────────────────┴────────┴──────────────┘ */
+   ┌────────┬───────────────────┬──────────────┐
+   │        │ CONTROL (상단 고정) │              │
+   │ 상태    ├───── ↕ 경계 ──────┤ 시뮬레이터    │
+   │ 패널    │ 앱 (My App/VNC    │ (/sim, sim   │
+   │        │  필 버튼 전환)      │  모드 전용)   │
+   └────────┴───────────────────┴──────────────┘ */
 body{display:flex;flex-direction:row;height:100vh}
 
 /* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
 .main{display:flex;flex-direction:column;min-width:0}
 
-/* Stacked panels — fixed aspect ratios, so the stack can outgrow the
-   viewport and scrolls vertically */
+/* Column: CONTROL card (height drag-adjustable via the horizontal divider)
+   + ONE app card that always fills the leftover height. No stack scroll. */
 .stack{
-  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
-  display:flex;flex-direction:column;gap:8px;padding:8px;
+  flex:1;min-height:0;overflow:hidden;
+  display:flex;flex-direction:column;
 }
+/* 카드 장식 없음 — CONTROL/APP은 플랫 섹션, 사이는 가로 경계선이 가른다 */
 .stack-panel{
-  display:none;flex-direction:column;flex-shrink:0;
-  background:#111;border:1px solid var(--border);border-radius:10px;overflow:hidden;
+  display:none;flex-direction:column;min-height:0;
+  background:#111;overflow:hidden;
 }
 .stack-panel.on{display:flex}
+/* CONTROL height follows its content (pads sized from column width);
+   APP takes everything left. */
+#panel-control{background:var(--bg);flex:0 0 auto}
+#panel-myapp,#panel-vnc{flex:1 1 0;min-height:120px;border-top:1px solid var(--border)}
 
 /* Slim identity strip on every panel */
 .sp-head{
@@ -155,10 +160,8 @@ body{display:flex;flex-direction:row;height:100vh}
   cursor:pointer;user-select:none;
 }
 
-/* The body below the strip carries the EXACT aspect ratio (the strip is
-   excluded, so the embedded page gets a true 2:1 / 5:2 / 4:3 viewport) */
-.sp-body{position:relative;width:100%}
-#panel-myapp .sp-body,#panel-vnc .sp-body{aspect-ratio:4/3}
+/* Panel body fills whatever height the card gets */
+.sp-body{position:relative;width:100%;flex:1;min-height:0}
 .sp-body iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
 .sp-actions{margin-left:auto;display:flex;gap:2px;align-items:center}
 .sp-btn{
@@ -168,54 +171,99 @@ body{display:flex;flex-direction:row;height:100vh}
 .sp-btn:hover{background:var(--bg3);color:var(--fg)}
 .sp-btn svg{width:13px;height:13px}
 
-/* 시뮬레이터 컬럼은 sim 모드에서만 (real 로봇엔 /sim/ 없음) */
+/* Simulator column (sim mode only — real robots have no /sim). Own header
+   carries the current-world chip; the embedded /sim hides its toolbar copy. */
 #simcol{display:none;min-width:0;flex-shrink:0;background:#111}
-body.sim-mode #simcol{display:block}
+body.sim-mode #simcol{display:flex;flex-direction:column}
 body:not(.sim-mode) #divider2{display:none}
-#simcol iframe{width:100%;height:100%;border:none;background:#111}
-/* 앱 셀렉트 — 앱 카드의 헤더 스트립 안에 내장 (카드 정체성 = 셀렉트) */
-.sp-head .app-select{
-  height:18px;min-width:90px;font-size:11px;font-weight:700;letter-spacing:.05em;
-  color:var(--fg2);background:var(--bg3);border:1px solid var(--border);
-  border-radius:5px;padding:0 4px;color-scheme:dark;cursor:pointer;
-}
-.sp-head .app-select option{background:#1c2130;color:#e7e9f0}
-.stack-panel.focused .sp-head .app-select{
-  color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.4)
-}
+#simcol .sim-body{position:relative;flex:1;min-height:0}
+#simcol iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+/* World chip styled like the CAMERA/LIDAR selects (bordered box + caret) so
+   it reads as clickable. No centering ghost — it starved the name of width. */
+#sim-world-btn{margin:0 auto;padding:2px 22px 2px 10px;border-radius:4px;font-size:11px;
+  font-weight:600;color:var(--fg);background:var(--bg3);border:1px solid var(--border);
+  cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  min-width:0;position:relative;text-align:left}
+#sim-world-btn::after{content:'\25be';position:absolute;right:7px;top:50%;
+  transform:translateY(-50%);color:var(--fg3);font-size:10px}
+#sim-world-btn:hover{border-color:var(--accent);color:var(--fg)}
 
-/* Control — 콤팩트 스트립: 조이스틱은 조작에 최적인 고정 크기(150px)로 두고
-   수치를 옆 컬럼에 붙인다. "영역을 채우는 최대 정사각형" 방식이 만들던 빈 공간을
-   없애고, 남는 세로 공간은 아래 앱 패널에 돌아간다. 좁은 컬럼에선 그룹이 줄바꿈. */
+/* World modal — same full-cover treatment as the sensor zoom modal */
+#world-modal .sensor-modal{width:min(440px,92vw)}
+.wm-body{overflow-y:auto;flex:1;padding:4px 0;max-height:calc(95vh - 140px)}
+.wm-sec{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--fg3);padding:8px 14px 3px}
+.wm-row{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px}
+.wm-row:hover{background:var(--bg3)}
+.wm-row.active{color:#4ade80}
+.wm-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wm-del{color:var(--fg3);padding:2px 4px;border-radius:4px;flex-shrink:0;line-height:1}
+.wm-del:hover{color:#f87171;background:rgba(248,113,113,.15)}
+.wm-confirm{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;color:#f87171}
+.wm-confirm button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
+  border-radius:4px;padding:1px 8px;cursor:pointer;font-size:11px}
+.wm-confirm .wm-yes:hover{background:#7f1d1d;border-color:#f87171}
+.wm-confirm .wm-no:hover{background:var(--bg2)}
+.wm-empty{color:var(--fg3);font-size:11px;padding:2px 14px 8px}
+.wm-foot{border-top:1px solid var(--border);padding:8px 14px;display:flex;flex-direction:column;gap:5px}
+#wm-import{background:var(--accent);color:#fff;border:none;border-radius:6px;
+  padding:7px;font-size:12px;font-weight:600;cursor:pointer}
+#wm-import:disabled{opacity:.5;cursor:wait}
+#wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
+#wm-status.error{color:#f87171}
+#wm-status.success{color:#4ade80}
+/* App switch: standalone pill buttons (badge-bar style) — always visible */
+.app-tabs{display:flex;gap:6px}
+.app-tab{padding:2px 12px;border-radius:999px;font-size:11px;font-weight:600;
+  color:var(--fg3);background:var(--bg3);border:1px solid var(--border);cursor:pointer;
+  white-space:nowrap}
+.app-tab:hover{color:var(--fg2);border-color:var(--fg3)}
+.app-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
+   nowrap by design — the pads shrink with BOTH the card height and the column
+   width, so the two groups can never stack vertically. Fixed side content is
+   kept minimal (tight paddings) so the pads get the space. */
 #page-control{
-  display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
-  gap:12px 32px;padding:10px 8px;flex-shrink:0;
+  flex:0 0 auto;container-type:inline-size;overflow:hidden;
+  display:flex;flex-wrap:nowrap;justify-content:center;
+  align-items:center;padding:4px;
 }
-#page-control .cg{display:flex;align-items:center;gap:10px}
-#page-control .ctrl-joystick-wrap{width:150px;height:150px;flex-shrink:0}
-#page-control .ctrl-vslider{height:150px}
-.cg-side{display:flex;flex-direction:column;gap:8px;min-width:60px}
-.cg-title{font-size:13px;font-weight:600;color:var(--fg)}
-.cg-read{font-size:11px;color:var(--fg3);line-height:1.35}
-.cg-read strong{display:block;font-size:14px;color:var(--fg);font-weight:600}
+#page-control .cg{display:flex;align-items:center;gap:8px;padding:0 8px;flex-shrink:0}
+#page-control .cg+.cg{border-left:1px solid var(--border)}
+#page-control .ctrl-joystick-wrap{
+  width:clamp(56px, 50cqw - 96px, 240px);
+  height:clamp(56px, 50cqw - 96px, 240px);flex-shrink:0}
+#page-control .ctrl-vslider{height:clamp(56px, 50cqw - 96px, 240px);width:20px}
+/* Narrow column: collapse the readout columns and keep only the pads —
+   control surface survives with no overlap and no wrapping. */
+@container (max-width: 370px){
+  #page-control .cg{padding:0 4px;gap:6px}
+  #page-control .cg-side{display:none}
+  #page-control .ctrl-joystick-wrap{
+    width:clamp(56px, 50cqw - 40px, 240px);
+    height:clamp(56px, 50cqw - 40px, 240px)}
+  #page-control .ctrl-vslider{height:clamp(56px, 50cqw - 40px, 240px)}
+}
+.cg-side{display:flex;flex-direction:column;gap:6px;width:52px;flex-shrink:0}
+.cg-title{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--fg2)}
+.cg-read{font-size:10px;color:var(--fg3);line-height:1.3}
+.cg-read strong{display:block;font-size:13px;color:var(--fg);font-weight:600;
+  font-variant-numeric:tabular-nums}
 
-/* Focused (= interactive) card → accent border + lit header strip */
-.stack-panel.focused{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-.stack-panel.focused .sp-head{background:var(--accent);color:#fff;border-bottom-color:var(--accent)}
-.stack-panel.focused .sp-btn{color:rgba(255,255,255,.85)}
-.stack-panel.focused .sp-btn:hover{background:rgba(255,255,255,.18);color:#fff}
+/* No visual "focused card" treatment — the shield below still gates
+   iframe interaction, it just doesn't repaint the card. */
 
 /* Click-to-interact shield: iframes swallow wheel events, so an inactive
    card is covered by this transparent layer — wheel over it scrolls the
    stack, a click hands focus (and the pointer) to the iframe below */
 .sp-shield{position:absolute;inset:0;z-index:4;cursor:pointer;transition:background .15s}
-.sp-shield:hover{background:rgba(126,87,194,.07)}
+.sp-shield:hover{background:rgba(255,255,255,.04)}
 .stack-panel.focused .sp-shield{display:none}
 
 
 /* ── Divider ── */
 .divider{
-  width:6px;cursor:col-resize;background:var(--border);
+  width:6px;cursor:col-resize;background:#3a3055;   /* 어두운 보라 — hover 시 accent */
   flex-shrink:0;position:relative;z-index:10;transition:background .15s;
 }
 .divider:hover,.divider.dragging{background:var(--accent)}
@@ -236,96 +284,28 @@ body:not(.sim-mode) #divider2{display:none}
 </head>
 <body>
 
-<div class="main" id="main">
-  <div class="stack" id="stack">
-    <!-- SIMULATOR 패널은 제거됨 — 클라우드 심에선 별도 sim.physicar 탭(독립 /sim 화면)이
-         담당한다. 실물 차량과 동일한 앱 구성(MYAPP/VNC/CONTROL)으로 UI 통일. -->
-
-    <!-- CONTROL (inline; 콤팩트 스트립 — control.js gates sending on #page-control.active) -->
-    <div class="ctrl-strip" id="page-control">
-      <!-- Drive (speed / steering) -->
-      <div class="cg">
-        <div class="ctrl-vslider" title="Max speed (m/s)">
-          <span class="ctrl-vslider-val"><strong id="ctrl-max-speed-val">1.0</strong></span>
-          <input type="range" id="ctrl-max-speed" min="0.5" max="3.0" step="0.1" value="1.0" oninput="CTRL.setMaxSpeed(this.value)">
-          <span class="ctrl-vslider-label">Max</span>
-        </div>
-        <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
-          <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
-        </div>
-        <div class="cg-side">
-          <div class="cg-title">Drive</div>
-          <div class="cg-read">Speed<strong><span id="ctrl-speed">0.00</span> m/s</strong></div>
-          <div class="cg-read">Steer<strong><span id="ctrl-steer">0</span>°</strong></div>
-        </div>
-      </div>
-
-      <!-- Look (camera pan / tilt) -->
-      <div class="cg">
-        <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
-          <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
-        </div>
-        <div class="cg-side">
-          <div class="cg-title">Look</div>
-          <div class="cg-read">Pan<strong><span id="ctrl-pan">0</span>°</strong></div>
-          <div class="cg-read">Tilt<strong><span id="ctrl-tilt">0</span>°</strong></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MYAPP -->
-    <div class="stack-panel" id="panel-myapp">
-      <div class="sp-head"><select class="app-select" title="Select app"></select>
-        <div class="sp-actions">
-          <button class="sp-btn" id="btn-reload-myapp" title="Reload">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-          <button class="sp-btn" id="btn-open-myapp" title="Open in new tab">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
-    </div>
-
-    <!-- VNC -->
-    <div class="stack-panel" id="panel-vnc">
-      <div class="sp-head"><select class="app-select" title="Select app"></select></div>
-      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
-    </div>
-
-  </div>
-</div>
-
-<div class="divider" id="divider"></div>
-
-<!-- Sensors (inline panel) -->
+<!-- Sensors — 맨 좌측 컬럼 -->
 <div class="right" id="right">
   <div class="panel" id="sensor-panel">
     <div class="panel-section panel-section-flush">
       <div class="panel-title">Camera
         <select id="cam-res" onchange="changeCameraRes()">
-          <option value="480">480x360</option>
-          <option value="320" selected>320x240</option>
-          <option value="160">160x120</option>
+          <option value="480">360p</option>
+          <option value="320" selected>240p</option>
+          <option value="160">120p</option>
+          <option value="off">Off</option>
         </select>
       </div>
       <img class="panel-camera panel-zoomable" id="p-camera" alt="Camera" onclick="openSensorModal('camera')" title="Click to enlarge">
     </div>
     <div class="panel-section panel-section-flush">
       <div class="panel-title">LiDAR
-        <select id="lidar-step" onchange="changeLidarStep()">
-          <option value="0.5">0.5&deg;</option>
-          <option value="1">1&deg;</option>
-          <option value="3" selected>3&deg;</option>
-          <option value="5">5&deg;</option>
-          <option value="10">10&deg;</option>
-        </select>
         <select id="lidar-range" onchange="changeLidarRange()">
           <option value="2">2m</option>
           <option value="4" selected>4m</option>
           <option value="8">8m</option>
           <option value="16">16m</option>
+          <option value="off">Off</option>
         </select>
       </div>
       <canvas class="panel-lidar panel-zoomable" id="p-lidar" onclick="openSensorModal('lidar')" title="Click to enlarge"></canvas>
@@ -349,10 +329,107 @@ body:not(.sim-mode) #divider2{display:none}
   </div>
 </div>
 
+<div class="divider" id="divider"></div>
+
+<div class="main" id="main">
+  <div class="stack" id="stack">
+    <!-- SIMULATOR 패널은 제거됨 — 클라우드 심에선 별도 sim.physicar 탭(독립 /sim 화면)이
+         담당한다. 실물 차량과 동일한 앱 구성(MYAPP/VNC/CONTROL)으로 UI 통일. -->
+
+    <!-- CONTROL card (control.js gates sending on #page-control.active) -->
+    <div class="stack-panel on" id="panel-control">
+      <div class="sp-head">CONTROL
+        <div class="sp-actions" title="Keyboard: arrow keys drive"
+             style="gap:4px;font-size:10px;color:var(--fg3);font-weight:600">&#8593;&#8595;&#8592;&#8594;&nbsp;keys</div>
+      </div>
+      <div class="ctrl-strip" id="page-control">
+        <!-- Drive (speed / steering) -->
+        <div class="cg">
+          <div class="ctrl-vslider" title="Max speed (m/s)">
+            <span class="ctrl-vslider-val"><strong id="ctrl-max-speed-val">0.5</strong></span>
+            <input type="range" id="ctrl-max-speed" min="0.5" max="3.0" step="0.1" value="0.5" oninput="CTRL.setMaxSpeed(this.value)">
+            <span class="ctrl-vslider-label">Max</span>
+          </div>
+          <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
+            <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
+          </div>
+          <div class="cg-side">
+            <div class="cg-title">DRIVE</div>
+            <div class="cg-read">Speed<strong><span id="ctrl-speed">0.00</span> m/s</strong></div>
+            <div class="cg-read">Steer<strong><span id="ctrl-steer">0</span>°</strong></div>
+          </div>
+        </div>
+
+        <!-- Look (camera pan / tilt) -->
+        <div class="cg">
+          <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
+            <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
+          </div>
+          <div class="cg-side">
+            <div class="cg-title">LOOK</div>
+            <div class="cg-read">Pan<strong><span id="ctrl-pan">0</span>°</strong></div>
+            <div class="cg-read">Tilt<strong><span id="ctrl-tilt">0</span>°</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- MYAPP -->
+    <div class="stack-panel" id="panel-myapp">
+      <div class="sp-head">
+        <div class="app-tabs" role="tablist"></div>
+        <div class="sp-actions">
+          <button class="sp-btn" id="btn-reload-myapp" title="Reload">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+          <button class="sp-btn" id="btn-open-myapp" title="Open in new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
+    </div>
+
+    <!-- VNC -->
+    <div class="stack-panel" id="panel-vnc">
+      <div class="sp-head">
+        <div class="app-tabs" role="tablist"></div>
+      </div>
+      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
+    </div>
+
+  </div>
+</div>
+
 <div class="divider" id="divider2"></div>
 
-<!-- 시뮬레이터 (sim 모드 전용) — 독립 /sim 화면(자체 툴바 포함)을 그대로 임베드 -->
-<div id="simcol"><iframe id="frame-sim" title="Simulator" allow="autoplay"></iframe></div>
+<!-- Simulator (sim mode only): own header with the current-world chip,
+     /sim embedded below it (its toolbar copy is hidden in embedded mode) -->
+<div id="simcol">
+  <div class="sp-head"><span>SIMULATOR</span>
+    <button id="sim-world-btn" title="Select world">&hellip;</button></div>
+  <div class="sim-body"><iframe id="frame-sim" title="Simulator" allow="autoplay"></iframe></div>
+</div>
+
+<!-- World modal: official/custom sections, inline delete confirm, import -->
+<div class="sensor-modal-overlay" id="world-modal" style="display:none">
+  <div class="sensor-modal">
+    <div class="sensor-modal-header"><span>Worlds</span>
+      <button class="sensor-modal-close" id="wm-close">&times;</button></div>
+    <div class="wm-body">
+      <div class="wm-sec">OFFICIAL WORLD</div>
+      <div id="wm-official"></div>
+      <div class="wm-sec">CUSTOM WORLD</div>
+      <div id="wm-custom"></div>
+    </div>
+    <div class="wm-foot">
+      <button id="wm-import">&#x2913; Import World (.tar.gz)</button>
+      <div id="wm-status"></div>
+      <input type="file" id="wm-file" accept=".tar.gz,.gz" style="display:none">
+    </div>
+  </div>
+</div>
 
 <script src="/static/js/core.js"></script>
 <script src="/static/js/control.js"></script>
@@ -386,23 +463,22 @@ body:not(.sim-mode) #divider2{display:none}
   const divider2= document.getElementById('divider2');
   const simcol  = document.getElementById('simcol');
   const ctrlCol = document.getElementById('page-control');
-  const appSels = Array.from(document.querySelectorAll('.app-select'));
-
   const panels = {};
   const frames = {};
   APPS.forEach(x => {
     panels[x.id] = document.getElementById('panel-' + x.id);
     frames[x.id] = document.getElementById('frame-' + x.id);
   });
-  appSels.forEach(sel => {
+  // Segmented app buttons — one set per app card header, kept in sync
+  document.querySelectorAll('.app-tabs').forEach(w => {
     APPS.forEach(x => {
-      const o = document.createElement('option');
-      o.value = x.id; o.textContent = x.label;
-      sel.appendChild(o);
+      const b = document.createElement('button');
+      b.className = 'app-tab'; b.dataset.app = x.id; b.textContent = x.label;
+      b.addEventListener('click', () => { appId = x.id; save(); render(); });
+      w.appendChild(b);
     });
-    sel.value = appId;
-    sel.addEventListener('change', () => { appId = sel.value; save(); render(); });
   });
+  const appTabs = Array.from(document.querySelectorAll('.app-tab'));
 
   // Open MyApp in a full browser tab. Inside the VS Code webview the iframe
   // sandbox blocks window.open (returns null) — relay to the extension
@@ -425,9 +501,27 @@ body:not(.sim-mode) #divider2{display:none}
     catch(e) { f.src = f.getAttribute('src'); }
   });
 
+  // MyApp liveness: the offline placeholder polls itself back to life, but a
+  // RUNNING app that dies leaves its last page frozen in the iframe. The
+  // server watches the port (/proc, no HTTP into the app) and pushes state
+  // over the /states SSE stream — on the up -> down transition, reload the
+  // frame so the placeholder (and its auto-reload) takes over right away.
+  let myappWasUp = null;
+  document.addEventListener('myapp-status', (e) => {
+    const up = !!e.detail.up;
+    // Reload on BOTH transitions: death swaps the placeholder in right away,
+    // recovery replaces it without waiting out the placeholder's own backoff.
+    if (myappWasUp !== null && up !== myappWasUp && appId === 'myapp') {
+      const f = document.getElementById('frame-myapp');
+      try { f.contentWindow.location.reload(); }
+      catch(err) { f.src = '/myapp/'; }
+    }
+    myappWasUp = up;
+  });
+
   function render(){
-    ctrlCol.classList.add('active');      // CTRL 전송 게이트 (Control은 스택 직속 상시 표시)
-    appSels.forEach(sel => { if (sel.value !== appId) sel.value = appId; });
+    ctrlCol.classList.add('active');      // CTRL 전송 게이트 (Control 카드는 상시 표시)
+    appTabs.forEach(b => b.classList.toggle('active', b.dataset.app === appId));
     APPS.forEach(x => {
       const on = x.id === appId;
       panels[x.id].classList.toggle('on', on);
@@ -438,17 +532,16 @@ body:not(.sim-mode) #divider2{display:none}
       else if (src && src !== 'about:blank') f.src = 'about:blank';
     });
     const sf = document.getElementById('frame-sim');
-    if (simMode) { if (sf.getAttribute('src') !== '/sim/') sf.src = '/sim/'; }
+    if (simMode) { if (sf.getAttribute('src') !== '/sim/?embed') sf.src = '/sim/?embed'; }
     else if (sf.getAttribute('src') && sf.getAttribute('src') !== 'about:blank') sf.src = 'about:blank';
     updateFocus(true);
   }
 
-  /* ── 3열 분할: 경계 두 개 모두 드래그 (세션 한정, 저장 안 함) ── */
-  let b1 = 5/7, b2 = 1;                // real 기본: 앱 71% | 상태 29% (심 없음)
+  /* ── 3열 분할: [상태 | 앱 | 심] — 경계 두 개 모두 드래그 (세션 한정) ── */
+  let b1 = 0.29, b2 = 1;               // real 기본: 상태 29% | 앱 71% (심 없음)
   function applyRatio(){
-    const r = (simMode ? b2 : 1) - b1;
-    main.style.width  = 'calc(' + (b1 * 100).toFixed(2) + '% - 4px)';
-    right.style.width = 'calc(' + (r  * 100).toFixed(2) + '% - 4px)';
+    right.style.width = 'calc(' + (b1 * 100).toFixed(2) + '% - 4px)';
+    main.style.width  = 'calc(' + (((simMode ? b2 : 1) - b1) * 100).toFixed(2) + '% - 4px)';
     if (simMode) simcol.style.width = 'calc(' + ((1 - b2) * 100).toFixed(2) + '% - 4px)';
     main.style.flex = 'none'; right.style.flex = 'none';
   }
@@ -485,15 +578,15 @@ body:not(.sim-mode) #divider2{display:none}
     el.addEventListener('touchstart', down, {passive:false});
   }
 
-  // 경계1: 앱 | 상태 — 경계2와 최소 간격 유지
+  // 경계1: 상태 | 앱 — 경계2와 최소 간격 유지
   makeDrag(divider, (cx) => {
-    const hi = (simMode ? b2 : 1) - 0.12;
-    b1 = Math.max(0.18, Math.min(hi, cx / document.body.clientWidth));
+    const hi = (simMode ? b2 : 1) - 0.2;
+    b1 = Math.max(0.1, Math.min(hi, cx / document.body.clientWidth));
     applyRatio();
   });
-  // 경계2: 상태 | 시뮬레이터 (sim 모드 전용)
+  // 경계2: 앱 | 시뮬레이터 (sim 모드 전용)
   makeDrag(divider2, (cx) => {
-    b2 = Math.max(b1 + 0.12, Math.min(0.9, cx / document.body.clientWidth));
+    b2 = Math.max(b1 + 0.2, Math.min(0.9, cx / document.body.clientWidth));
     applyRatio();
   });
 
@@ -536,7 +629,7 @@ body:not(.sim-mode) #divider2{display:none}
   // already pulled focus off any iframe — just refresh immediately)
   document.querySelectorAll('.stack-panel').forEach(p => {
     p.querySelector('.sp-head').addEventListener('click', (e) => {
-      if (e.target.closest('.sp-actions') || e.target.closest('.app-select')) return;   // header controls
+      if (e.target.closest('.sp-actions') || e.target.closest('.app-tabs')) return;   // header controls
       const f = p.querySelector('.sp-body iframe');
       if (f) f.focus();
       updateFocus(true);
@@ -552,7 +645,7 @@ body:not(.sim-mode) #divider2{display:none}
     .observe(document.getElementById('page-control'));
 
   /* ── Sensors (inline) ── */
-  ['cam-res', 'lidar-step', 'lidar-range'].forEach(id => {
+  ['cam-res', 'lidar-range'].forEach(id => {
     const v = localStorage.getItem(id);
     if (v && $(id)) $(id).value = v;
   });
@@ -560,13 +653,150 @@ body:not(.sim-mode) #divider2{display:none}
   startLidarStream();
   startCameraStream();
 
+  /* ── World selector (sim mode): header chip + full-cover modal ── */
+  function initSimWorldUI(){
+    const btn = document.getElementById('sim-world-btn');
+    const modal = document.getElementById('world-modal');
+    const st = document.getElementById('wm-status');
+    const impBtn = document.getElementById('wm-import');
+    const fileIn = document.getElementById('wm-file');
+    const setSt = (m, c) => { st.textContent = m || ''; st.className = c || ''; };
+    let worlds = [], current = null;
+
+    const post = (path, body) => fetch('/sim/api' + path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body) }).then(r => r.json());
+
+    function renderRows(){
+      const official = document.getElementById('wm-official');
+      const custom = document.getElementById('wm-custom');
+      official.innerHTML = ''; custom.innerHTML = '';
+      worlds.forEach(w => {
+        const isCurrent = w.name === current;
+        const row = document.createElement('div');
+        row.className = 'wm-row' + (isCurrent ? ' active' : '');
+        const name = document.createElement('span');
+        name.className = 'wm-name';
+        name.textContent = (isCurrent ? '✓ ' : '') + w.name;
+        row.appendChild(name);
+        row.onclick = () => { if (!isCurrent) switchWorld(w.file); };
+        if (w.deletable) {
+          const del = document.createElement('span');
+          del.className = 'wm-del'; del.innerHTML = '&#x1f5d1;';
+          del.title = 'Delete ' + w.name;
+          // Inline confirm — window.confirm is silently dropped in webviews
+          del.onclick = (e) => {
+            e.stopPropagation();
+            row.onclick = null; del.remove();
+            const c = document.createElement('span');
+            c.className = 'wm-confirm'; c.textContent = 'Delete?';
+            const yes = document.createElement('button');
+            yes.className = 'wm-yes'; yes.textContent = '✓';
+            yes.onclick = (e2) => { e2.stopPropagation(); doDelete(w.name); };
+            const no = document.createElement('button');
+            no.className = 'wm-no'; no.textContent = '✕';
+            no.onclick = (e2) => { e2.stopPropagation(); renderRows(); };
+            c.appendChild(yes); c.appendChild(no);
+            row.appendChild(c);
+          };
+          row.appendChild(del);
+        }
+        (w.name.startsWith('custom_') ? custom : official).appendChild(row);
+      });
+      if (!custom.children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'wm-empty';
+        empty.textContent = 'No custom worlds yet — import one below.';
+        custom.appendChild(empty);
+      }
+    }
+
+    async function refresh(force){
+      // The periodic poll must not wipe an in-progress inline delete confirm;
+      // explicit refreshes (open/delete/switch) always re-render.
+      if (!force && modal.style.display !== 'none' && modal.querySelector('.wm-confirm')) return;
+      try {
+        const d = await (await fetch('/sim/api/worlds')).json();
+        worlds = d.worlds; current = d.current;
+        btn.textContent = current || '…';
+        renderRows();
+      } catch(e) {}
+    }
+
+    function switchWorld(worldFile){
+      const target = worldFile.replace(/\.world$/, '');
+      btn.textContent = target; current = target;
+      close();
+      // The embedded /sim viewer follows the server switch via SSE — no reload.
+      post('/switch', { world: worldFile }).catch(() => {});
+      setTimeout(() => refresh(true), 5000);
+    }
+
+    async function doDelete(name){
+      setSt('Deleting ' + name + '...');
+      try {
+        const d = await (await fetch('/sim/api/worlds/' + name, { method: 'DELETE' })).json();
+        if (!d.ok) throw new Error(d.error || 'Delete failed');
+        setSt('Deleted ' + name + '.', 'success');
+      } catch(e) { setSt(e.message, 'error'); }
+      refresh(true);
+    }
+
+    async function upload(file){
+      if (!file) return;
+      if (!file.name.endsWith('.tar.gz')) { setSt('File must be .tar.gz', 'error'); return; }
+      impBtn.disabled = true;
+      let uploadId = null;
+      try {
+        setSt('Uploading ' + file.name + '...');
+        const init = await post('/upload/init', { filename: file.name, size: file.size });
+        if (!init.ok) throw new Error(init.error || 'Init failed');
+        uploadId = init.upload_id;
+        const CH = 10 * 1024 * 1024, total = Math.ceil(file.size / CH);
+        let done = 0;
+        await Promise.all(Array.from({ length: total }, async (_, i) => {
+          const buf = await file.slice(i * CH, Math.min((i + 1) * CH, file.size)).arrayBuffer();
+          let bin = '';
+          new Uint8Array(buf).forEach(b => { bin += String.fromCharCode(b); });
+          const d = await post('/upload/chunk', { upload_id: uploadId, chunk_index: i, data: btoa(bin) });
+          if (!d.ok) throw new Error(d.error || 'Chunk upload failed');
+          done++; setSt('Uploading ' + file.name + '... ' + Math.round(done / total * 100) + '%');
+        }));
+        setSt('Processing...');
+        const res = await post('/upload/complete', { upload_id: uploadId });
+        if (!res.ok) throw new Error(res.error || 'Upload failed');
+        setSt('World "' + res.world + '" uploaded!', 'success');
+        await refresh(true);
+        setTimeout(() => switchWorld(res.world + '.world'), 1200);
+      } catch(e) {
+        setSt('Upload failed: ' + e.message, 'error');
+        if (uploadId) post('/upload/cancel', { upload_id: uploadId }).catch(() => {});
+      } finally { impBtn.disabled = false; }
+    }
+
+    function open(){ setSt(''); refresh(true); modal.style.display = 'flex'; }
+    function close(){ modal.style.display = 'none'; fileIn.value = ''; }
+    btn.addEventListener('click', open);
+    document.getElementById('wm-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.style.display !== 'none') close();
+    });
+    impBtn.addEventListener('click', () => fileIn.click());
+    fileIn.addEventListener('change', () => upload(fileIn.files[0]));
+
+    refresh();
+    setInterval(() => { if (!document.hidden) refresh(); }, 10000);
+  }
+
   /* ── Mode: 시뮬레이터 컬럼은 sim 모드에서만 열린다 ── */
   (async function(){
     const mode = await detectMode();   // adds body.sim-mode when sim
     if (mode === 'sim') {
       simMode = true;
       document.title = 'PHYSICAR App (SIM)';
-      b1 = 0.5; b2 = 0.72;             // 앱 50% | 상태 22% | 심 28%
+      b1 = 0.22; b2 = 0.72;            // 상태 22% | 앱 50% | 심 28%
+      initSimWorldUI();
     }
     render(); applyRatio();
   })();

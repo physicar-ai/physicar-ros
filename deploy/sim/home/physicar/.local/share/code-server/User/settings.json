@@ -1,5 +1,9 @@
 {
   "chat.disableAIFeatures": true,
+  "files.readonlyInclude": {
+    "**/sample_projects/**/*.py": true,
+    "**/sample_projects/**/*.sh": true
+  },
   "code-runner.runInTerminal": true,
   "code-runner.ignoreSelection": true,
   "code-runner.executorMap": {
@@ -21,7 +25,7 @@
     "/opt/ros/jazzy/lib/python3.12/site-packages",
     "/opt/physicar/install/physicar_interfaces/lib/python3.12/site-packages"
   ],
-  "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "jupyter.notebookFileRoot": "${fileDirname}",
   "notebook.defaultKernel": {
     "id": "python3",
     "path": "/usr/bin/python3"
@@ -46,5 +50,6 @@
     "https://*.physicar.dev",
     "https://github.com"
   ],
-  "breadcrumbs.enabled": false
+  "breadcrumbs.enabled": false,
+  "notebook.stickyScroll.enabled": true
 }

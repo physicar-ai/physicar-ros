@@ -1,5 +1,9 @@
 {
   "chat.disableAIFeatures": true,
+  "files.readonlyInclude": {
+    "**/sample_projects/**/*.py": true,
+    "**/sample_projects/**/*.sh": true
+  },
   "code-runner.runInTerminal": true,
   "code-runner.ignoreSelection": true,
   "code-runner.executorMap": {
@@ -13,6 +17,11 @@
   "editor.tabSize": 4,
   "files.autoSave": "afterDelay",
   "python.defaultInterpreterPath": "/usr/bin/python3",
+  "jupyter.notebookFileRoot": "${fileDirname}",
+  "notebook.defaultKernel": {
+    "id": "python3",
+    "path": "/usr/bin/python3"
+  },
   "python.analysis.extraPaths": [
     "/opt/ros/jazzy/lib/python3.12/site-packages",
     "/opt/physicar/install/physicar_interfaces/lib/python3.12/site-packages"
@@ -30,5 +39,6 @@
   "workbench.tips.enabled": false,
   "explorer.compactFolders": false,
   "security.workspace.trust.enabled": false,
-  "breadcrumbs.enabled": false
+  "breadcrumbs.enabled": false,
+  "notebook.stickyScroll.enabled": true
 }
