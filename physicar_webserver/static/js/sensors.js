@@ -61,13 +61,28 @@ function updateState(d) {
   }
 }
 
+/* Accordion gates — the App collapses sensor sections; collapsed = the
+   stream is stopped entirely (no data, no network). Change-guarded so a
+   re-render never restarts a healthy stream. */
+let camEnabled = true, lidarEnabled = true;
+function setCameraEnabled(on) {
+  on = !!on;
+  if (on === camEnabled) return;
+  camEnabled = on;
+  startCameraStream();
+}
+function setLidarEnabled(on) {
+  on = !!on;
+  if (on === lidarEnabled) return;
+  lidarEnabled = on;
+  if (!lidarEnabled && lidarES) { lidarES.close(); lidarES = null; _lidarCount = 0; }
+  startLidarStream();
+}
+
 function startLidarStream() {
-  // 'Off' stops the stream entirely (no data, no network) and collapses the
-  // plot, so the panel space goes to the sections below.
-  const off = ($('lidar-range')?.value || '') === 'off';
   const c = $('p-lidar');
-  if (c) c.style.display = off ? 'none' : '';
-  if (off || lidarES) return;
+  if (c) c.style.display = lidarEnabled ? '' : 'none';
+  if (!lidarEnabled || lidarES) return;
   const step = 0.5;   // full resolution — range only changes the display scale
   console.log('[SSE] Lidar: connecting, step=' + step);
   lidarES = new EventSource('/lidar?stream=true&step=' + step);
@@ -92,10 +107,7 @@ function startLidarStream() {
 }
 function changeLidarRange() {
   localStorage.setItem('lidar-range', $('lidar-range').value);
-  if ($('lidar-range').value === 'off' && lidarES) {
-    lidarES.close(); lidarES = null; _lidarCount = 0;
-  }
-  startLidarStream();   // applies plot visibility; reconnects unless off
+  startLidarStream();   // range only changes the display scale
 }
 
 function drawLidar(lidar) {
@@ -140,12 +152,10 @@ function _drawLidarOnCanvas(c, lidar) {
 }
 
 function startCameraStream() {
-  // 'Off' stops the MJPEG stream entirely (no frames, no network) and
-  // collapses the image, so the panel space goes to the sections below.
   const w = $('cam-res')?.value || 480;
   const img = $('p-camera');
-  if (img) img.style.display = w === 'off' ? 'none' : '';
-  if (w === 'off') { _stopCameraStream(); return; }
+  if (img) img.style.display = camEnabled ? '' : 'none';
+  if (!camEnabled) { _stopCameraStream(); return; }
   console.log('[CAM] Starting camera stream, width=' + w);
   _startMjpegFetch(w);
 }

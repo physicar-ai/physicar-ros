@@ -42,3 +42,20 @@
     }
   };
 })();
+
+/* Slim neutral scrollbars for student pages (this file is auto-injected into
+ * every /myapp/ HTML page). Semi-transparent grey reads fine on light and
+ * dark themes alike; pages can still override with their own CSS. */
+(function () {
+  try {
+    var st = document.createElement('style');
+    st.textContent =
+      '::-webkit-scrollbar{width:8px;height:8px}' +
+      '::-webkit-scrollbar-track{background:transparent}' +
+      '::-webkit-scrollbar-thumb{background:rgba(128,128,128,.45);border-radius:4px}' +
+      '::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,.7)}' +
+      '::-webkit-scrollbar-corner{background:transparent}' +
+      'html{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.5) transparent}';
+    (document.head || document.documentElement).appendChild(st);
+  } catch (e) {}
+})();

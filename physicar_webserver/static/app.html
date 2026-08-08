@@ -135,10 +135,10 @@ body{display:flex;flex-direction:row;height:100vh}
 /* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
 .main{display:flex;flex-direction:column;min-width:0}
 
-/* Column: CONTROL card (height drag-adjustable via the horizontal divider)
-   + ONE app card that always fills the leftover height. No stack scroll. */
+/* Column: CONTROL pinned on top, MY APP / VNC accordion below. Sections keep
+   a 4:3 body, so the stack scrolls when they don't fit. */
 .stack{
-  flex:1;min-height:0;overflow:hidden;
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
   display:flex;flex-direction:column;
 }
 /* 카드 장식 없음 — CONTROL/APP은 플랫 섹션, 사이는 가로 경계선이 가른다 */
@@ -147,15 +147,39 @@ body{display:flex;flex-direction:row;height:100vh}
   background:#111;overflow:hidden;
 }
 .stack-panel.on{display:flex}
-/* CONTROL height follows its content (pads sized from column width);
-   APP takes everything left. */
+/* CONTROL height follows its content (pads sized from column width) and
+   scrolls with the accordion like every other section. MY APP / VNC:
+   headers always visible, bodies collapsible, open bodies 4:3. */
 #panel-control{background:var(--bg);flex:0 0 auto}
-#panel-myapp,#panel-vnc{flex:1 1 0;min-height:120px;border-top:1px solid var(--border)}
+#panel-myapp,#panel-vnc{display:flex;flex:0 0 auto;border-top:1px solid var(--border)}
+#panel-myapp .sp-body,#panel-vnc .sp-body{flex:none;aspect-ratio:4/3;min-height:0}
+.stack-panel.collapsed .sp-body{display:none}
+.sp-caret{font-size:17px;color:var(--fg);width:14px;text-align:center;
+  display:inline-block;line-height:1;transition:transform .15s}
+.stack-panel.collapsed .sp-caret{transform:rotate(-90deg)}
+#panel-control.collapsed .ctrl-strip{display:none}
+
+/* ── Left sensor column headers — unified with the app card header strip;
+   sections keep only a slim content inset. Sections are accordion folds:
+   Camera/LiDAR stop their streams entirely while collapsed. ── */
+.right .panel-section{padding:0 6px 8px}
+.right .panel-title{height:24px;box-sizing:border-box;display:flex;align-items:center;gap:5px;
+  margin:0 -6px 6px;padding:0 10px 0 4px;font-size:10px;font-weight:700;
+  letter-spacing:.08em;color:var(--fg3);background:var(--bg2);
+  border-bottom:1px solid var(--border);text-transform:uppercase;
+  cursor:pointer;user-select:none}
+/* flush sections (Camera/LiDAR) — beat app.css's 3-class padding rule so
+   every sensor header shares the exact same caret indent */
+.right .panel-section.panel-section-flush .panel-title{padding:0 10px 0 4px}
+.right .panel-section.collapsed{padding-bottom:0}
+.right .panel-section.collapsed > :not(.panel-title){display:none}
+.right .panel-section.collapsed .panel-title{margin-bottom:0}
+.right .panel-section.collapsed .sp-caret{transform:rotate(-90deg)}
 
 /* Slim identity strip on every panel */
 .sp-head{
-  height:24px;flex-shrink:0;display:flex;align-items:center;gap:8px;
-  padding:0 10px;font-size:10px;font-weight:700;letter-spacing:.08em;
+  height:24px;flex-shrink:0;display:flex;align-items:center;gap:5px;
+  padding:0 10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.08em;
   color:var(--fg3);background:var(--bg2);border-bottom:1px solid var(--border);
   cursor:pointer;user-select:none;
 }
@@ -181,18 +205,26 @@ body:not(.sim-mode) #divider2{display:none}
 /* World chip: must read as an interactive select at a glance — raised body
    (gradient + shadow), visible border, bright caret, hover/press feedback.
    No centering ghost — it starved the name of width. */
-#sim-world-btn{margin:0 auto;padding:3px 24px 3px 10px;border-radius:5px;font-size:11px;
-  font-weight:600;color:var(--fg);background:linear-gradient(#2c3140, #232734);
-  border:1px solid var(--fg3);
+/* SIMULATOR header is taller than the other strips on purpose — the world
+   chip needs room to read as a real select control. 3-column grid keeps the
+   chip TRUE-centered in the column; when width runs out the LABEL gives way
+   (ellipsis) before the world name does. */
+#simcol > .sp-head{height:32px;font-size:11px;display:grid;
+  grid-template-columns:1fr auto 1fr;align-items:center;gap:6px}
+#simcol > .sp-head > span{grid-column:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#sim-world-btn{grid-column:2;margin:0;padding:2px 32px 2px 16px;border-radius:999px;font-size:14px;
+  font-weight:700;color:#fff;
+  background:linear-gradient(#8d68d0, var(--accent));
+  border:1px solid var(--accent);
   cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  min-width:110px;max-width:min(280px,100%);position:relative;text-align:center;
-  box-shadow:0 1px 3px rgba(0,0,0,.4);
-  transition:border-color .15s, background .15s}
-#sim-world-btn::after{content:'\25be';position:absolute;right:8px;top:50%;
-  transform:translateY(-50%);color:var(--fg);font-size:16px;line-height:1}
-#sim-world-btn:hover{border-color:var(--accent);background:#323748}
-#sim-world-btn:hover::after{color:var(--accent)}
-#sim-world-btn:active{background:#232734;box-shadow:none}
+  min-width:90px;max-width:300px;position:relative;text-align:center;
+  box-shadow:0 1px 5px rgba(126,87,194,.45);
+  transition:filter .15s, box-shadow .15s}
+#sim-world-btn::after{content:'\25be';position:absolute;right:11px;top:50%;
+  transform:translateY(-50%);color:#fff;font-size:19px;line-height:1}
+#sim-world-btn:hover{filter:brightness(1.12);box-shadow:0 1px 9px rgba(126,87,194,.75)}
+#sim-world-btn:active{filter:brightness(.92);box-shadow:none}
 
 /* World modal — same full-cover treatment as the sensor zoom modal */
 #world-modal .sensor-modal{width:min(440px,92vw)}
@@ -222,13 +254,6 @@ body:not(.sim-mode) #divider2{display:none}
 #wm-status .wm-ow:hover{border-color:var(--fg3)}
 #wm-status .wm-ow.danger{background:#7f1d1d;border-color:#b91c1c}
 #wm-status .wm-ow.danger:hover{background:#991b1b}
-/* App switch: standalone pill buttons (badge-bar style) — always visible */
-.app-tabs{display:flex;gap:6px}
-.app-tab{padding:2px 12px;border-radius:999px;font-size:11px;font-weight:600;
-  color:var(--fg3);background:var(--bg3);border:1px solid var(--border);cursor:pointer;
-  white-space:nowrap}
-.app-tab:hover{color:var(--fg2);border-color:var(--fg3)}
-.app-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
    nowrap by design — the pads shrink with BOTH the card height and the column
@@ -279,18 +304,17 @@ body:not(.sim-mode) #divider2{display:none}
 }
 .divider:hover,.divider.dragging{background:var(--accent)}
 
-/* ── Right sensor column (inline panel, fixed type sizes) ── */
+/* ── Right sensor column (inline panel, fixed type sizes). Headers are
+   unified with .sp-head (24px / 10px caps) — see the .panel-title rule
+   near the stack styles; don't restyle titles here. ── */
 .right{display:flex;flex-direction:column;min-width:0;flex-shrink:0;background:var(--bg2)}
 .right .panel{width:100%;min-width:0;flex:1;border-left:none}
-.right .panel-section{padding:12px 8px}
-.right .panel-section.panel-section-flush .panel-title{padding:0 8px}
-.right .panel-title{font-size:14px;margin-bottom:8px;gap:8px}
-.right .panel-title select{font-size:12px;border-radius:5px;padding:2px 4px}
+.right .panel-title select{font-size:11px;border-radius:5px;padding:1px 4px}
 .right .panel-row{font-size:14px;padding:4px 0}
 .right .panel-value{font-size:14px}
 .right .battery-bar{height:8px;border-radius:4px;margin-top:8px}
-.right .panel-restart{padding:12px !important}
-.right .btn-restart{font-size:13px;padding:8px 26px;border-radius:8px}
+.right .panel-restart{padding:6px !important}
+.right .btn-restart{font-size:12px;padding:4px 12px;border-radius:6px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -298,36 +322,35 @@ body:not(.sim-mode) #divider2{display:none}
 <!-- Sensors — 맨 좌측 컬럼 -->
 <div class="right" id="right">
   <div class="panel" id="sensor-panel">
-    <div class="panel-section panel-section-flush">
-      <div class="panel-title">Camera
+    <div class="panel-section panel-section-flush" id="sec-camera">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>Camera
         <select id="cam-res" onchange="changeCameraRes()">
           <option value="480">360p</option>
           <option value="320" selected>240p</option>
           <option value="160">120p</option>
-          <option value="off">Off</option>
         </select>
       </div>
       <img class="panel-camera panel-zoomable" id="p-camera" alt="Camera" onclick="openSensorModal('camera')" title="Click to enlarge">
     </div>
-    <div class="panel-section panel-section-flush">
-      <div class="panel-title">LiDAR
+    <div class="panel-section panel-section-flush" id="sec-lidar">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>LiDAR
         <select id="lidar-range" onchange="changeLidarRange()">
           <option value="2">2m</option>
           <option value="4" selected>4m</option>
           <option value="8">8m</option>
           <option value="16">16m</option>
-          <option value="off">Off</option>
         </select>
       </div>
       <canvas class="panel-lidar panel-zoomable" id="p-lidar" onclick="openSensorModal('lidar')" title="Click to enlarge"></canvas>
     </div>
-    <div class="panel-section">
-      <div class="panel-title">Velocity</div>
+    <div class="panel-section" id="sec-velocity">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>Velocity</div>
       <div class="panel-row"><span class="panel-label">Linear</span><span class="panel-value" id="p-linear">0.0 m/s</span></div>
       <div class="panel-row"><span class="panel-label">Angular</span><span class="panel-value" id="p-angular">0.0 rad/s</span></div>
     </div>
-    <div class="panel-section">
-      <div class="panel-title">Battery</div>
+    <div class="panel-section" id="sec-battery">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>Battery
+      </div>
       <div class="panel-row">
         <span class="panel-value" id="p-battery">--%</span>
         <span class="panel-value" id="p-voltage">--V</span>
@@ -349,7 +372,7 @@ body:not(.sim-mode) #divider2{display:none}
 
     <!-- CONTROL card (control.js gates sending on #page-control.active) -->
     <div class="stack-panel on" id="panel-control">
-      <div class="sp-head">CONTROL
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>CONTROL
         <div class="sp-actions" title="Keyboard: arrow keys drive"
              style="gap:4px;font-size:10px;color:var(--fg3);font-weight:600">&#8593;&#8595;&#8592;&#8594;&nbsp;keys</div>
       </div>
@@ -386,10 +409,15 @@ body:not(.sim-mode) #divider2{display:none}
     </div>
 
 
-    <!-- MYAPP -->
-    <div class="stack-panel" id="panel-myapp">
-      <div class="sp-head">
-        <div class="app-tabs" role="tablist"></div>
+    <!-- VNC (accordion section: header click toggles the body) -->
+    <div class="stack-panel on" id="panel-vnc">
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>VNC</div>
+      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
+    </div>
+
+    <!-- MYAPP (accordion section) -->
+    <div class="stack-panel on" id="panel-myapp">
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>MY APP
         <div class="sp-actions">
           <button class="sp-btn" id="btn-reload-myapp" title="Reload">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -400,14 +428,6 @@ body:not(.sim-mode) #divider2{display:none}
         </div>
       </div>
       <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
-    </div>
-
-    <!-- VNC -->
-    <div class="stack-panel" id="panel-vnc">
-      <div class="sp-head">
-        <div class="app-tabs" role="tablist"></div>
-      </div>
-      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
     </div>
 
   </div>
@@ -458,15 +478,25 @@ body:not(.sim-mode) #divider2{display:none}
   ];
   const KEY = 'app-view';
   let simMode = false;
-  let appId = 'myapp';
+  // Accordion open-state — sections stay mounted; each header toggles its
+  // body. Sensors fold too (Camera/LiDAR stop streaming while collapsed).
+  // Everything starts expanded.
+  const open = { control: true, myapp: true, vnc: true,
+                 camera: true, lidar: true, velocity: true, battery: true };
+  const SENSOR_SECS = [['camera', 'sec-camera'], ['lidar', 'sec-lidar'],
+                       ['velocity', 'sec-velocity'], ['battery', 'sec-battery']];
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && APPS.some(x => x.id === s.app)) appId = s.app;
-    else if (s && Array.isArray(s.sel)) {            // 구 멀티선택 스키마 승계
-      const hit = APPS.find(x => s.sel.includes(x.id)); if (hit) appId = hit.id;
+    if (s && s.open) {
+      Object.keys(open).forEach(k => { if (k in s.open) open[k] = !!s.open[k]; });
+    }
+    else if (s && APPS.some(x => x.id === s.app)) {  // 구 단일선택 스키마 승계
+      APPS.forEach(x => { open[x.id] = x.id === s.app; });
+    } else if (s && Array.isArray(s.sel)) {          // 구 멀티선택 스키마 승계
+      APPS.forEach(x => { open[x.id] = s.sel.includes(x.id); });
     }
   } catch(e){}
-  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ app: appId })); }catch(e){} }
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ open: open })); }catch(e){} }
 
   const main    = document.getElementById('main');
   const right   = document.getElementById('right');
@@ -480,16 +510,30 @@ body:not(.sim-mode) #divider2{display:none}
     panels[x.id] = document.getElementById('panel-' + x.id);
     frames[x.id] = document.getElementById('frame-' + x.id);
   });
-  // Segmented app buttons — one set per app card header, kept in sync
-  document.querySelectorAll('.app-tabs').forEach(w => {
-    APPS.forEach(x => {
-      const b = document.createElement('button');
-      b.className = 'app-tab'; b.dataset.app = x.id; b.textContent = x.label;
-      b.addEventListener('click', () => { appId = x.id; save(); render(); });
-      w.appendChild(b);
+  // Accordion headers: click toggles the section body (header buttons
+  // excluded). CONTROL folds too — its key driver stays armed regardless.
+  APPS.forEach(x => {
+    panels[x.id].querySelector('.sp-head').addEventListener('click', (e) => {
+      if (e.target.closest('.sp-actions')) return;
+      open[x.id] = !open[x.id];
+      save(); render();
     });
   });
-  const appTabs = Array.from(document.querySelectorAll('.app-tab'));
+  document.querySelector('#panel-control .sp-head').addEventListener('click', (e) => {
+    if (e.target.closest('.sp-actions')) return;
+    open.control = !open.control;
+    save(); render();
+  });
+  // Sensor section headers fold too (their selects excluded from the toggle)
+  SENSOR_SECS.forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.querySelector('.panel-title').addEventListener('click', (e) => {
+      if (e.target.closest('select')) return;
+      open[k] = !open[k];
+      save(); render();
+    });
+  });
 
   // Open MyApp in a full browser tab. Inside the VS Code webview the iframe
   // sandbox blocks window.open (returns null) — relay to the extension
@@ -522,7 +566,7 @@ body:not(.sim-mode) #divider2{display:none}
     const up = !!e.detail.up;
     // Reload on BOTH transitions: death swaps the placeholder in right away,
     // recovery replaces it without waiting out the placeholder's own backoff.
-    if (myappWasUp !== null && up !== myappWasUp && appId === 'myapp') {
+    if (myappWasUp !== null && up !== myappWasUp && open.myapp) {
       const f = document.getElementById('frame-myapp');
       try { f.contentWindow.location.reload(); }
       catch(err) { f.src = '/myapp/'; }
@@ -531,12 +575,19 @@ body:not(.sim-mode) #divider2{display:none}
   });
 
   function render(){
-    ctrlCol.classList.add('active');      // CTRL 전송 게이트 (Control 카드는 상시 표시)
-    appTabs.forEach(b => b.classList.toggle('active', b.dataset.app === appId));
+    ctrlCol.classList.add('active');      // CTRL 전송 게이트 (접혀 있어도 키보드 주행 유지)
+    document.getElementById('panel-control').classList.toggle('collapsed', !open.control);
+    SENSOR_SECS.forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('collapsed', !open[k]);
+    });
+    // Camera/LiDAR: collapsed = stream fully stopped (change-guarded in sensors.js)
+    if (typeof setCameraEnabled === 'function') setCameraEnabled(open.camera);
+    if (typeof setLidarEnabled === 'function') setLidarEnabled(open.lidar);
     APPS.forEach(x => {
-      const on = x.id === appId;
-      panels[x.id].classList.toggle('on', on);
-      // 표시 시 로드, 숨김 시 해제 (숨은 VNC 스트림 자원 회수 — 기존 프로파일 유지)
+      const on = !!open[x.id];
+      panels[x.id].classList.toggle('collapsed', !on);
+      // 펼침 시 로드, 접힘 시 해제 (숨은 VNC 스트림 자원 회수 — 기존 프로파일 유지)
       const f = frames[x.id];
       const src = f.getAttribute('src');
       if (on) { if (src !== x.path) f.src = x.path; }
@@ -608,6 +659,47 @@ body:not(.sim-mode) #divider2{display:none}
      card — so that card glows instead. Tracked via an activeElement poll
      (cross-origin safe): clicking anywhere in the parent document pulls
      focus off the iframe, which re-arms its shield. */
+  /* VSCode tab activation: clicks landing inside nested iframes (sim/myapp/
+     vnc) never reach VSCode's focus tracking, so the app.physicar editor tab
+     stays inactive. Report any interaction to the wrapper webview — the
+     extension reveals the tab with preserveFocus so the click target keeps
+     the keyboard (arrow-key driving is not interrupted). No-op in a plain
+     browser tab. */
+  let lastInteractSent = 0;
+  function notifyInteract(){
+    const now = Date.now();
+    if (now - lastInteractSent < 1000) return;
+    lastInteractSent = now;
+    try {
+      if (window.parent !== window) window.parent.postMessage({ type: 'physicar-interact' }, '*');
+    } catch(e){}
+  }
+  document.addEventListener('pointerdown', notifyInteract, true);
+
+  /* The reveal that activates the tab takes focus (VSCode ties activation to
+     focus). The wrapper punts it back into this page; if the interaction was
+     inside an iframe (sim view), restore it the rest of the way so arrow-key
+     driving continues uninterrupted. */
+  let pendingRefocus = null;
+  window.addEventListener('focus', () => {
+    if (pendingRefocus && Date.now() < pendingRefocus.until) {
+      const el = pendingRefocus.el;
+      pendingRefocus = null;
+      setTimeout(() => { try { el.focus(); } catch(e){} }, 0);
+    }
+  });
+
+  /* Arrow keys relayed by the wrapper webview (focus parked on its document —
+     VSCode's harness does that in several flows). Re-dispatch on this document
+     so the CONTROL key driver hears them no matter which layer holds focus. */
+  window.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type === 'physicar-key' &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(m.key)) {
+      document.dispatchEvent(new KeyboardEvent(m.kind === 'keyup' ? 'keyup' : 'keydown', { key: m.key }));
+    }
+  });
+
   let lastFocused = null;
   // Focus moved → synthesize keyup for the arrows. Without this a key held
   // across a focus change never delivers its real keyup to the CONTROL
@@ -626,7 +718,15 @@ body:not(.sim-mode) #divider2{display:none}
     const changed = key !== lastFocused;
     if (!force && !changed) return;
     lastFocused = key;
-    if (changed) releaseArrows();
+    if (changed) {
+      releaseArrows();
+      // Focus entered an iframe = the user clicked inside it (sim/myapp/vnc) —
+      // those clicks never bubble here, so this poll is where we learn of them
+      if (target) {
+        pendingRefocus = { el: target, until: Date.now() + 1500 };
+        notifyInteract();
+      }
+    }
     document.querySelectorAll('.stack-panel.focused').forEach(el => el.classList.remove('focused'));
     if (target) {
       const holder = target.closest('.stack-panel');
@@ -646,16 +746,7 @@ body:not(.sim-mode) #divider2{display:none}
     });
   });
 
-  // Card header strip also activates its card (control: the click itself
-  // already pulled focus off any iframe — just refresh immediately)
-  document.querySelectorAll('.stack-panel').forEach(p => {
-    p.querySelector('.sp-head').addEventListener('click', (e) => {
-      if (e.target.closest('.sp-actions') || e.target.closest('.app-tabs')) return;   // header controls
-      const f = p.querySelector('.sp-body iframe');
-      if (f) f.focus();
-      updateFocus(true);
-    });
-  });
+  // (All stack-panel headers are accordion toggles now — bound above.)
 
   /* Sim iframe keyboard passthrough: clicking the 3D view moves keyboard
      focus INTO the same-origin sim frame, where this document's CONTROL key
@@ -690,7 +781,8 @@ body:not(.sim-mode) #divider2{display:none}
   /* ── Sensors (inline) ── */
   ['cam-res', 'lidar-range'].forEach(id => {
     const v = localStorage.getItem(id);
-    if (v && $(id)) $(id).value = v;
+    // 'off' options were replaced by the accordion fold — ignore stale values
+    if (v && v !== 'off' && $(id)) $(id).value = v;
   });
   startStateStream();
   startLidarStream();
