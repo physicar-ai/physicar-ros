@@ -227,22 +227,30 @@ body:not(.sim-mode) #divider2{display:none}
 #sim-world-btn:active{filter:brightness(.92);box-shadow:none}
 
 /* World modal — same full-cover treatment as the sensor zoom modal */
-#world-modal .sensor-modal{width:min(440px,92vw)}
+#world-modal .sensor-modal{width:min(640px,92vw)}
 .wm-body{overflow-y:auto;flex:1;padding:4px 0;max-height:calc(95vh - 140px)}
 .wm-sec{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--fg3);padding:8px 14px 3px}
-.wm-row{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px}
-.wm-row:hover{background:var(--bg3)}
-.wm-row.active{color:#4ade80}
-.wm-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wm-idtag{color:var(--fg3);font-size:10px;font-family:monospace;flex-shrink:0}
-.wm-del{color:var(--fg3);padding:2px 4px;border-radius:4px;flex-shrink:0;line-height:1}
+.wm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:8px;padding:4px 14px 8px}
+.wm-card{border:1px solid var(--border);border-radius:8px;padding:7px;cursor:pointer;
+  display:flex;flex-direction:column;gap:3px;font-size:12px;background:var(--bg2)}
+.wm-card:hover{background:var(--bg3)}
+.wm-card.active{border-color:#4ade80}
+.wm-card.active .wm-name{color:#4ade80}
+.wm-thumb{width:100%;aspect-ratio:4/3;border-radius:5px;background:var(--bg3);object-fit:cover}
+.wm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.wm-sub{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg3);min-height:16px}
+.wm-id{font-family:monospace}
+.wm-copy{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
+  font-size:10px;padding:0 5px;cursor:pointer;line-height:15px;flex-shrink:0}
+.wm-copy:hover{border-color:var(--accent);color:var(--accent)}
+.wm-del{color:var(--fg3);padding:2px 4px;border-radius:4px;flex-shrink:0;line-height:1;margin-left:auto}
 .wm-del:hover{color:#f87171;background:rgba(248,113,113,.15)}
 .wm-confirm{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;color:#f87171}
 .wm-confirm button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
   border-radius:4px;padding:1px 8px;cursor:pointer;font-size:11px}
 .wm-confirm .wm-yes:hover{background:#7f1d1d;border-color:#f87171}
 .wm-confirm .wm-no:hover{background:var(--bg2)}
-.wm-empty{color:var(--fg3);font-size:11px;padding:2px 14px 8px}
+.wm-empty{color:var(--fg3);font-size:11px;padding:2px 0;grid-column:1/-1}
 .wm-foot{border-top:1px solid var(--border);padding:8px 14px;display:flex;flex-direction:column;gap:5px}
 #wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
 .wm-linkrow{display:flex;gap:6px}
@@ -460,9 +468,10 @@ body:not(.sim-mode) #divider2{display:none}
       <div id="wm-classroom"></div>
     </div>
     <div class="wm-foot">
+      <div class="wm-sec" style="padding:0 0 2px">INSTALL BY WORLD ID</div>
       <div class="wm-linkrow">
         <input id="wm-link" placeholder="World ID" autocomplete="off" spellcheck="false">
-        <button id="wm-link-go">Load</button>
+        <button id="wm-link-go">Install</button>
       </div>
       <div id="wm-status"></div>
     </div>
@@ -815,26 +824,66 @@ body:not(.sim-mode) #divider2{display:none}
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body) }).then(r => r.json());
 
+    function copyId(id, btnEl){
+      const done = (ok) => { btnEl.textContent = ok ? '\u2713' : '\u2715'; setTimeout(() => { btnEl.textContent = 'ID'; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText)
+        navigator.clipboard.writeText(id).then(() => done(true), () => done(false));
+      else done(false);
+    }
+    // 카드 공통부: 썸네일 + 이름 + (사이즈 · ID · 복사) 줄
+    function makeCard(display, isCurrent){
+      const card = document.createElement('div');
+      card.className = 'wm-card' + (isCurrent ? ' active' : '');
+      const img = document.createElement('img');
+      img.className = 'wm-thumb'; img.alt = ''; img.loading = 'lazy';
+      const name = document.createElement('div');
+      name.className = 'wm-name';
+      name.textContent = (isCurrent ? '\u2713 ' : '') + display;
+      name.title = display;
+      const sub = document.createElement('div');
+      sub.className = 'wm-sub';
+      card.appendChild(img); card.appendChild(name); card.appendChild(sub);
+      return { card, img, sub };
+    }
+    function subInfo(sub, size, worldId){
+      if (size && size.length === 2) {
+        const sz = document.createElement('span');
+        sz.className = 'wm-size';
+        sz.textContent = size[0] + '\u00d7' + size[1] + 'm';
+        sub.appendChild(sz);
+      }
+      if (worldId) {
+        const idEl = document.createElement('span');
+        idEl.className = 'wm-id';
+        idEl.textContent = worldId.slice(0, 8);
+        idEl.title = worldId;
+        sub.appendChild(idEl);
+        const cpy = document.createElement('button');
+        cpy.className = 'wm-copy'; cpy.textContent = 'ID';
+        cpy.title = 'Copy full world ID';
+        cpy.onclick = (e) => { e.stopPropagation(); copyId(worldId, cpy); };
+        sub.appendChild(cpy);
+      }
+    }
     function renderRows(){
       const official = document.getElementById('wm-official');
       const custom = document.getElementById('wm-custom');
       official.innerHTML = ''; custom.innerHTML = '';
+      official.className = 'wm-grid'; custom.className = 'wm-grid';
       worlds.forEach(w => {
         const isCurrent = w.name === current;
-        const row = document.createElement('div');
-        row.className = 'wm-row' + (isCurrent ? ' active' : '');
-        const name = document.createElement('span');
-        name.className = 'wm-name';
-        name.textContent = (isCurrent ? '✓ ' : '') + (w.display || w.name);
-        row.appendChild(name);
+        const { card, img, sub } = makeCard(w.display || w.name, isCurrent);
+        // 로컬 트랙 아이콘 먼저, 배포 월드는 CDN 썸네일이 오면 업그레이드
+        img.onerror = () => img.removeAttribute('src');
+        img.src = '/sim/track_iconography/' + w.name + '.png';
         if (w.world_id) {
-          const idTag = document.createElement('span');
-          idTag.className = 'wm-idtag';
-          idTag.textContent = w.world_id.slice(0, 8);
-          idTag.title = w.world_id;
-          row.appendChild(idTag);
+          cloudMeta(w.world_id).then(meta => {
+            const u = thumbFromMeta(w.world_id, meta);
+            if (u) img.src = u;
+          });
         }
-        row.onclick = () => {
+        subInfo(sub, w.size, w.world_id);
+        card.onclick = () => {
           if (isCurrent) return;
           // 배포 월드는 world_id 로, 내장 월드는 파일명으로 스위치
           switchWorld(w.world_id ? { world_id: w.world_id } : { world: w.file },
@@ -847,27 +896,27 @@ body:not(.sim-mode) #divider2{display:none}
           // Inline confirm — window.confirm is silently dropped in webviews
           del.onclick = (e) => {
             e.stopPropagation();
-            row.onclick = null; del.remove();
+            card.onclick = null; del.remove();
             const c = document.createElement('span');
             c.className = 'wm-confirm'; c.textContent = 'Delete?';
             const yes = document.createElement('button');
-            yes.className = 'wm-yes'; yes.textContent = '✓';
+            yes.className = 'wm-yes'; yes.textContent = '\u2713';
             yes.onclick = (e2) => { e2.stopPropagation(); doDelete(w.name); };
             const no = document.createElement('button');
-            no.className = 'wm-no'; no.textContent = '✕';
+            no.className = 'wm-no'; no.textContent = '\u2715';
             no.onclick = (e2) => { e2.stopPropagation(); renderRows(); };
             c.appendChild(yes); c.appendChild(no);
-            row.appendChild(c);
+            sub.appendChild(c);
           };
-          row.appendChild(del);
+          sub.appendChild(del);
         }
         const isCustom = w.official !== undefined ? !w.official : w.name.startsWith('custom_');
-        (isCustom ? custom : official).appendChild(row);
+        (isCustom ? custom : official).appendChild(card);
       });
       if (!custom.children.length) {
         const empty = document.createElement('div');
         empty.className = 'wm-empty';
-        empty.textContent = 'No custom worlds yet — import one below.';
+        empty.textContent = 'No custom worlds installed yet.';
         custom.appendChild(empty);
       }
     }
@@ -912,20 +961,45 @@ body:not(.sim-mode) #divider2{display:none}
     function apiTok(){ return (window.physicarSession && physicarSession.token()) || null; }
     let installedIds = {};   // world_id → 로컬 world 파일 (목록 대조용)
 
+    const CDN = 'https://worlds.physicar.ai';
+    const metaCache = {};
+    function cloudMeta(id){
+      if (!metaCache[id]) {
+        metaCache[id] = fetch(CDN + '/worlds/' + id + '/meta.json')
+          .then(r => r.ok ? r.json() : null).catch(() => null);
+      }
+      return metaCache[id];
+    }
+    // meta.thumb(표시 전용) 우선, 구 배포는 track_iconography 폴백
+    function thumbFromMeta(id, meta){
+      if (!meta || !meta.rev) return null;
+      const files = (meta.files || []).filter(p => typeof p === 'string');
+      const pick = (typeof meta.thumb === 'string' && meta.thumb)
+        || files.find(p => p.indexOf('track_iconography/') === 0);
+      return pick ? CDN + '/worlds/' + id + '/' + meta.rev + '/' + pick : null;
+    }
     function renderCloud(listEl, secEl, list){
       listEl.innerHTML = '';
+      listEl.className = 'wm-grid';
       secEl.style.display = list.length ? '' : 'none';
       list.forEach(w => {
-        const row = document.createElement('div');
         const local = installedIds[w.world_id];
         const isCurrent = local && local.replace(/\.world$/, '') === current;
-        row.className = 'wm-row' + (isCurrent ? ' active' : '');
-        const name = document.createElement('span');
-        name.className = 'wm-name';
-        name.textContent = (isCurrent ? '✓ ' : '') + w.name;
-        row.appendChild(name);
-        row.onclick = () => { if (!isCurrent) installWorld(w.world_id, w.name); };
-        listEl.appendChild(row);
+        const { card, img, sub } = makeCard(w.name, isCurrent);
+        cloudMeta(w.world_id).then(meta => {
+          const u = thumbFromMeta(w.world_id, meta);
+          if (u) img.src = u;
+          if (meta && meta.size && meta.size.length === 2 && !sub.querySelector('.wm-size')) {
+            const sz = document.createElement('span');
+            sz.className = 'wm-size';
+            sz.textContent = meta.size[0] + '\u00d7' + meta.size[1] + 'm';
+            sub.insertBefore(sz, sub.firstChild);
+          }
+        });
+        img.onerror = () => img.removeAttribute('src');
+        subInfo(sub, null, w.world_id);
+        card.onclick = () => { if (!isCurrent) installWorld(w.world_id, w.name); };
+        listEl.appendChild(card);
       });
     }
 
