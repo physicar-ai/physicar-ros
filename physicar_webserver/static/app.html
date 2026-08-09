@@ -1031,6 +1031,15 @@ body:not(.sim-mode) #divider2{display:none}
     });
 
     function open(){ setSt(''); refresh(true).then(refreshCloud); modal.style.display = 'flex'; }
+
+    // 공유 링크 직행 (sim.physicar.ai/app?world=<id>) — 모달 열고 자동 설치·전환
+    (function autoInstallFromQuery(){
+      const m = location.search.match(/[?&]world=([0-9a-f]{32})(&|$)/);
+      if (!m) return;
+      history.replaceState(null, '', location.pathname + location.hash);
+      open();
+      installWorld(m[1], m[1].slice(0, 8) + '…');
+    })();
     function close(){ modal.style.display = 'none'; fileIn.value = ''; }
     btn.addEventListener('click', open);
     document.getElementById('wm-close').addEventListener('click', close);
