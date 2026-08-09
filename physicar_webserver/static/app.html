@@ -1055,7 +1055,18 @@ body:not(.sim-mode) #divider2{display:none}
     });
 
     refresh();
-    setInterval(() => { if (!document.hidden) refresh(); }, 10000);
+    // 월드 상태는 SSE(/sim/api/events) 푸시 — 10초 폴링 제거 (게이트웨이 Worker
+    // 경유 요청이라 폴링은 유저 규모에서 비용 직격). 목록 자체는 모달 열 때 갱신.
+    (() => {
+      let es;
+      try { es = new EventSource('/sim/api/events'); } catch (e) { return; }
+      let last = '';
+      es.onmessage = (ev) => {
+        let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+        const key = (d.current || '') + '|' + (d.switching ? 1 : 0);
+        if (key !== last) { last = key; if (!document.hidden) refresh(); }
+      };
+    })();
   }
 
   /* ── Mode: 시뮬레이터 컬럼은 sim 모드에서만 열린다 ── */
