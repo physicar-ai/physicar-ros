@@ -236,14 +236,17 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-card:hover{background:var(--bg3)}
 .wm-card.active{border-color:#4ade80}
 .wm-card.active .wm-name{color:#4ade80}
-.wm-thumb{width:100%;aspect-ratio:4/3;border-radius:5px;background:var(--bg3);object-fit:cover}
+.wm-thumbbox{width:100%;aspect-ratio:4/3;border-radius:5px;overflow:hidden;
+  background:linear-gradient(160deg,#333c4d,#232937);display:flex;align-items:center;justify-content:center}
+.wm-thumb{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
 .wm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .wm-sub{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg3);min-height:16px}
 .wm-id{font-family:monospace}
 .wm-copy{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
-  font-size:10px;padding:0 5px;cursor:pointer;line-height:15px;flex-shrink:0}
+  font-size:10px;padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;flex-shrink:0}
 .wm-copy:hover{border-color:var(--accent);color:var(--accent)}
-.wm-del{color:var(--fg3);padding:2px 4px;border-radius:4px;flex-shrink:0;line-height:1;margin-left:auto}
+.wm-del{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
+  padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;flex-shrink:0;margin-left:auto}
 .wm-del:hover{color:#f87171;background:rgba(248,113,113,.15)}
 .wm-confirm{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;color:#f87171}
 .wm-confirm button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
@@ -468,10 +471,10 @@ body:not(.sim-mode) #divider2{display:none}
       <div id="wm-classroom"></div>
     </div>
     <div class="wm-foot">
-      <div class="wm-sec" style="padding:0 0 2px">INSTALL BY WORLD ID</div>
+      <div class="wm-sec" style="padding:0 0 2px">IMPORT BY WORLD ID</div>
       <div class="wm-linkrow">
         <input id="wm-link" placeholder="World ID" autocomplete="off" spellcheck="false">
-        <button id="wm-link-go">Install</button>
+        <button id="wm-link-go">Import</button>
       </div>
       <div id="wm-status"></div>
     </div>
@@ -824,8 +827,16 @@ body:not(.sim-mode) #divider2{display:none}
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body) }).then(r => r.json());
 
+    const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+      + '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+    const COPY_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<rect x="9" y="9" width="13" height="13" rx="2"/>'
+      + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
     function copyId(id, btnEl){
-      const done = (ok) => { btnEl.textContent = ok ? '\u2713' : '\u2715'; setTimeout(() => { btnEl.textContent = 'ID'; }, 1200); };
+      const done = (ok) => { btnEl.textContent = ok ? '\u2713' : '\u2715'; setTimeout(() => { btnEl.innerHTML = COPY_SVG; }, 1200); };
       if (navigator.clipboard && navigator.clipboard.writeText)
         navigator.clipboard.writeText(id).then(() => done(true), () => done(false));
       else done(false);
@@ -834,15 +845,18 @@ body:not(.sim-mode) #divider2{display:none}
     function makeCard(display, isCurrent){
       const card = document.createElement('div');
       card.className = 'wm-card' + (isCurrent ? ' active' : '');
+      const box = document.createElement('div');
+      box.className = 'wm-thumbbox';
       const img = document.createElement('img');
       img.className = 'wm-thumb'; img.alt = ''; img.loading = 'lazy';
+      box.appendChild(img);
       const name = document.createElement('div');
       name.className = 'wm-name';
       name.textContent = (isCurrent ? '\u2713 ' : '') + display;
       name.title = display;
       const sub = document.createElement('div');
       sub.className = 'wm-sub';
-      card.appendChild(img); card.appendChild(name); card.appendChild(sub);
+      card.appendChild(box); card.appendChild(name); card.appendChild(sub);
       return { card, img, sub };
     }
     function subInfo(sub, size, worldId){
@@ -855,12 +869,12 @@ body:not(.sim-mode) #divider2{display:none}
       if (worldId) {
         const idEl = document.createElement('span');
         idEl.className = 'wm-id';
-        idEl.textContent = worldId.slice(0, 8);
+        idEl.textContent = worldId.slice(0, 8) + '\u2026';
         idEl.title = worldId;
         sub.appendChild(idEl);
         const cpy = document.createElement('button');
-        cpy.className = 'wm-copy'; cpy.textContent = 'ID';
-        cpy.title = 'Copy full world ID';
+        cpy.className = 'wm-copy'; cpy.innerHTML = COPY_SVG;
+        cpy.title = 'Copy world ID';
         cpy.onclick = (e) => { e.stopPropagation(); copyId(worldId, cpy); };
         sub.appendChild(cpy);
       }
@@ -874,12 +888,12 @@ body:not(.sim-mode) #divider2{display:none}
         const isCurrent = w.name === current;
         const { card, img, sub } = makeCard(w.display || w.name, isCurrent);
         // 로컬 트랙 아이콘 먼저, 배포 월드는 CDN 썸네일이 오면 업그레이드
-        img.onerror = () => img.removeAttribute('src');
+        img.onerror = () => { img.style.display = 'none'; };
         img.src = '/sim/track_iconography/' + w.name + '.png';
         if (w.world_id) {
           cloudMeta(w.world_id).then(meta => {
             const u = thumbFromMeta(w.world_id, meta);
-            if (u) img.src = u;
+            if (u) { img.style.display = ''; img.src = u; }
           });
         }
         subInfo(sub, w.size, w.world_id);
@@ -890,8 +904,8 @@ body:not(.sim-mode) #divider2{display:none}
                       w.display || w.name);
         };
         if (w.deletable) {
-          const del = document.createElement('span');
-          del.className = 'wm-del'; del.innerHTML = '&#x1f5d1;';
+          const del = document.createElement('button');
+          del.className = 'wm-del'; del.innerHTML = TRASH_SVG;
           del.title = 'Delete ' + w.name;
           // Inline confirm — window.confirm is silently dropped in webviews
           del.onclick = (e) => {
@@ -988,7 +1002,7 @@ body:not(.sim-mode) #divider2{display:none}
         const { card, img, sub } = makeCard(w.name, isCurrent);
         cloudMeta(w.world_id).then(meta => {
           const u = thumbFromMeta(w.world_id, meta);
-          if (u) img.src = u;
+          if (u) { img.style.display = ''; img.src = u; }
           if (meta && meta.size && meta.size.length === 2 && !sub.querySelector('.wm-size')) {
             const sz = document.createElement('span');
             sz.className = 'wm-size';
@@ -996,7 +1010,7 @@ body:not(.sim-mode) #divider2{display:none}
             sub.insertBefore(sz, sub.firstChild);
           }
         });
-        img.onerror = () => img.removeAttribute('src');
+        img.onerror = () => { img.style.display = 'none'; };
         subInfo(sub, null, w.world_id);
         card.onclick = () => { if (!isCurrent) installWorld(w.world_id, w.name); };
         listEl.appendChild(card);
