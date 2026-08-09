@@ -867,9 +867,10 @@ body:not(.sim-mode) #divider2{display:none}
         sub.appendChild(sz);
       }
       if (worldId) {
+        const isHex = /^[0-9a-f]{32}$/.test(worldId);
         const idEl = document.createElement('span');
         idEl.className = 'wm-id';
-        idEl.textContent = worldId.slice(0, 8) + '\u2026';
+        idEl.textContent = isHex ? worldId.slice(0, 8) + '\u2026' : worldId;
         idEl.title = worldId;
         sub.appendChild(idEl);
         const cpy = document.createElement('button');
@@ -896,7 +897,8 @@ body:not(.sim-mode) #divider2{display:none}
             if (u) { img.style.display = ''; img.src = u; }
           });
         }
-        subInfo(sub, w.size, w.world_id);
+        // 공식 월드는 내부명(physicar_base 등)이 ID 역할 — WORLDS 목록 등에 그대로 쓰는 값
+        subInfo(sub, w.size, w.world_id || w.name);
         card.onclick = () => {
           if (isCurrent) return;
           // 배포 월드는 world_id 로, 내장 월드는 파일명으로 스위치
