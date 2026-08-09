@@ -234,6 +234,7 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-row:hover{background:var(--bg3)}
 .wm-row.active{color:#4ade80}
 .wm-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wm-idtag{color:var(--fg3);font-size:10px;font-family:monospace;flex-shrink:0}
 .wm-del{color:var(--fg3);padding:2px 4px;border-radius:4px;flex-shrink:0;line-height:1}
 .wm-del:hover{color:#f87171;background:rgba(248,113,113,.15)}
 .wm-confirm{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;color:#f87171}
@@ -243,9 +244,6 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-confirm .wm-no:hover{background:var(--bg2)}
 .wm-empty{color:var(--fg3);font-size:11px;padding:2px 14px 8px}
 .wm-foot{border-top:1px solid var(--border);padding:8px 14px;display:flex;flex-direction:column;gap:5px}
-#wm-import{background:var(--accent);color:#fff;border:none;border-radius:6px;
-  padding:7px;font-size:12px;font-weight:600;cursor:pointer}
-#wm-import:disabled{opacity:.5;cursor:wait}
 #wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
 .wm-linkrow{display:flex;gap:6px}
 .wm-linkrow input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);
@@ -255,11 +253,6 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-linkrow button:hover{border-color:var(--accent);color:var(--accent)}
 #wm-status.error{color:#f87171}
 #wm-status.success{color:#4ade80}
-#wm-status .wm-ow{margin-left:6px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);
-  background:var(--bg3);color:var(--fg);font-size:11px;cursor:pointer}
-#wm-status .wm-ow:hover{border-color:var(--fg3)}
-#wm-status .wm-ow.danger{background:#7f1d1d;border-color:#b91c1c}
-#wm-status .wm-ow.danger:hover{background:#991b1b}
 
 /* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
    nowrap by design — the pads shrink with BOTH the card height and the column
@@ -451,7 +444,7 @@ body:not(.sim-mode) #divider2{display:none}
   <div class="sim-body"><iframe id="frame-sim" title="Simulator" allow="autoplay"></iframe></div>
 </div>
 
-<!-- World modal: official/custom sections, inline delete confirm, import -->
+<!-- World modal: official/custom sections, inline delete confirm, cloud install -->
 <div class="sensor-modal-overlay" id="world-modal" style="display:none">
   <div class="sensor-modal">
     <div class="sensor-modal-header"><span>Worlds</span>
@@ -471,9 +464,7 @@ body:not(.sim-mode) #divider2{display:none}
         <input id="wm-link" placeholder="Paste a shared world link or ID" autocomplete="off" spellcheck="false">
         <button id="wm-link-go">Load</button>
       </div>
-      <button id="wm-import">&#x2913; Import World (.tar.gz)</button>
       <div id="wm-status"></div>
-      <input type="file" id="wm-file" accept=".tar.gz,.gz" style="display:none">
     </div>
   </div>
 </div>
@@ -817,8 +808,6 @@ body:not(.sim-mode) #divider2{display:none}
     const btn = document.getElementById('sim-world-btn');
     const modal = document.getElementById('world-modal');
     const st = document.getElementById('wm-status');
-    const impBtn = document.getElementById('wm-import');
-    const fileIn = document.getElementById('wm-file');
     const setSt = (m, c) => { st.textContent = m || ''; st.className = c || ''; };
     let worlds = [], current = null;
 
@@ -838,7 +827,19 @@ body:not(.sim-mode) #divider2{display:none}
         name.className = 'wm-name';
         name.textContent = (isCurrent ? '✓ ' : '') + (w.display || w.name);
         row.appendChild(name);
-        row.onclick = () => { if (!isCurrent) switchWorld(w.file); };
+        if (w.world_id) {
+          const idTag = document.createElement('span');
+          idTag.className = 'wm-idtag';
+          idTag.textContent = w.world_id.slice(0, 8);
+          idTag.title = w.world_id;
+          row.appendChild(idTag);
+        }
+        row.onclick = () => {
+          if (isCurrent) return;
+          // 배포 월드는 world_id 로, 내장 월드는 파일명으로 스위치
+          switchWorld(w.world_id ? { world_id: w.world_id } : { world: w.file },
+                      w.display || w.name);
+        };
         if (w.deletable) {
           const del = document.createElement('span');
           del.className = 'wm-del'; del.innerHTML = '&#x1f5d1;';
@@ -860,7 +861,8 @@ body:not(.sim-mode) #divider2{display:none}
           };
           row.appendChild(del);
         }
-        (w.name.startsWith('custom_') ? custom : official).appendChild(row);
+        const isCustom = w.official !== undefined ? !w.official : w.name.startsWith('custom_');
+        (isCustom ? custom : official).appendChild(row);
       });
       if (!custom.children.length) {
         const empty = document.createElement('div');
@@ -877,17 +879,19 @@ body:not(.sim-mode) #divider2{display:none}
       try {
         const d = await (await fetch('/sim/api/worlds')).json();
         worlds = d.worlds; current = d.current;
-        btn.textContent = current || '…';
+        const cur = worlds.find(w => w.name === current);
+        btn.textContent = (cur && (cur.display || cur.name)) || current || '…';
         renderRows();
       } catch(e) {}
     }
 
-    function switchWorld(worldFile){
-      const target = worldFile.replace(/\.world$/, '');
-      btn.textContent = target; current = target;
+    function switchWorld(sel, label){
+      const target = String(sel.world || '').replace(/\.world$/, '');
+      btn.textContent = label || target;
+      if (target) current = target;
       close();
       // The embedded /sim viewer follows the server switch via SSE — no reload.
-      post('/switch', { world: worldFile }).catch(() => {});
+      post('/switch', sel).catch(() => {});
       setTimeout(() => refresh(true), 5000);
     }
 
@@ -899,72 +903,6 @@ body:not(.sim-mode) #divider2{display:none}
         setSt('Deleted ' + name + '.', 'success');
       } catch(e) { setSt(e.message, 'error'); }
       refresh(true);
-    }
-
-    async function upload(file){
-      if (!file) return;
-      if (!file.name.endsWith('.tar.gz')) { setSt('File must be .tar.gz', 'error'); return; }
-      impBtn.disabled = true;
-      let uploadId = null;
-      try {
-        setSt('Uploading ' + file.name + '...');
-        const init = await post('/upload/init', { filename: file.name, size: file.size });
-        if (!init.ok) throw new Error(init.error || 'Init failed');
-        uploadId = init.upload_id;
-        const CH = 10 * 1024 * 1024, total = Math.ceil(file.size / CH);
-        let done = 0;
-        await Promise.all(Array.from({ length: total }, async (_, i) => {
-          const buf = await file.slice(i * CH, Math.min((i + 1) * CH, file.size)).arrayBuffer();
-          let bin = '';
-          new Uint8Array(buf).forEach(b => { bin += String.fromCharCode(b); });
-          const d = await post('/upload/chunk', { upload_id: uploadId, chunk_index: i, data: btoa(bin) });
-          if (!d.ok) throw new Error(d.error || 'Chunk upload failed');
-          done++; setSt('Uploading ' + file.name + '... ' + Math.round(done / total * 100) + '%');
-        }));
-        setSt('Processing...');
-        const res = await post('/upload/complete', { upload_id: uploadId });
-        if (!res.ok) {
-          if (res.error === 'exists') {
-            // Server kept the session — confirm before replacing, no re-upload
-            owConfirm(res.world, uploadId);
-            uploadId = null;   // keep the catch from cancelling the kept session
-            return;
-          }
-          throw new Error(res.error || 'Upload failed');
-        }
-        setSt('World "' + res.world + '" uploaded!', 'success');
-        await refresh(true);
-        setTimeout(() => switchWorld(res.world + '.world'), 1200);
-      } catch(e) {
-        setSt('Upload failed: ' + e.message, 'error');
-        if (uploadId) post('/upload/cancel', { upload_id: uploadId }).catch(() => {});
-      } finally { impBtn.disabled = false; }
-    }
-
-    // Inline overwrite confirm (native confirm() is dropped in webviews)
-    function owConfirm(world, uploadId){
-      st.className = ''; st.textContent = '';
-      const span = document.createElement('span');
-      span.textContent = 'World "' + world + '" already exists. Replace it?';
-      const rep = document.createElement('button');
-      rep.className = 'wm-ow danger'; rep.textContent = 'Replace';
-      const can = document.createElement('button');
-      can.className = 'wm-ow'; can.textContent = 'Cancel';
-      st.append(span, rep, can);
-      rep.onclick = async () => {
-        setSt('Processing...');
-        try {
-          const res = await post('/upload/complete', { upload_id: uploadId, overwrite: true });
-          if (!res.ok) throw new Error(res.error || 'Upload failed');
-          setSt('World "' + res.world + '" replaced!', 'success');
-          await refresh(true);
-          setTimeout(() => switchWorld(res.world + '.world'), 1200);
-        } catch(e) { setSt('Upload failed: ' + e.message, 'error'); }
-      };
-      can.onclick = () => {
-        post('/upload/cancel', { upload_id: uploadId }).catch(() => {});
-        setSt('Import cancelled.');
-      };
     }
 
     /* ── Published worlds (worlds.physicar.ai) — my/classroom 목록 + 원클릭 설치 ──
@@ -1012,7 +950,7 @@ body:not(.sim-mode) #divider2{display:none}
         if (!d.ok) throw new Error(d.error || 'Install failed');
         setSt((d.cached ? 'Ready: ' : 'Installed: ') + (d.name || nm), 'success');
         await refresh(true);
-        switchWorld(d.world);
+        switchWorld({ world: d.world }, d.name || nm);
       } catch(e) { setSt('Install failed: ' + e.message, 'error'); }
     }
 
@@ -1040,18 +978,12 @@ body:not(.sim-mode) #divider2{display:none}
       open();
       installWorld(m[1], m[1].slice(0, 8) + '…');
     })();
-    function close(){ modal.style.display = 'none'; fileIn.value = ''; }
+    function close(){ modal.style.display = 'none'; }
     btn.addEventListener('click', open);
     document.getElementById('wm-close').addEventListener('click', close);
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && modal.style.display !== 'none') close();
-    });
-    impBtn.addEventListener('click', () => fileIn.click());
-    fileIn.addEventListener('change', () => {
-      const f = fileIn.files[0];
-      fileIn.value = '';   // same file re-selectable after a cancel
-      upload(f);
     });
 
     refresh();
