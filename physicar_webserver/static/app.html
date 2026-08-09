@@ -1114,11 +1114,12 @@ body:not(.sim-mode) #divider2{display:none}
       let es;
       try { es = new EventSource('/sim/api/events'); } catch (e) { return; }
       let last = '';
-      es.onmessage = (ev) => {
+      // SSE 프레임은 이름표 있는 이벤트(event: state / run / ...) — state 만 구독
+      es.addEventListener('state', (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
         const key = (d.current || '') + '|' + (d.switching ? 1 : 0);
         if (key !== last) { last = key; if (!document.hidden) refresh(); }
-      };
+      });
     })();
   }
 
