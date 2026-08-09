@@ -461,7 +461,7 @@ body:not(.sim-mode) #divider2{display:none}
     </div>
     <div class="wm-foot">
       <div class="wm-linkrow">
-        <input id="wm-link" placeholder="Paste a shared world link or ID" autocomplete="off" spellcheck="false">
+        <input id="wm-link" placeholder="World ID" autocomplete="off" spellcheck="false">
         <button id="wm-link-go">Load</button>
       </div>
       <div id="wm-status"></div>
@@ -957,10 +957,10 @@ body:not(.sim-mode) #divider2{display:none}
     const linkIn = document.getElementById('wm-link');
     const linkGo = document.getElementById('wm-link-go');
     function loadFromLink(){
-      const m = (linkIn.value || '').match(/([0-9a-f]{32})/);
-      if (!m) { setSt('Paste a shared world link (or 32-char ID).', 'error'); return; }
+      const m = (linkIn.value || '').trim().match(/^[0-9a-f]{32}$/);
+      if (!m) { setSt('Enter a valid world ID.', 'error'); return; }
       linkIn.value = '';
-      installWorld(m[1], m[1].slice(0, 8) + '…');
+      installWorld(m[0], m[0].slice(0, 8) + '…');
     }
     linkGo.addEventListener('click', loadFromLink);
     linkIn.addEventListener('keydown', (e) => {
