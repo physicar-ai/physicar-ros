@@ -394,6 +394,17 @@ _speed_gen = 0
 _speed_tasks: set = set()   # 홀드/미러 task 강참조 (GC 방지)
 _KEEPALIVE_PERIOD = 0.2     # 5Hz — cmd_timeout(1.0s)보다 충분히 촘촘히
 
+# WS dead-man grace: a tunnel/proxy blip closes a control stream even though
+# the browser is alive and resumes commands within ~0.4 s (stream reconnect or
+# the POST fallback). Zeroing at the instant of close made every blip snap the
+# steering straight mid-drive — the "periodic left-right twitch" (the camera/
+# lidar streams freezing at the same moment are the same tunnel blip). The
+# zero is therefore deferred briefly and cancelled when any newer command for
+# that axis arrives; a genuinely dead client still stops _DEADMAN_GRACE later
+# (the driver watchdog remains the final backstop).
+_DEADMAN_GRACE = 0.7
+_drive_gen = {"speed": 0, "steering": 0}
+
 
 def _bump_speed_gen() -> int:
     global _speed_gen
@@ -457,6 +468,7 @@ async def set_speed(request: SpeedRequest):
         raise HTTPException(503, "ROS bridge not ready")
 
     gen = _bump_speed_gen()
+    _drive_gen["speed"] += 1
     success = bridge.publish_speed(request.value)
 
     sm = get_state_manager()
@@ -510,17 +522,30 @@ def _make_control_stream(path: str, field: str, publish_name: str, zero_on_close
                     continue
                 if field == "speed":
                     _bump_speed_gen()   # 진행 중 duration 홀드 supersede
+                _drive_gen[field] += 1
                 publish(value)
                 sm.update_cmd_state(**{field: value})
                 sent = True
         except Exception:
             pass
         finally:
-            if zero_on_close and sent and bridge.is_ready:
-                if field == "speed":
-                    _bump_speed_gen()   # 데드맨 0이 최종 상태 — 홀드가 덮어쓰지 못하게
-                publish(0.0)
-                sm.update_cmd_state(**{field: 0.0})
+            if zero_on_close and sent:
+                gen = _drive_gen[field]
+
+                async def _deadman_zero():
+                    await asyncio.sleep(_DEADMAN_GRACE)
+                    if _drive_gen[field] != gen:
+                        return   # newer command bridged the blip — no stop
+                    if field == "speed":
+                        _bump_speed_gen()   # 데드맨 0이 최종 상태 — 홀드가 덮어쓰지 못하게
+                    b = get_ros_bridge()
+                    if b.is_ready:
+                        getattr(b, publish_name)(0.0)
+                        get_state_manager().update_cmd_state(**{field: 0.0})
+                        print(f"[deadman] {field} zeroed {_DEADMAN_GRACE}s after stream close",
+                              flush=True)
+
+                _track_task(asyncio.create_task(_deadman_zero()))
     router.add_api_websocket_route(path, _stream)
 
 
@@ -547,11 +572,12 @@ async def set_steering(request: SteeringRequest):
     if not bridge.is_ready:
         raise HTTPException(503, "ROS bridge not ready")
     
+    _drive_gen["steering"] += 1
     success = bridge.publish_steering(request.value)
-    
+
     sm = get_state_manager()
     sm.update_cmd_state(steering=request.value)
-    
+
     return ControlResponse(success=success, value=request.value)
 
 
