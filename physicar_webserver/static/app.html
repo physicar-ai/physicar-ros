@@ -248,11 +248,15 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-del{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
   padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;flex-shrink:0;margin-left:auto}
 .wm-del:hover{color:#f87171;background:rgba(248,113,113,.15)}
-.wm-confirm{display:flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;color:#f87171}
-.wm-confirm button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
-  border-radius:4px;padding:1px 8px;cursor:pointer;font-size:11px}
-.wm-confirm .wm-yes:hover{background:#7f1d1d;border-color:#f87171}
-.wm-confirm .wm-no:hover{background:var(--bg2)}
+.wm-card.wm-confirming{justify-content:center;cursor:default}
+.wm-cfm-q{font-size:11px;color:var(--fg2);text-align:center;line-height:1.5;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.wm-cfm-del{border:none;background:#b91c1c;color:#fff;border-radius:5px;padding:5px 0;
+  cursor:pointer;font-size:12px;font-weight:600;width:100%}
+.wm-cfm-del:hover{background:#991b1b}
+.wm-cfm-no{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:5px;
+  padding:4px 0;cursor:pointer;font-size:12px;width:100%}
+.wm-cfm-no:hover{background:var(--bg2)}
 .wm-empty{color:var(--fg3);font-size:11px;padding:2px 0;grid-column:1/-1}
 .wm-foot{border-top:1px solid var(--border);padding:8px 14px;display:flex;flex-direction:column;gap:5px}
 #wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
@@ -908,21 +912,23 @@ body:not(.sim-mode) #divider2{display:none}
         if (w.deletable) {
           const del = document.createElement('button');
           del.className = 'wm-del'; del.innerHTML = TRASH_SVG;
-          del.title = 'Delete ' + w.name;
-          // Inline confirm — window.confirm is silently dropped in webviews
+          del.title = 'Delete ' + (w.display || w.name);
+          // 확인은 카드 전체를 확인 상태로 전환 — window.confirm 은 웹뷰에서 무시됨
           del.onclick = (e) => {
             e.stopPropagation();
-            card.onclick = null; del.remove();
-            const c = document.createElement('span');
-            c.className = 'wm-confirm'; c.textContent = 'Delete?';
+            card.onclick = null;
+            card.classList.add('wm-confirming');
+            card.innerHTML = '';
+            const q = document.createElement('div');
+            q.className = 'wm-cfm-q';
+            q.textContent = 'Delete "' + (w.display || w.name) + '"?';
             const yes = document.createElement('button');
-            yes.className = 'wm-yes'; yes.textContent = '\u2713';
+            yes.className = 'wm-cfm-del'; yes.textContent = 'Delete';
             yes.onclick = (e2) => { e2.stopPropagation(); doDelete(w.name); };
             const no = document.createElement('button');
-            no.className = 'wm-no'; no.textContent = '\u2715';
+            no.className = 'wm-cfm-no'; no.textContent = 'Cancel';
             no.onclick = (e2) => { e2.stopPropagation(); renderRows(); };
-            c.appendChild(yes); c.appendChild(no);
-            sub.appendChild(c);
+            card.append(q, yes, no);
           };
           sub.appendChild(del);
         }
@@ -940,7 +946,7 @@ body:not(.sim-mode) #divider2{display:none}
     async function refresh(force){
       // The periodic poll must not wipe an in-progress inline delete confirm;
       // explicit refreshes (open/delete/switch) always re-render.
-      if (!force && modal.style.display !== 'none' && modal.querySelector('.wm-confirm')) return;
+      if (!force && modal.style.display !== 'none' && modal.querySelector('.wm-confirming')) return;
       try {
         const d = await (await fetch('/sim/api/worlds')).json();
         worlds = d.worlds; current = d.current;
