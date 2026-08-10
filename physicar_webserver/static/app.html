@@ -240,8 +240,13 @@ body:not(.sim-mode) #divider2{display:none}
   background:linear-gradient(160deg,#333c4d,#232937);display:flex;align-items:center;justify-content:center}
 .wm-thumb{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
 .wm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.wm-sub{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg3);min-height:16px}
-.wm-id{font-family:monospace}
+/* Two-line sub: size on its own line, then id + copy + delete. flex-wrap +
+   the size span's full flex-basis force the break, so the trash button can
+   never be pushed out past the card edge. */
+.wm-sub{display:flex;align-items:center;gap:3px 5px;font-size:10px;color:var(--fg3);
+  min-height:16px;flex-wrap:wrap}
+.wm-size{flex-basis:100%}
+.wm-id{font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .wm-copy{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
   font-size:10px;padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;flex-shrink:0}
 .wm-copy:hover{border-color:var(--accent);color:var(--accent)}
@@ -272,6 +277,11 @@ body:not(.sim-mode) #divider2{display:none}
   border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;
   margin-right:6px;vertical-align:-1px;animation:wm-spin 0.8s linear infinite}
 @keyframes wm-spin{to{transform:rotate(360deg)}}
+/* Install in progress: freeze every other world action (card switch/install,
+   delete, import) — only the header close button stays live */
+#world-modal.wm-busy .wm-body{pointer-events:none;opacity:.55}
+#world-modal.wm-busy .wm-linkrow input,
+#world-modal.wm-busy .wm-linkrow button{opacity:.5}
 
 /* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
    nowrap by design — the pads shrink with BOTH the card height and the column
@@ -809,6 +819,21 @@ body:not(.sim-mode) #divider2{display:none}
      are deliberately NOT forwarded — focused there, the keyboard belongs to
      the student's app. */
   const simFrame = document.getElementById('frame-sim');
+
+  /* Evaluation terminal relay: the sim page asks the extension (via the
+     wrapper) to run the eval command in a REAL VSCode terminal, and the
+     extension answers with ack/exit events. Up: sim iframe → wrapper.
+     Down: wrapper → sim iframe. No-op in a plain browser tab. */
+  window.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (!m.type || String(m.type).indexOf('physicar-eval-') !== 0) return;
+    if (e.source === simFrame.contentWindow) {
+      try { if (window.parent !== window) window.parent.postMessage(m, '*'); } catch (err) {}
+    } else if (window.parent !== window && e.source === window.parent) {
+      try { simFrame.contentWindow.postMessage(m, '*'); } catch (err) {}
+    }
+  });
+
   simFrame.addEventListener('load', () => {
     let doc = null;
     try { doc = simFrame.contentDocument; } catch (e) { return; }   // cross-origin guard
@@ -816,6 +841,17 @@ body:not(.sim-mode) #divider2{display:none}
     ['keydown', 'keyup'].forEach(type => {
       doc.addEventListener(type, (e) => {
         if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+        // Typing in a sim-page form field (evaluation card 등): arrows belong
+        // to the text cursor there, not to driving — don't hijack keydowns.
+        // Keyups are still mirrored (without preventDefault) so a key held
+        // while clicking into the field can't stay latched in the driver.
+        const t = e.target && e.target.tagName;
+        if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') {
+          if (type === 'keyup') {
+            document.dispatchEvent(new KeyboardEvent('keyup', { key: e.key, code: e.code }));
+          }
+          return;
+        }
         e.preventDefault(); e.stopPropagation();
         document.dispatchEvent(new KeyboardEvent(type, { key: e.key, code: e.code }));
       }, true);
@@ -986,6 +1022,7 @@ body:not(.sim-mode) #divider2{display:none}
     }
 
     function switchWorld(sel, label){
+      if (installing) return;
       const target = String(sel.world || '').replace(/\.world$/, '');
       btn.textContent = label || target;
       if (target) current = target;
@@ -996,6 +1033,7 @@ body:not(.sim-mode) #divider2{display:none}
     }
 
     async function doDelete(name){
+      if (installing) return;
       setSt('Deleting ' + name + '...');
       try {
         const d = await (await fetch('/sim/api/worlds/' + name, { method: 'DELETE' })).json();
@@ -1068,20 +1106,38 @@ body:not(.sim-mode) #divider2{display:none}
       renderCloud(document.getElementById('wm-classroom'), clsSec, cls.worlds || []);
     }
 
+    // Install lock: while a server-side install runs, every other modal
+    // action (second import, card switch/install, delete) is frozen — the
+    // CSS class blocks pointer paths, the flag blocks keyboard/programmatic
+    // ones. Only the close button stays usable.
+    let installing = false;
+    function setInstalling(on){
+      installing = on;
+      modal.classList.toggle('wm-busy', on);
+      linkIn.disabled = on;
+      linkGo.disabled = on;
+    }
+
     async function installWorld(id, nm){
+      if (installing) return;
+      setInstalling(true);
       setSt('Installing "' + nm + '"...', 'busy');
       try {
         const d = await post('/worlds/install', { world_id: id });
         if (!d.ok) throw new Error(d.error || 'Install failed');
         setSt((d.cached ? 'Ready: ' : 'Installed: ') + (d.name || nm), 'success');
         await refresh(true);
+        setInstalling(false);   // unlock before the auto-switch (it is guarded)
         switchWorld({ world: d.world }, d.name || nm);
-      } catch(e) { setSt('Install failed: ' + e.message, 'error'); }
+      } catch(e) {
+        setSt('Install failed: ' + e.message, 'error');
+      } finally { setInstalling(false); }
     }
 
     const linkIn = document.getElementById('wm-link');
     const linkGo = document.getElementById('wm-link-go');
     function loadFromLink(){
+      if (installing) return;
       const m = (linkIn.value || '').trim().match(/^[0-9a-f]{32}$/);
       if (!m) { setSt('Enter a valid world ID.', 'error'); return; }
       linkIn.value = '';
