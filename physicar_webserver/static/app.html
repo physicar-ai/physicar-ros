@@ -268,6 +268,10 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-linkrow button:hover{border-color:var(--accent);color:var(--accent)}
 #wm-status.error{color:#f87171}
 #wm-status.success{color:#4ade80}
+#wm-status.busy::before{content:'';display:inline-block;width:10px;height:10px;
+  border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;
+  margin-right:6px;vertical-align:-1px;animation:wm-spin 0.8s linear infinite}
+@keyframes wm-spin{to{transform:rotate(360deg)}}
 
 /* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
    nowrap by design — the pads shrink with BOTH the card height and the column
@@ -1065,7 +1069,7 @@ body:not(.sim-mode) #divider2{display:none}
     }
 
     async function installWorld(id, nm){
-      setSt('Installing "' + nm + '"...');
+      setSt('Installing "' + nm + '"...', 'busy');
       try {
         const d = await post('/worlds/install', { world_id: id });
         if (!d.ok) throw new Error(d.error || 'Install failed');
@@ -1081,7 +1085,7 @@ body:not(.sim-mode) #divider2{display:none}
       const m = (linkIn.value || '').trim().match(/^[0-9a-f]{32}$/);
       if (!m) { setSt('Enter a valid world ID.', 'error'); return; }
       linkIn.value = '';
-      installWorld(m[0], m[0].slice(0, 8) + '…');
+      installWorld(m[0], m[0]);
     }
     linkGo.addEventListener('click', loadFromLink);
     linkIn.addEventListener('keydown', (e) => {
@@ -1097,7 +1101,7 @@ body:not(.sim-mode) #divider2{display:none}
       if (!m) return;
       history.replaceState(null, '', location.pathname + location.hash);
       open();
-      installWorld(m[1], m[1].slice(0, 8) + '…');
+      installWorld(m[1], m[1]);
     })();
     function close(){ modal.style.display = 'none'; }
     btn.addEventListener('click', open);
