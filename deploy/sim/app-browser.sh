@@ -32,11 +32,18 @@ TOKEN_MAP="/tmp/pc-token.map"
 
 # Write $1 into the (immutable) bookmark file.
 write_bookmark() {
-  sudo chattr -i "$APP_FILE" 2>/dev/null || true
+  # chattr direct first (supervisord runs this as root; sudo can fail where
+  # plain chattr works), sudo as fallback for other callers. A silently failed
+  # chattr once let a bookmark baked into an image survive every boot
+  # (validation.invalid incident) — so verify the write took and shout if not.
+  chattr -i "$APP_FILE" 2>/dev/null || sudo chattr -i "$APP_FILE" 2>/dev/null || true
   chmod u+w "$APP_FILE" 2>/dev/null || true
-  printf '%s\n' "$1" > "$APP_FILE"
+  printf '%s\n' "$1" > "$APP_FILE" 2>/dev/null || true
   chmod 444 "$APP_FILE" 2>/dev/null || true
-  sudo chattr +i "$APP_FILE" 2>/dev/null || true
+  chattr +i "$APP_FILE" 2>/dev/null || sudo chattr +i "$APP_FILE" 2>/dev/null || true
+  if [ "$(cat "$APP_FILE" 2>/dev/null)" != "$1" ]; then
+    echo "[app-browser] WARNING: bookmark write failed; stale content remains: $(head -c 120 "$APP_FILE" 2>/dev/null)" >&2
+  fi
 }
 
 # Point the nginx access-token gate at $1 (the session token). The nginx config
@@ -62,6 +69,11 @@ wait_port() {
     sleep 1
   done
 }
+
+# Start from a clean slate on every boot — a URL from a previous environment
+# (or one baked into an image) must never survive into this session. An empty
+# bookmark is a valid display state; a stale foreign URL is not.
+write_bookmark ""
 
 # Non-Codespaces: static localhost bookmark and exit.
 # Cloud/self-hosted sim: the operator hands us the external URL (e.g.

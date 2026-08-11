@@ -301,6 +301,11 @@ PYSET
 if [ -z "${CODESPACE_NAME:-}" ]; then
   timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force \
     >/dev/null 2>&1 || true
+  # jupyter 는 --force 없이 — 없을 때만 설치되는 자가치유 (구 골든에 미탑재였던
+  # 세대 구제용). 이미 있으면 즉시 no-op 이라 부팅 지연 없음.
+  timeout 25 sudo -u physicar code-server --list-extensions 2>/dev/null | grep -qi '^ms-toolsai.jupyter$' \
+    || timeout 60 sudo -u physicar code-server --install-extension ms-toolsai.jupyter \
+      >/dev/null 2>&1 || true
 fi
 
 # ── X 락 잔재 제거 (컨테이너 보존형이라 /tmp 가 재시작에도 살아남는다) ──
