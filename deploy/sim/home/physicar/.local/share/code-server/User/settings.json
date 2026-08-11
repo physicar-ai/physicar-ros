@@ -1,9 +1,5 @@
 {
   "chat.disableAIFeatures": true,
-  "files.readonlyInclude": {
-    "**/sample_projects/**/*.py": true,
-    "**/sample_projects/**/*.sh": true
-  },
   "code-runner.runInTerminal": true,
   "code-runner.ignoreSelection": true,
   "code-runner.executorMap": {
@@ -26,10 +22,7 @@
     "/opt/physicar/install/physicar_interfaces/lib/python3.12/site-packages"
   ],
   "jupyter.notebookFileRoot": "${fileDirname}",
-  "notebook.defaultKernel": {
-    "id": "python3",
-    "path": "/usr/bin/python3"
-  },
+  "jupyter.kernels.excludePythonEnvironments": ["/usr/bin/python3"],
   "markdown.preview.doubleClickToSwitchToEditor": false,
   "explorer.compactFolders": false,
   "simpleBrowser.focusLockIndicator.enabled": false,

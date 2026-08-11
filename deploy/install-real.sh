@@ -420,7 +420,24 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'rich~=13.7' \
   'shapely~=2.0' \
   'ncnn~=1.0' \
-  'ipykernel~=7.3'
+  'ipykernel~=7.3' \
+  'ipywidgets~=8.1' \
+  'matplotlib~=3.10'
+
+# ── Jupyter kernel (PhysiCar AI) ──
+# VSCode/code-server spawns Jupyter kernels without a login shell, so the
+# stock python3 kernel can't see ROS (no PYTHONPATH; LD_LIBRARY_PATH is
+# unfixable from inside a cell — the dynamic linker reads it at process
+# start). Register a kernelspec that boots the kernel through `bash -ic`,
+# inheriting the exact terminal environment (~/.bashrc).
+# The name must NOT look like a default spec: VSCode's Jupyter extension
+# hides any spec named /^python\d*/ as "auto-generated" (isDefaultKernelSpec).
+# Notebooks auto-bind via metadata kernelspec name = 'physicar-ai'; the raw
+# interpreter kernel is hidden via jupyter.kernels.excludePythonEnvironments
+# in the deployed code-server settings.json.
+KSPEC_DIR=/home/physicar/.local/share/jupyter/kernels/physicar-ai
+sudo -u physicar mkdir -p "$KSPEC_DIR"
+sudo -u physicar cp "$SCRIPT_DIR/jupyter-kernel.json" "$KSPEC_DIR/kernel.json"
 
 # ── libcamera (build from source for RPi camera support) ──
 if ! pkg-config --exists libcamera 2>/dev/null; then
@@ -794,18 +811,19 @@ sudo -u physicar touch /opt/physicar/userdata/physicar.log
 # rewrites and bashrc all point at ~/physicar_ws, but nothing on a fresh
 # install created it: code-server then opened a nonexistent folder. In
 # Codespaces the workspace IS the physicar-for-codespaces checkout, so the
-# real mirrors that by seeding sample_projects from the same repo
-# (physicar branch). This is the ONLY time anything writes into the student
-# workspace — boot/update flows never touch it (app.physicar excepted).
+# real mirrors that by seeding examples/ (tutorial notebooks + assets) from
+# the same repo (physicar branch). This is the ONLY time anything writes into
+# the student workspace — boot/update flows never touch it (app.physicar
+# excepted).
 mkdir -p /home/physicar/physicar_ws
-if [ ! -d /home/physicar/physicar_ws/sample_projects ]; then
+if [ ! -d /home/physicar/physicar_ws/examples ]; then
   TMPD=$(mktemp -d)
   if git clone --depth 1 --branch physicar \
       https://github.com/physicar-ai/physicar-for-codespaces.git "$TMPD/pfc" 2>/dev/null; then
-    cp -rn "$TMPD/pfc/sample_projects" /home/physicar/physicar_ws/ 2>/dev/null || true
+    cp -rn "$TMPD/pfc/examples" /home/physicar/physicar_ws/ 2>/dev/null || true
     cp -n "$TMPD/pfc/.gitignore" /home/physicar/physicar_ws/ 2>/dev/null || true
   else
-    echo "  WARNING: sample_projects seed failed (network?) — re-run install to seed"
+    echo "  WARNING: examples seed failed (network?) — re-run install to seed"
   fi
   rm -rf "$TMPD"
 fi

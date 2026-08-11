@@ -1,0 +1,9 @@
+{
+  "argv": [
+    "/bin/bash",
+    "-ic",
+    "exec /usr/bin/python3 -m ipykernel_launcher -f '{connection_file}'"
+  ],
+  "display_name": "Python 3 (PhysiCar AI)",
+  "language": "python"
+}

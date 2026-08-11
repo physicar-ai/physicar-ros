@@ -40,27 +40,6 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
 | `SIM` | `false` | `false`: run on the real robot, `true`: run on physicar-sim (simulation environment) |
 | `DEV` | `false` | `false`: auto-update enabled, `true`: auto-update disabled, code can be edited directly |
 
-## Apps
-
-### MyApp
-
-- Your own robot web app.
-- Launch an app on port **5000** and it becomes accessible at `/myapp/`.
-- Path rules
-    - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
-    - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
-
-- Auto-start script
-    - `/opt/physicar/userdata/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
-        ```
-        python3 /home/physicar/physicar_ws/app.py
-        ```
-    - `/opt/physicar/userdata/myapp.log`: execution log of the auto-start script.
-- PhysiCar account session
-    - When the user signs in, the session token is available in the `physicar_session` cookie, which rides automatically on every same-origin request — including MyApp pages, `fetch`, WebSocket handshakes, and open-in-new-tab.
-    - Backend: read it per request/connection — e.g. Flask `request.cookies.get("physicar_session")` — and create `physicar.Client(token=...)` from it. Never cache one token globally: on a shared robot, different users' requests would run on one account.
-    - Page JS: `physicarSession.token()` is auto-injected into every `/myapp/` HTML page by nginx (no setup code).
-
 ## ROS 2 Interfaces
 
 ### Sensors
@@ -126,6 +105,33 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 | `POST` | `/audio/volume` | Change volume of a playing item (`id`, `volume` 0–1) |
 | `GET` | `/audio` | List of currently playing items |
 | `WS` | `/audio/stream` | Realtime PCM16 playback stream (`?sample_rate=24000&channels=1&volume=1.0`), e.g. OpenAI Realtime API voice output. Binary frames = raw PCM16; close = stop |
+
+## MyApp
+
+- Your own robot web app.
+- Launch an app on port **5000** and it becomes accessible at `/myapp/`.
+- Path rules
+    - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
+    - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
+
+- Auto-start script
+    - `/opt/physicar/userdata/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
+        ```
+        python3 /home/physicar/physicar_ws/app.py
+        ```
+    - `/opt/physicar/userdata/myapp.log`: execution log of the auto-start script.
+- PhysiCar AI Services (chat, realtime)
+    - Call them **directly from the page's JS** — `physicarSession.token()` is auto-injected into every `/myapp/` HTML page by nginx (no setup code) and identifies the signed-in user.
+    - WebSocket services pass the token as a subprotocol, HTTP services as a Bearer header:
+        ```js
+        // Realtime voice agent — straight from the browser
+        const ws = new WebSocket("wss://api.physicar.ai/realtime",
+                                 ["token." + physicarSession.token()]);
+        // Chat services
+        fetch("https://api.physicar.ai/chat/models",
+              { headers: { "Authorization": "Bearer " + physicarSession.token() } });
+        ```
+    - Working example: `sample_projects/agent-realtime` — a MyApp page that runs the whole voice agent in the browser.
 
 ## License
 

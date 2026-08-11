@@ -33,6 +33,7 @@ Publishes:
   /cmd_vel (geometry_msgs/Twist) - velocity command for Gazebo
 """
 
+import collections
 import math
 import time
 
@@ -80,6 +81,17 @@ class CmdVelAdapterNode(Node):
 
         # Publisher
         self._cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', qos)
+
+        # External /cmd_vel — same contract as the real device driver, which
+        # subscribes /cmd_vel directly and converges it into the shared
+        # speed/steering state + watchdog (speed expires after cmd_timeout,
+        # steering angle persists). Without this, a direct /cmd_vel publish
+        # bypassed the watchdog and the sim car kept driving forever.
+        # The adapter also PUBLISHES /cmd_vel, so it hears its own messages:
+        # each publish queues its expected one-per-publish DDS echo here and
+        # the echo is swallowed; anything else on the topic is external.
+        self._echo_expect = collections.deque()
+        self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_cb, qos)
 
         self.get_logger().info(
             f'CmdVel adapter ready (L={self.wheelbase}m, '
@@ -136,6 +148,32 @@ class CmdVelAdapterNode(Node):
             self._speed = 0.0
             self._publish_cmd_vel()
 
+    def _cmd_vel_cb(self, msg: Twist):
+        now = time.monotonic()
+        # Prune unmatched echoes (should not happen) so the queue cannot wedge
+        while self._echo_expect and now - self._echo_expect[0][2] > 1.0:
+            self._echo_expect.popleft()
+        if (self._echo_expect
+                and self._echo_expect[0][0] == msg.linear.x
+                and self._echo_expect[0][1] == msg.angular.z):
+            self._echo_expect.popleft()
+            return
+        # Same twist -> (speed, steering) conversion as physicar_driver_node.cpp:
+        # a (0,0) twist is an explicit stop AND recenters the steering.
+        vx = msg.linear.x
+        wz = msg.angular.z
+        if abs(vx) > 0.01:
+            steer = math.atan(wz * self.wheelbase / vx)
+        elif abs(wz) > 0.01:
+            steer = math.copysign(self.max_steering_rad, wz)
+        else:
+            steer = 0.0
+        self._steering = max(-self.max_steering_rad,
+                             min(self.max_steering_rad, steer))
+        self._speed = max(-self.max_speed, min(self.max_speed, vx))
+        self._last_speed_cmd = time.monotonic()
+        self._publish_cmd_vel()
+
     def _steering_cb(self, msg: Float64):
         self._steering = max(
             -self.max_steering_rad,
@@ -171,6 +209,9 @@ class CmdVelAdapterNode(Node):
         twist.linear.x = v
         twist.angular.z = v * math.tan(self._steering) / self.wheelbase
 
+        self._echo_expect.append((twist.linear.x, twist.angular.z, time.monotonic()))
+        if len(self._echo_expect) > 16:
+            self._echo_expect.popleft()
         self._cmd_vel_pub.publish(twist)
 
 

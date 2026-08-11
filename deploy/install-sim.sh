@@ -325,7 +325,24 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'rich~=13.7' \
   'shapely~=2.0' \
   'ncnn~=1.0' \
-  'ipykernel~=7.3'
+  'ipykernel~=7.3' \
+  'ipywidgets~=8.1' \
+  'matplotlib~=3.10'
+
+# ── Jupyter kernel (PhysiCar AI) ──
+# VSCode/code-server spawns Jupyter kernels without a login shell, so the
+# stock python3 kernel can't see ROS (no PYTHONPATH; LD_LIBRARY_PATH is
+# unfixable from inside a cell — the dynamic linker reads it at process
+# start). Register a kernelspec that boots the kernel through `bash -ic`,
+# inheriting the exact terminal environment (~/.bashrc).
+# The name must NOT look like a default spec: VSCode's Jupyter extension
+# hides any spec named /^python\d*/ as "auto-generated" (isDefaultKernelSpec).
+# Notebooks auto-bind via metadata kernelspec name = 'physicar-ai'; the raw
+# interpreter kernel is hidden via jupyter.kernels.excludePythonEnvironments
+# in the deployed code-server settings.json.
+KSPEC_DIR=/home/physicar/.local/share/jupyter/kernels/physicar-ai
+sudo -u physicar mkdir -p "$KSPEC_DIR"
+sudo -u physicar cp "$SCRIPT_DIR/jupyter-kernel.json" "$KSPEC_DIR/kernel.json"
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  4. Config Deployment (symlinks)                                           │
