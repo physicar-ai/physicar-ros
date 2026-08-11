@@ -143,7 +143,7 @@ patch_codeserver_webview_media || true
 # never reads — mirror the real flow (physicar.sh / install-real.sh) so a
 # non-Codespaces sim gets the same IDE out of the box.
 echo "  Installing code-server extensions..."
-for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
+for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy ms-toolsai.jupyter redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
   sudo -u physicar code-server --install-extension "$EXT_ID" \
     || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
 done
