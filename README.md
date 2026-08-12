@@ -106,6 +106,24 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 | `GET` | `/audio` | List of currently playing items |
 | `WS` | `/audio/stream` | Realtime PCM16 playback stream (`?sample_rate=24000&channels=1&volume=1.0`), e.g. OpenAI Realtime API voice output. Binary frames = raw PCM16; close = stop |
 
+## Tool Server (`physicar_tools`)
+
+FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, plus the user-editable `/opt/physicar/userdata/custom_tools.py`. Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
+
+Reachable through nginx at **`/physicar-ext/`** (loopback-only — requests from the network are denied):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/physicar-ext/tools` | Tool list + parameter schemas (+ per-script import errors) |
+| `POST` | `/physicar-ext/tools/<name>` | Run a tool — `{"args": {...}, "session": "<chat session>"}` |
+| `POST` | `/physicar-ext/wake` | Redeem a one-shot wake ticket — `{"wake_id": "...", "note": "optional"}`; starts an automatic turn in the chat that reserved it |
+| `POST` | `/physicar-ext/wake/status` | Ticket state (`{"wake_id"}`) or a session's outstanding tickets (`{"session"}`) |
+| `GET` | `/physicar-ext/wakes/<session>` | Long-poll pending wakes (used by the VSCode extension) |
+| `GET` | `/physicar-ext/health` | Loaded modules, import errors, process RSS |
+| `POST` | `/physicar-ext/reload` | Restart the interpreter — picks up newly installed libraries and replaced model weights |
+
+Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (`from pcwake import reserve, redeem`); they are one-shot and in-memory. See `physicar_tools/pcwake.py` for the contract.
+
 ## MyApp
 
 - Your own robot web app.

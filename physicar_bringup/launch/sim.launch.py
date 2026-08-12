@@ -274,4 +274,16 @@ def generate_launch_description():
             print(f"[sim.launch] SKIPPING {label}: executable '{exe}' not found "
                   f"in package '{pkg}' — run colcon build to restore it",
                   file=sys.stderr)
+    # AI chat tool-call server (FastAPI :9004) — a plain process, not a ROS
+    # node. respawn makes it effectively immortal: /reload exits on purpose
+    # and crashes both come back with a fresh interpreter within a second.
+    tools_server_py = '/opt/physicar/src/physicar-ros/physicar_tools/tools_server.py'
+    if os.path.isfile(tools_server_py):
+        actions.append(ExecuteProcess(
+            cmd=['/usr/bin/python3', tools_server_py],
+            name='tools_server',
+            output='screen',
+            respawn=True,
+            respawn_delay=1.0,
+        ))
     return LaunchDescription(actions)

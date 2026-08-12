@@ -88,6 +88,21 @@ server {
         proxy_set_header Connection "";
     }
 
+    # ── PhysiCar extension services (tool server :9004) ──
+    # Whole server, loopback-only: on-machine callers (the extension, the AI's
+    # terminal, student scripts) get clean localhost URLs — /physicar-ext/tools,
+    # /physicar-ext/wake, /physicar-ext/wake/status — while anything from the
+    # network is denied, so the login gate cannot be bypassed.
+    location /physicar-ext/ {
+        allow 127.0.0.1;
+        allow ::1;
+        deny all;
+        proxy_pass http://127.0.0.1:9004/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+    }
+
     # Simulation WebSocket (3D scene streaming)
     location /sim/ws {
         proxy_pass http://127.0.0.1:9002;
