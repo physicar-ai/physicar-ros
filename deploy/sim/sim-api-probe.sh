@@ -5,13 +5,13 @@
 # server dies/restarts mid-request, e.g. a world switch racing a pose call)
 # freezes the whole Python interpreter — even /status stops answering and the
 # IN-PROCESS watchdog can never run again. Recovery therefore has to come
-# from outside the process: three straight failed /status probes (~1 minute,
-# generous enough for world switches and heavy load, both of which keep
-# /status responsive) means frozen — kill it and let supervisord's
+# from outside the process: three straight failed /status probes (~15-30s —
+# /status stays responsive through world switches and heavy load, so
+# consecutive failures really mean frozen) — kill it and let supervisord's
 # autorestart bring up a fresh one.
 FAILS=0
 while true; do
-  sleep 15
+  sleep 5
   if curl -sf -m 5 http://127.0.0.1:9003/status > /dev/null; then
     FAILS=0
     continue
