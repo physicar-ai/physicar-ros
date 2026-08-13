@@ -55,15 +55,14 @@ OUTPUT_MAX_CHARS = 40000    # same cap as the extension's truncate()
 sys.path.insert(0, HERE)    # tool scripts may import pcwake / sibling helpers
 
 
-def _has(path):
-    return os.path.exists(path)
-
+# Which machine this is — set explicitly by the bringup launch ("sim"/"real").
+# The only per-profile difference: a real car has no simulator, so the sim
+# section is not served there.
+PROFILE = os.environ.get("PHYSICAR_PROFILE", "sim")
 
 SECTIONS = {
-    "robot": {"path": os.path.join(HERE, "robot.py"),
-              "enabled": lambda: _has("/opt/physicar/src/physicar-ros")},
-    "sim": {"path": os.path.join(HERE, "sim.py"),
-            "enabled": lambda: _has("/opt/physicar/src/physicar-sim")},
+    "robot": {"path": os.path.join(HERE, "robot.py"), "enabled": lambda: True},
+    "sim": {"path": os.path.join(HERE, "sim.py"), "enabled": lambda: PROFILE != "real"},
     "utils": {"path": os.path.join(HERE, "utils.py"), "enabled": lambda: True},
     "custom": {"path": CUSTOM_PATH, "enabled": lambda: True},
 }
@@ -169,11 +168,20 @@ def _tools_of(section):
 
 
 def _serialize(result):
-    """Duck-typed content list: .text / .mime+.base64 objects, str/dict/list."""
+    """Content list. The documented contract is a list of content dicts —
+    {"type": "text", "text": ...} / {"type": "image", "mime": ..., "base64": ...} —
+    but plain str/dict/list returns and .text / .mime+.base64 objects are
+    accepted too and converted."""
     items = result if isinstance(result, (list, tuple)) else [result]
     out = []
     for it in items:
         if it is None:
+            continue
+        if isinstance(it, dict) and it.get("base64") and it.get("mime"):
+            out.append({"type": "image", "mime": it["mime"], "base64": it["base64"]})
+            continue
+        if isinstance(it, dict) and it.get("type") == "text" and "text" in it:
+            out.append({"type": "text", "text": str(it["text"])[:OUTPUT_MAX_CHARS]})
             continue
         b64 = getattr(it, "base64", None)
         mime = getattr(it, "mime", None)
@@ -195,15 +203,18 @@ app = FastAPI(title="physicar_tools", docs_url=None, redoc_url=None)
 @app.get("/tools")
 def list_tools():
     _refresh()
-    tools, errors = [], {}
+    tools, errors, sections = [], {}, []
     with _state_lock:
         for name, spec in SECTIONS.items():
             if not spec["enabled"]():
                 continue
+            sections.append(name)
             tools.extend(_tools_of(name))
             if _state[name]["error"]:
                 errors[name] = _state[name]["error"]
-    return {"tools": tools, "errors": errors, "custom_path": CUSTOM_PATH}
+    # "sections" is the authority the client renders from — section names,
+    # order, and which ones exist on this machine all come from here.
+    return {"tools": tools, "errors": errors, "sections": sections, "custom_path": CUSTOM_PATH}
 
 
 @app.post("/tools/{api_name}")

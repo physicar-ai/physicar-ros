@@ -366,6 +366,7 @@ def generate_launch_description():
             output='screen',
             respawn=True,
             respawn_delay=1.0,
+            additional_env={'PHYSICAR_PROFILE': 'real'},
         ))
     actions.append(play_intro)
     return LaunchDescription(actions)
