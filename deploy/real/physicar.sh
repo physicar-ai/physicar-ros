@@ -890,6 +890,15 @@ if [ ! -f "$EXT_MARKER" ]; then
     if /usr/local/bin/code-server --list-extensions 2>/dev/null | grep -q '^physicar.physicar-ext$'; then
       touch "$EXT_MARKER"
     fi
+    # physicar-ext 를 built-in 으로도 복제 — Uninstall 버튼이 없는, 학생이 지울 수
+    # 없는 베이스라인 (sim 의 install-sim.sh 와 동일 설계). 유저 설치본이 항상
+    # 이 사본을 덮어쓰므로 최신성은 유지되고, 지워진 세션에서만 이 층이 뜬다.
+    CS_VSCODE=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
+    EXT_USER_DIR=$(ls -d "$HOME/.local/share/code-server/extensions/physicar.physicar-ext-"* 2>/dev/null | sort | tail -1)
+    if [ -n "$CS_VSCODE" ] && [ -n "$EXT_USER_DIR" ] && [ ! -d "$CS_VSCODE/extensions/physicar-ext-builtin" ]; then
+      sudo rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null
+      sudo cp -r "$EXT_USER_DIR" "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null || true
+    fi
   ) &
 fi
 

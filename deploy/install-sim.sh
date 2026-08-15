@@ -148,6 +148,21 @@ for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy ms-toolsa
     || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
 done
 
+# physicar-ext 를 built-in 으로도 복제 — built-in 확장은 UI 에 Uninstall 버튼이
+# 없어 학생이 지울 수 없는 베이스라인이 된다 (Disable 은 VS Code 구조상 못 막음).
+# 유저 디렉토리의 같은 ID 확장이 항상 이 사본을 덮어쓰므로(부팅 --force 최신화)
+# 배포 최신성은 그대로고, 유저 설치본이 지워진 세션에서만 이 층이 활성화된다.
+# code-server 업데이트 시 lib/vscode 가 교체돼 사본이 사라진다 — 리베이크가 복원.
+CS_VSCODE=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
+EXT_USER_DIR=$(ls -d /home/physicar/.local/share/code-server/extensions/physicar.physicar-ext-* 2>/dev/null | sort | tail -1)
+if [ -n "$CS_VSCODE" ] && [ -n "$EXT_USER_DIR" ]; then
+  rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin"
+  cp -r "$EXT_USER_DIR" "$CS_VSCODE/extensions/physicar-ext-builtin"
+  echo "  [ext] physicar-ext staged as built-in ($(basename "$EXT_USER_DIR"))"
+else
+  echo "  [ext] WARNING: built-in staging skipped (vscode dir or ext missing)"
+fi
+
 # user settings — symlink to the repo copy (real pattern: future updates
 # take effect without re-running install)
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
