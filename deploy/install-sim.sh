@@ -171,6 +171,9 @@ sudo -u physicar mkdir -p "$CS_USER_DIR"
 [ -f "$CS_USER_DIR/settings.json" ] && [ ! -L "$CS_USER_DIR/settings.json" ] || {
   rm -f "$CS_USER_DIR/settings.json"
   cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+  # cp 는 root 로 실행되므로 소유권을 사용자에게 — root 소유로 베이크되면
+  # code-server(physicar)의 설정 저장이 EACCES 로 실패한다
+  chown physicar:physicar "$CS_USER_DIR/settings.json"
 }
 
 # branding — same assets/logic as install-real.sh, but the sim installs

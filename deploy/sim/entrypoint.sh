@@ -275,6 +275,11 @@ merged = {**managed, **user}
 if not os.path.exists(user_path) or merged != user:
     json.dump(merged, open(user_path, 'w'), indent=2, ensure_ascii=False)
 PYSET
+# 위 병합은 root 로 실행되므로 소유권을 사용자에게 되돌린다 — root 소유로 남으면
+# code-server(physicar)의 설정 저장이 EACCES 로 실패한다 (Claude Code 등 확장이
+# 켜지며 설정 키를 기록하는 순간 포함). 이미 오염된 인스턴스도 부팅마다 여기서 수복.
+chown physicar:physicar /home/physicar/.local/share/code-server/User \
+  /home/physicar/.local/share/code-server/User/settings.json 2>/dev/null || true
 
 
 
