@@ -986,3 +986,17 @@
 .toast-container .toast { position: static; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.82rem; color: #fff; max-width: 320px; opacity: 1; transform: none; }
 .toast-container .toast.info { background: var(--accent); }
 .toast-container .toast.error { background: var(--red); }
+
+/* ===== Sensor zoom modal (tap camera/lidar to enlarge — same UX as app.physicar) =====
+   Markup + logic come from sensors.js openSensorModal(); app.css is not loaded
+   on the kiosk, so the styles are restated here tuned for the 800x480 touch
+   screen (bigger close hit-target, kiosk palette instead of CSS vars). */
+.sensor-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 1500; display: flex; align-items: center; justify-content: center; padding: 10px; }
+.sensor-modal { background: #16213e; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; max-width: 96vw; max-height: 96vh; display: flex; flex-direction: column; overflow: hidden; }
+.sensor-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 14px; border-bottom: 1px solid rgba(255,255,255,0.12); font-weight: 600; }
+.sensor-modal-close { background: transparent; border: none; color: #bbb; font-size: 1.9rem; line-height: 1; padding: 4px 16px; cursor: pointer; }
+.sensor-modal-close:active { color: #fff; }
+.sensor-modal img { display: block; width: 100%; max-height: calc(96vh - 52px); object-fit: contain; background: #0a0a0a; }
+.sensor-modal-body { width: min(92vw, 560px); }
+.sensor-modal canvas { display: block; max-width: 100%; max-height: calc(96vh - 52px); object-fit: contain; background: #0a0a0a; }
+.sensor-modal-lidar canvas { width: min(80vmin, 380px); height: min(80vmin, 380px); aspect-ratio: 1; }

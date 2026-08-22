@@ -205,7 +205,7 @@
                 </div>
                 <div class="studio-right">
                     <div class="st-cam">
-                        <img id="p-camera" alt="">
+                        <img id="p-camera" alt="" onclick="openSensorModal('camera')">
                         <div class="st-overlay">Camera</div>
                         <div class="st-sel-tr">
                             <select id="cam-res" class="st-select" onchange="changeCameraRes()">
@@ -216,7 +216,7 @@
                         </div>
                     </div>
                     <div class="st-lidar">
-                        <canvas id="p-lidar"></canvas>
+                        <canvas id="p-lidar" onclick="openSensorModal('lidar')"></canvas>
                         <div class="st-overlay">LiDAR</div>
                         <div class="st-sel-tr">
                             <select id="lidar-step" class="st-select" onchange="changeLidarStep()">
