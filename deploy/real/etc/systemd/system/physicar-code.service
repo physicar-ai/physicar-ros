@@ -15,7 +15,10 @@ ExecStart=/usr/local/bin/code-server \
     --disable-update-check \
     --proxy-domain preview.physicar.ai \
     /home/physicar/physicar_ws
-Restart=on-failure
+# always (not on-failure): a clean exit (observed once right as SD imaging
+# finished — cause unknown, exit 0) left the kiosk with a 502 until manual
+# restart. This is an appliance; the editor must simply always be up.
+Restart=always
 RestartSec=3
 
 [Install]
