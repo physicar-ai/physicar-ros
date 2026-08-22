@@ -808,7 +808,6 @@ if [ ! -d /home/physicar/physicar_ws/examples ]; then
   if git clone --depth 1 --branch physicar \
       https://github.com/physicar-ai/physicar-for-codespaces.git "$TMPD/pfc" 2>/dev/null; then
     cp -rn "$TMPD/pfc/examples" /home/physicar/physicar_ws/ 2>/dev/null || true
-    cp -n "$TMPD/pfc/.gitignore" /home/physicar/physicar_ws/ 2>/dev/null || true
   else
     echo "  WARNING: examples seed failed (network?) — re-run install to seed"
   fi
