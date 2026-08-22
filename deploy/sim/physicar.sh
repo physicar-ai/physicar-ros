@@ -69,7 +69,17 @@ do_build() {
 
 # Boot-time update: with internet, update to the latest before first run (updater.sh --boot).
 if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
+    _pre_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
     bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
+    _post_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
+    # 부팅 중 코드가 갱신됐으면, 이미 옛 코드로 한 번 돌아버린 부팅 시점 프로그램
+    # (app_browser: 우선순위 250 < physicar 650)을 새 코드로 다시 돌린다 — 릴리스가
+    # "둘째 부팅부터"가 아니라 첫 부팅부터 반영되게. (실사례 2026-08-22: 북마크 가드가
+    # 태그 배포 후 첫 부팅엔 옛 스크립트가 먼저 써 한 부팅 늦게 적용됐다)
+    if [ -n "$_post_head" ] && [ "$_pre_head" != "$_post_head" ]; then
+        echo "[physicar] code updated during boot (${_pre_head:0:7} -> ${_post_head:0:7}) — re-running app_browser"
+        supervisorctl -s unix:///tmp/supervisor.sock restart app_browser >/dev/null 2>&1 || true
+    fi
 fi
 
 rm -f "$UPDATE_SIGNAL"
