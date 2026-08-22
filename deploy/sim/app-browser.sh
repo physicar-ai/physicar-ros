@@ -75,6 +75,17 @@ wait_port() {
 # bookmark is a valid display state; a stale foreign URL is not.
 write_bookmark ""
 
+# 골든 베이크 검증 env 잔재(validation.invalid)가 컨테이너에 박힌 경우 — 이 죽은 URL 을
+# 북마크에 쓰면 확장의 "빈 북마크 → 현재 도메인/app" 폴백이 막혀 앱 화면이 빈다
+# (2026-08-11 CreateImage 증분 베이크 사고의 잔재, 2026-08-22 실사례). 빈 북마크로 두고
+# 종료한다 — 학생 브라우저가 접속한 도메인(sim.physicar.ai)/app 으로 확장이 열어준다.
+case "${PHYSICAR_EXTERNAL_URL:-}" in
+  *validation.invalid*)
+    echo "[app-browser] placeholder PHYSICAR_EXTERNAL_URL (${PHYSICAR_EXTERNAL_URL}) — leaving bookmark empty (extension falls back to <origin>/app)" >&2
+    set_gate_token ""
+    exit 0 ;;
+esac
+
 # Non-Codespaces: static localhost bookmark and exit.
 # Cloud/self-hosted sim: the operator hands us the external URL (e.g.
 # https://xxxxx.physicar.dev) — the bookmark must use it, not localhost,
