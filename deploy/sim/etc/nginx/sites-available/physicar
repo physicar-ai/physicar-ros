@@ -32,7 +32,7 @@ server {
     # webserver's latest-frame-only logic gets backpressure quickly instead.
     # (Cloudflare sits between instance and student, so this only bounds the
     # instance-side share of the backlog.) Same fix as deploy/real.
-    listen 80 sndbuf=131072;
+    listen 80 sndbuf=524288;
     server_name _;
     absolute_redirect off;
 

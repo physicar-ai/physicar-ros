@@ -143,11 +143,11 @@ server {
     listen 80 default_server;
     # sndbuf: cap the kernel send buffer (default autotunes to ~4MB). On an
     # unstable WiFi link that 4MB fills with camera/lidar frames and then
-    # replays ~20s of STALE data when the link recovers. 128KB (~0.6s of
+    # replays ~20s of STALE data when the link recovers. 512KB (~2s of
     # camera) makes backpressure reach the app's latest-frame-only logic
     # almost immediately: streams skip to current instead of replaying the
-    # past. Throughput ceiling 128KB/RTT is >4MB/s on local links — harmless.
-    listen 443 ssl http2 default_server sndbuf=131072;
+    # past. Throughput ceiling 512KB/RTT is >4MB/s on local links — harmless.
+    listen 443 ssl http2 default_server sndbuf=524288;
     server_name _;
     absolute_redirect off;
 
