@@ -85,6 +85,45 @@ if [ -d /sys/class/pwm/pwmchip0 ]; then
     /sys/class/pwm/pwmchip0/pwm1/enable /sys/class/pwm/pwmchip0/pwm1/polarity 2>/dev/null
 fi
 
+# ────────────────── Repo-applied system artifacts ──────────────────
+# Everything the OS reads from a place that cannot symlink into the repo is
+# re-applied here on every boot, so an updater-shipped change reaches it
+# without re-running the installer. Each write is diff-guarded (no-op when
+# nothing changed).
+
+# Chromium kiosk policy: the snap reads its own copy under /var/snap — a
+# symlink into the repo does not survive snap confinement.
+_POL_SRC="$PHYSICAR_ROS_DIR/deploy/real/etc/chromium/policies/managed/kiosk-policy.json"
+_POL_DST="/var/snap/chromium/current/policies/managed/kiosk-policy.json"
+if [ -f "$_POL_SRC" ] && ! sudo cmp -s "$_POL_SRC" "$_POL_DST" 2>/dev/null; then
+  sudo mkdir -p "$(dirname "$_POL_DST")"
+  sudo cp "$_POL_SRC" "$_POL_DST"
+  echo "[physicar] chromium kiosk policy refreshed"
+fi
+
+# NM dispatcher hook: NetworkManager refuses dispatcher scripts that are not
+# root-owned, so the repo copy cannot be symlinked — reinstall on change.
+_DISP_SRC="$PHYSICAR_ROS_DIR/deploy/real/etc/NetworkManager/dispatcher.d/90-physicar-cert"
+_DISP_DST="/etc/NetworkManager/dispatcher.d/90-physicar-cert"
+if [ -f "$_DISP_SRC" ] && ! sudo cmp -s "$_DISP_SRC" "$_DISP_DST" 2>/dev/null; then
+  sudo install -m 755 -o root -g root "$_DISP_SRC" "$_DISP_DST"
+  echo "[physicar] NM dispatcher hook refreshed"
+fi
+
+# PWM overlay: /boot needs a compiled dtbo; recompile when the repo dts
+# changed. The device-tree is read at boot, so this applies on the NEXT one.
+_DTS="$PHYSICAR_ROS_DIR/deploy/real/boot/firmware/overlays/pwm0-gpio13.dts"
+_DTBO="/boot/firmware/overlays/pwm0-gpio13.dtbo"
+if [ -f "$_DTS" ] && command -v dtc >/dev/null 2>&1; then
+  _new_dtbo=$(mktemp)
+  if dtc -@ -I dts -O dtb -o "$_new_dtbo" "$_DTS" 2>/dev/null \
+     && ! sudo cmp -s "$_new_dtbo" "$_DTBO" 2>/dev/null; then
+    sudo cp "$_new_dtbo" "$_DTBO"
+    echo "[physicar] pwm overlay recompiled (applies next boot)"
+  fi
+  rm -f "$_new_dtbo"
+fi
+
 # ────────────────── Environment Variables ──────────────────
 
 sudo mkdir -p "$PHYSICAR_DIR" "$PHYSICAR_WS/src"
@@ -198,8 +237,23 @@ done
     done
   fi
 
-  # ── 3. Country estimation from nearby AP beacons ──
-  _country=$(sudo iw dev wlan0 scan 2>/dev/null \
+  # ── 3. Survey scan (shared by country estimation + channel selection) ──
+  # Boot-time scans race NM's own STA association: `iw scan` returns EBUSY
+  # (silently swallowed) and the empty result used to degrade BOTH decisions
+  # to their fallbacks — country=00 (UNII-3 lost) and channel=36 (every
+  # unlucky kit converging on one channel). Retry, then fall back to the
+  # kernel's cached results (`scan dump`), which NM's periodic scans keep
+  # warm even while an active scan is refused.
+  _survey=""
+  for _try in 1 2 3; do
+    _survey=$(sudo iw dev wlan0 scan 2>/dev/null)
+    [ -n "$_survey" ] && break
+    sleep 2
+  done
+  [ -n "$_survey" ] || _survey=$(sudo iw dev wlan0 scan dump 2>/dev/null)
+
+  # ── 3b. Country estimation from nearby AP beacons ──
+  _country=$(printf '%s\n' "$_survey" \
     | grep -oP 'Country: \K[A-Z]{2}' \
     | sort | uniq -c | sort -rn | awk 'NR==1{print $2}')
   : "${_country:=00}"
@@ -267,10 +321,23 @@ done
 
     # Scan interference and pick least congested channel (5GHz preferred)
     # 2.4GHz gets a penalty (+0.01 ≈ -20dBm equivalent) to prefer 5GHz
-    _best_channel=$(sudo iw dev wlan0 scan 2>/dev/null | awk -v cands5="$_cand_5g" -v cands24="$_cand_24g" '
+    # Per-kit deterministic tie-break: nudge each candidate by a
+    # ghost-beacon-sized offset derived from serial+channel, so kits booted
+    # simultaneously (identical RF view) fan out across near-equal channels
+    # instead of all picking the same one. A single real AP on a channel
+    # (-70 dBm ≈ 1e-7) outweighs the largest nudge (≤ 1e-9 ≈ one -90 dBm
+    # ghost) by 100x, so genuinely busy channels are still avoided.
+    _jitter=""
+    for _ch in $_cand_5g $_cand_24g; do
+      _j=$(( 0x$(printf '%s' "${SERIAL_HASH}${_ch}" | sha256sum | cut -c1-4) % 100 ))
+      _jitter="$_jitter ${_ch}:${_j}"
+    done
+
+    _best_channel=$(printf '%s\n' "$_survey" | awk -v cands5="$_cand_5g" -v cands24="$_cand_24g" -v jitter="$_jitter" '
       BEGIN {
         n5=split(cands5,c5); for(i=1;i<=n5;i++) energy[c5[i]]=0
         n24=split(cands24,c24); for(i=1;i<=n24;i++) energy[c24[i]]=0.01
+        nj=split(jitter,jl); for(i=1;i<=nj;i++){ split(jl[i],kv,":"); energy[kv[1]] += kv[2]*1e-11 }
       }
       /freq:/ { f=int($2) }
       /signal:/ {
@@ -346,8 +413,15 @@ done
     _file_ssid=$(sudo grep -m1 '^ssid=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     _file_psk=$(sudo grep -m1 '^psk=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
     _file_iface=$(sudo grep -m1 '^interface-name=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
+    # Channel must match this boot's survey too — without this, the channel
+    # picked at FIRST boot is pinned forever and every later (better) pick
+    # is silently ignored; a fleet first-booted side by side stays converged
+    # on one channel for life. Empty on the shared-phy branch (follows STA).
+    _file_channel=$(sudo grep -m1 '^channel=' "$_HOTSPOT_FILE" 2>/dev/null | cut -d= -f2)
+    _want_channel="${_ap_channel_kf#channel=}"
     if [ "$_file_ssid" = "$REAL_HOSTNAME" ] && [ "$_file_psk" = "$PASSWORD" ] \
        && [ "$_file_iface" = "$_AP_IFACE" ] \
+       && [ "$_file_channel" = "$_want_channel" ] \
        && sudo grep -q '^wps-method=1' "$_HOTSPOT_FILE" 2>/dev/null; then
       _need_write=0
     fi
@@ -658,21 +732,21 @@ fi
 
 # code-server is managed by physicar-code.service
 
-# ── code-server 버전 수렴 (레포 핀, idempotent) ──
-# deploy/code-server-version 이 단일 진실 — 설치본과 다르면 그 버전을 설치하고
-# 서비스를 재시작한다 (이후의 media/folder/브랜딩 재적용이 새 번들에 걸린다).
-# 핀을 올리기 전 새 버전 릴리스 tar 를 받아 패치 패턴(B/C·folder)·브랜딩 경로
-# 유효성을 반드시 grep 으로 확인할 것. 실패·오프라인·타임아웃은 현재 버전 유지
-# — 부팅을 절대 막지 않는다 (다음 부팅에 재시도).
+# ── code-server version convergence (repo pin, idempotent) ──
+# deploy/code-server-version is the single source of truth — when the installed version
+# differs, install that one and restart the service (so the media/folder/branding
+# re-applies below hit the new bundle). Before raising the pin, download the new
+# release tar and grep that the patch patterns (B/C·folder) and branding paths still
+# hold. Failure/offline/timeout keeps the current version — never block boot (retried next boot).
 CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
-# --version 첫 줄이 설정파일 생성 로그일 수 있어 버전 라인만 골라낸다
+# The first --version line can be a config-file creation log line — pick only the version line
 CS_CUR=$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
 if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
   echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
   if timeout 300 bash -c "curl -fsSL https://code-server.dev/install.sh | sudo sh -s -- --method=standalone --prefix=/usr/local --version='$CS_PIN'"; then
     sudo ln -sf /usr/local/bin/code-server /usr/local/bin/code
-    # 새 버전으로 서비스 전환 후 구버전 디렉토리 제거
-    # (standalone 은 /usr/local/lib/code-server-<ver> 가 버전별로 쌓임 — SD 용량)
+    # Switch the service to the new version, then remove old version directories
+    # (standalone stacks /usr/local/lib/code-server-<ver> per version — SD card space)
     sudo systemctl restart physicar-code.service 2>/dev/null || true
     for _d in /usr/local/lib/code-server-*; do
       if [ -d "$_d" ] && [ "$_d" != "/usr/local/lib/code-server-$CS_PIN" ]; then
@@ -754,11 +828,57 @@ CSPFIX
 }
 patch_codeserver_webview_media || true
 
-# ── code-server 기본 폴더 패치 (idempotent, every boot) ──
-# 쿼리 없는 / 를 기본 워크스페이스로 연다. 워크벤치는 folder 를 브라우저
-# 주소창에서만(비동기 시점에) 읽으므로, 서버측 302 는 주소창을 더럽히고
-# 주소창 잠깐 조작은 레이스가 난다 → 번들에 "쿼리 부재 시 기본 폴더" 폴백을
-# 심는 것만이 결정론적 (sim entrypoint.sh 와 동일 패치).
+# ── Webview service-worker non-blocking patch (idempotent, every boot) ──
+# VS Code's webview bootstrap (pre/index.html) AWAITS a ServiceWorker
+# update() before rendering any webview content, and Chrome throttles
+# repeated update jobs on one registration by ~60s (several webviews x page
+# reloads hit this constantly) — a throttled job blanked every panel for the
+# full delay: the "sometimes instant, sometimes 1-2 min blank" lottery
+# (real devices and cloud sim alike; measured 59s stalls on-device).
+# The SW scope embeds the build commit (/stable-<commit>/...), so a
+# code-server update lands on a fresh scope and stale resources are
+# impossible — the blocking wait is redundant; make it fire-and-forget and
+# resync the CSP script hash. A code-server update restores the stock file,
+# so re-apply every boot (no-op when already patched).
+patch_codeserver_webview_sw() {
+  local cs_bin cs_vscode f
+  cs_bin=$(readlink -f "$(command -v code-server)" 2>/dev/null) || return 0
+  cs_vscode=$(dirname "$cs_bin")/../lib/vscode
+  [ -d "$cs_vscode/out" ] || cs_vscode=/usr/lib/code-server/lib/vscode
+  f="$cs_vscode/out/vs/workbench/contrib/webview/browser/pre/index.html"
+  [ -f "$f" ] || { echo "[sw-patch] pre/index.html not found"; return 0; }
+  sudo python3 - "$f" <<'PYSW' || true
+import base64, hashlib, re, sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = "registration = await registration.update();"
+if old not in src:
+    if "registration.update().catch" not in src:
+        print("[sw-patch] WARNING: known pattern not found in this code-server version — webviews may stall behind Chrome's SW update throttle until this patch is updated")
+    sys.exit(0)
+m = re.search(r'(<script async type="module">)(.*?)(</script>)', src, re.S)
+if not m:
+    print("[sw-patch] WARNING: inline script block not found"); sys.exit(0)
+script = m.group(2).replace(old,
+    "/* PhysiCar: fire-and-forget — Chrome throttles repeated update() jobs\n"
+    "\t\t\t\t\t\t   ~60s and awaiting blanks every webview for the delay; the SW\n"
+    "\t\t\t\t\t\t   scope embeds the build commit, so stale resources are\n"
+    "\t\t\t\t\t\t   impossible after a code-server update. */\n"
+    "\t\t\t\t\t\tregistration.update().catch(() => {});", 1)
+out = src[:m.start(2)] + script + src[m.end(2):]
+h = base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode()
+out = re.sub(r"script-src 'sha256-[A-Za-z0-9+/=]+'", "script-src 'sha256-" + h + "'", out, count=1)
+open(p, "w", encoding="utf-8", newline="\n").write(out)
+print("[sw-patch] webview SW update made non-blocking")
+PYSW
+}
+patch_codeserver_webview_sw || true
+
+# ── code-server default folder patch (idempotent, every boot) ──
+# Open a bare / (no query) at the default workspace. The workbench reads folder
+# only from the browser address bar (at an async moment), so a server-side 302
+# dirties the bar and briefly rewriting it races → planting a "default folder
+# when the query is absent" fallback in the bundle is the only deterministic fix (same patch as sim entrypoint.sh).
 patch_codeserver_default_folder() {
   local cs_bin cs_vscode wb
   cs_bin=$(readlink -f "$(command -v code-server)" 2>/dev/null) || return 0
@@ -785,10 +905,10 @@ PYFOLD
 }
 patch_codeserver_default_folder || true
 
-# ── 브랜딩 재적용 (idempotent, every boot) ──
-# 파비콘/PWA/타이틀바 아이콘은 설치 트리 안에 있어 code-server 업데이트가
-# 원복시킨다 — media patch 와 같은 이유로 부팅마다 다시 덮는다
-# (install-real.sh 의 브랜딩 블록과 동일 로직, 여기는 physicar 라 sudo 필요).
+# ── Branding re-apply (idempotent, every boot) ──
+# Favicon/PWA/titlebar icons live inside the install tree, so a code-server
+# update reverts them — re-cover them every boot for the same reason as the media patch
+# (same logic as install-real.sh's branding block; sudo needed here since we run as physicar).
 brand_codeserver() {
   local static res media om b64 _svg _png
   static="$PHYSICAR_ROS_DIR/physicar_webserver/static"
@@ -822,10 +942,10 @@ brand_codeserver() {
 }
 brand_codeserver || true
 
-# ── 알림 방해금지(DND) 기본값 시드 (idempotent) ──
-# 우측 하단 알림 팝업을 "에러만" 남기고 숨긴다. DND 는 settings.json 키가 아니라
-# 전역 상태 DB(state.vscdb)의 토글이라 여기서 심는다. 키가 이미 있으면(사용자가
-# 직접 토글했다면) 그 선택을 존중한다. 실패해도 부팅은 계속 (best-effort).
+# ── Notification Do-Not-Disturb default seed (idempotent) ──
+# Hide the bottom-right notification popups except errors. DND is not a settings.json
+# key but a toggle in the global state DB (state.vscdb), so seed it here. If the key
+# already exists (the user toggled it themselves), respect their choice. Failures never block boot (best-effort).
 python3 - <<'PYDND' || true
 import sqlite3, os
 p = os.path.expanduser('~/.local/share/code-server/User/globalStorage/state.vscdb')
@@ -842,11 +962,17 @@ except Exception:
     pass
 PYDND
 
-# ── settings.json 병합 시드 (심링크 → 실파일 전환) ──
-# 종전 심링크(레포行, root 소유·읽기전용)는 사용자의 설정 저장이 실패하게 만들어
-# "저장 안 된 settings.json" 편집기가 세션마다 복원되는 문제를 낳았다.
-# → 사용자 소유 실파일로 전환하고 부팅마다 관리 기본값을 병합한다
-#   (사용자가 바꾼 키는 사용자 값 우선, 새 기본값 키는 계속 전파).
+# ── settings.json merge seed (symlink → real-file transition) ──
+# The old symlink (repo file, root-owned/read-only) made user settings saves fail,
+# resurrecting an unsaved settings.json editor every session.
+# → Switch to a user-owned real file and merge managed defaults each boot
+#   (user-changed keys win; new default keys keep propagating).
+# If settings.json is root-owned (install-time root cp legacy), code-server
+# (running as physicar) cannot save settings (EACCES) and the merge below
+# cannot write either — repair ownership first (heals polluted kits every
+# boot; same fix as sim entrypoint.sh).
+sudo chown physicar:physicar "$HOME/.local/share/code-server/User" \
+  "$HOME/.local/share/code-server/User/settings.json" 2>/dev/null || true
 python3 - "$PHYSICAR_ROS_DIR/deploy/real/home/physicar/.local/share/code-server/User/settings.json" <<'PYSET' || true
 import json, os, sys
 managed_path = sys.argv[1]
@@ -858,7 +984,7 @@ except Exception:
     sys.exit(0)
 user = {}
 if os.path.islink(user_path):
-    os.remove(user_path)   # 구 심링크 제거 (읽기전용 저장 실패의 원인)
+    os.remove(user_path)   # remove the old symlink (cause of read-only save failures)
 elif os.path.exists(user_path):
     try:
         user = json.load(open(user_path))
@@ -890,17 +1016,80 @@ if [ ! -f "$EXT_MARKER" ]; then
     if /usr/local/bin/code-server --list-extensions 2>/dev/null | grep -q '^physicar.physicar-ext$'; then
       touch "$EXT_MARKER"
     fi
-    # physicar-ext 를 built-in 으로도 복제 — Uninstall 버튼이 없는, 학생이 지울 수
-    # 없는 베이스라인 (sim 의 install-sim.sh 와 동일 설계). 유저 설치본이 항상
-    # 이 사본을 덮어쓰므로 최신성은 유지되고, 지워진 세션에서만 이 층이 뜬다.
-    CS_VSCODE=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
-    EXT_USER_DIR=$(ls -d "$HOME/.local/share/code-server/extensions/physicar.physicar-ext-"* 2>/dev/null | sort | tail -1)
-    if [ -n "$CS_VSCODE" ] && [ -n "$EXT_USER_DIR" ] && [ ! -d "$CS_VSCODE/extensions/physicar-ext-builtin" ]; then
-      sudo rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null
-      sudo cp -r "$EXT_USER_DIR" "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null || true
-    fi
   ) &
 fi
+
+# ── physicar-ext freshness + built-in baseline (idempotent, every boot) ──
+# In-session auto-update is disabled (extensions.autoUpdate=false in managed
+# settings) because a mid-session gallery update tears down the running
+# extension's webviews (blank panels) and forces slow extension-host restarts
+# on every reload. Instead, converge to the latest here at boot, before
+# students connect. The CLI install only stages files on disk, so even if a
+# session is already open it is not disturbed — the new version applies on
+# the next extension-host start. Fully offline boots skip and retry next boot.
+(
+  # Wait for code-server to be up (also lets the version-convergence step
+  # above finish swapping binaries first).
+  for i in $(seq 1 60); do
+    ss -tlnp 2>/dev/null | grep -q ':8080 ' && break
+    sleep 2
+  done
+  # On a true first boot the pre-install pass above is downloading the same
+  # extension concurrently — wait for its success marker so two CLI installs
+  # never race on the extensions dir. (Offline first boot: marker never
+  # appears; give up after 6 min — the online check below fails too, so the
+  # freshness step is skipped anyway.)
+  if [ ! -f "$EXT_MARKER" ]; then
+    for i in $(seq 1 36); do
+      [ -f "$EXT_MARKER" ] && break
+      sleep 10
+    done
+  fi
+  # Wait up to 10 min for the marketplace to become reachable — covers kits
+  # whose WiFi is configured minutes after power-on. Never blocks boot (background).
+  _ext_online=false
+  for i in $(seq 1 30); do
+    if curl -sf -m 5 -o /dev/null https://open-vsx.org; then _ext_online=true; break; fi
+    sleep 20
+  done
+  CS_VSCODE=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
+  if $_ext_online; then
+    _ext_cur=$(/usr/local/bin/code-server --list-extensions --show-versions 2>/dev/null \
+               | grep '^physicar.physicar-ext@' | cut -d@ -f2)
+    _ext_out=$(timeout 60 /usr/local/bin/code-server --install-extension physicar.physicar-ext --force 2>&1) || true
+    # The built-in baseline clone below makes code-server refuse updates of the
+    # same id ("Incompatible: ... built-in extension") — on that error, drop the
+    # clone, retry the update, and the clone step below restores it afterwards.
+    if echo "$_ext_out" | grep -q "Incompatible" && [ -n "$CS_VSCODE" ]; then
+      sudo rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin"
+      timeout 60 /usr/local/bin/code-server --install-extension physicar.physicar-ext --force &>/dev/null || true
+    fi
+    _ext_new=$(/usr/local/bin/code-server --list-extensions --show-versions 2>/dev/null \
+               | grep '^physicar.physicar-ext@' | cut -d@ -f2)
+    # Restart only when the version actually changed AND nobody is connected
+    # (an occupied session keeps running the old version until its natural
+    # extension-host restart / next boot).
+    if [ -n "$_ext_new" ] && [ "$_ext_new" != "$_ext_cur" ] \
+       && [ -z "$(ss -tnH state established '( sport = :8080 )' 2>/dev/null)" ]; then
+      echo "[physicar] physicar-ext updated $_ext_cur -> $_ext_new, restarting code-server"
+      sudo systemctl restart physicar-code 2>/dev/null || true
+    fi
+  fi
+  # Built-in baseline clone: an Uninstall-proof copy inside code-server's own
+  # extensions dir, so removing the user copy never kills the extension. A
+  # code-server update replaces lib/vscode and wipes this copy — re-clone
+  # whenever it is missing or stale (.src records the cloned version). Local
+  # copy only, works offline.
+  EXT_USER_DIR=$(ls -d "$HOME/.local/share/code-server/extensions/physicar.physicar-ext-"* 2>/dev/null | sort -V | tail -1)
+  if [ -n "$CS_VSCODE" ] && [ -n "$EXT_USER_DIR" ] \
+     && [ "$(basename "$EXT_USER_DIR")" != "$(cat "$CS_VSCODE/extensions/physicar-ext-builtin/.src" 2>/dev/null)" ]; then
+    sudo rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null
+    if sudo cp -r "$EXT_USER_DIR" "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null; then
+      basename "$EXT_USER_DIR" | sudo tee "$CS_VSCODE/extensions/physicar-ext-builtin/.src" >/dev/null 2>&1 || true
+      echo "[physicar] physicar-ext built-in baseline refreshed ($(basename "$EXT_USER_DIR"))"
+    fi
+  fi
+) &
 
 
 # ────────────────── ROS2 Launch ──────────────────
@@ -956,8 +1145,8 @@ do_build() {
     return $exit_code
 }
 
-# Boot-time update: 인터넷이 있으면 최신으로 갱신한 뒤 첫 실행 (updater.sh --boot).
-# 오프라인이면 짧은 타임아웃 후 기존 코드로 그대로 진행.
+# Boot-time update: with internet, update to the latest before first run (updater.sh --boot).
+# Offline: proceed with the existing code after a short timeout.
 if [ "$DEV" != "true" ] && [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
     bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
 fi

@@ -479,10 +479,10 @@ maybe_reexec() {
 }
 
 # ── Boot mode (--boot) ───────────────────────────────────
-# physicar.sh가 런치 직전에 동기 호출하는 원샷 업데이트: 인터넷이 되면 최신으로
-# 갱신한 뒤 첫 실행이 곧바로 새 버전으로 뜬다 (physicar-ext 자동 갱신과 동일 UX).
-# 오프라인이면 짧은 fetch 타임아웃(10s) 후 기존 코드로 그대로 진행.
-# maybe_reexec 생략 — 새 updater 코드는 다음 부팅부터 적용되면 충분하다.
+# One-shot update that physicar.sh calls synchronously right before launch: with internet,
+# update to the latest so the first run comes up on the new version (same UX as the physicar-ext auto-update).
+# Offline: proceed with the existing code after a short fetch timeout (10s).
+# maybe_reexec omitted — new updater code taking effect from the next boot is enough.
 if [[ "${1:-}" == "--boot" ]]; then
     if [[ "${DEV:-}" != "true" ]]; then
         log "boot update check..."

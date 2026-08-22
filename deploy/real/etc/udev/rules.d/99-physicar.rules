@@ -20,11 +20,15 @@ SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Mouse", ATTR{inhibited}="1"
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Consumer Control", ATTR{inhibited}="1"
 
-# USB WiFi — auto-bind unknown Realtek adapters (interface class ff:ff:ff)
+# USB WiFi — auto-bind unknown Realtek adapters (interface class ff:ff:ff).
+# Scripts run straight from the repo (this rules file is itself a symlink
+# into the repo): the updater refreshes the repo checkout, so executing the
+# repo copy is what makes these scripts updatable in the field. An installed
+# copy under /usr/local/bin would go stale forever.
 ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", \
   ATTR{bInterfaceClass}=="ff", ATTR{bInterfaceSubClass}=="ff", ATTR{bInterfaceProtocol}=="ff", \
-  RUN+="/usr/local/bin/physicar-wifi-usb-autobind.sh $devpath"
+  RUN+="/opt/physicar/src/physicar-ros/deploy/real/usr/local/bin/physicar-wifi-usb-autobind.sh $devpath"
 
 # USB WiFi removed — migrate hotspot back to internal ap0
 ACTION=="remove", SUBSYSTEM=="net", KERNEL=="wlx*", \
-  RUN+="/bin/systemd-run --no-block /usr/local/bin/physicar-wifi-hotspot-migrate.sh"
+  RUN+="/bin/systemd-run --no-block /opt/physicar/src/physicar-ros/deploy/real/usr/local/bin/physicar-wifi-hotspot-migrate.sh"

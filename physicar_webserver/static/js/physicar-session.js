@@ -28,7 +28,7 @@
       if (t) return t;
       try {
         var s = sessionStorage.getItem(KEY);
-        try { localStorage.removeItem(KEY); } catch (e) {}  // 레거시 영속 미러는 읽지 않고 청소만
+        try { localStorage.removeItem(KEY); } catch (e) {}   // the legacy persistent mirror is never read — just cleaned up
         return s || null;
       } catch (e) { return null; }
     },

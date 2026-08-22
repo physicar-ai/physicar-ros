@@ -242,9 +242,9 @@ const CTRL = {
 
     // Send only on change — batched into ONE request per tick (a joystick
     // drag used to cost up to 4 POSTs/tick through the tunnel proxy).
-    // 예외: nonzero speed는 같은 값이라도 0.4s마다 재전송(keep-alive) —
-    // 드라이버 워치독(cmd_timeout ~1s)이 "스틱을 고정한 채 주행 중"인
-    // 차를 세우지 않게 한다. WS 스트림이라 추가 비용은 미미.
+    // Exception: nonzero speed is re-sent every 0.4s even when unchanged (keep-alive) —
+    // keeps the driver watchdog (cmd_timeout ~1s) from stopping a car that is
+    // "driving with the stick held". It is a WS stream, so the extra cost is negligible.
     const body = {};
     const nowMs = Date.now();
     const driveChanged = speed !== this._lastSent.speed || steer !== this._lastSent.steer;

@@ -633,7 +633,7 @@ public:
     declare_parameter("tilt_center", 0.0);
     declare_parameter("reverse_direction", false);
     declare_parameter("speed_gain", 1.0);
-    declare_parameter("cmd_timeout", 1.0);  // 주행 명령 유효시간(초) — 초과 시 자동 정지, 0=off
+    declare_parameter("cmd_timeout", 1.0);   // drive-command validity window (s) — auto-stop past it, 0=off
     declare_parameter("wheel_radius", 0.0375);
     declare_parameter("wheelbase", 0.18);
     declare_parameter("track_width", 0.16);
@@ -750,9 +750,9 @@ public:
     battery_low_thresh_ = get_parameter("battery_low_threshold").as_double();
     battery_timer_ = create_timer(1.0 / batt_rate, [this]() { publish_battery(); });
 
-    // 주행 명령 워치독 — 마지막 speed 명령(모든 소스: /speed, /teleop/speed, /cmd_vel이
-    // set_speed로 수렴)이 cmd_timeout 넘게 갱신되지 않으면 자동 정지. 발행자가 죽어도
-    // 차가 마지막 속도로 계속 달리는 것을 차단한다. 조향/카메라는 유지(위험하지 않음).
+    // Drive-command watchdog — if the last speed command (all sources: /speed, /teleop/speed,
+    // /cmd_vel converge into set_speed) has not been refreshed within cmd_timeout, auto-stop.
+    // Blocks the car from coasting at its last speed when the publisher dies. Steering/camera stay (not dangerous).
     if (cmd_timeout_ > 0.0) {
       cmd_watchdog_timer_ = create_timer(0.1, [this]() {
         if (std::abs(target_speed_) >= SPEED_DEADZONE &&
@@ -828,7 +828,7 @@ private:
 
   void set_speed(double speed_mps) {
     speed_mps = std::clamp(speed_mps, -MAX_SPEED, MAX_SPEED);
-    last_drive_cmd_time_ = steady_now();   // 워치독 리셋 (0 명령 포함 — 무해)
+    last_drive_cmd_time_ = steady_now();   // watchdog reset (including 0 commands — harmless)
     target_speed_ = speed_mps;
     current_throttle_ = speed_mps;
 

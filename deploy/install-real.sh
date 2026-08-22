@@ -264,8 +264,11 @@ done
 # the USB WiFi (wlx*) when present and back to ap0 when removed. The autobind
 # udev rule execs the migrate script, so BOTH must be installed — otherwise a
 # hotplugged USB adapter is bound but the hotspot never moves off ap0.
-install -m 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-usb-autobind.sh" /usr/local/bin/physicar-wifi-usb-autobind.sh
-install -m 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-hotspot-migrate.sh" /usr/local/bin/physicar-wifi-hotspot-migrate.sh
+# No installed copies: the udev rule and autobind script execute these
+# straight from the repo checkout, so updater-shipped fixes reach the code
+# that actually runs. Only the exec bits need to be ensured here.
+chmod 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-usb-autobind.sh" \
+          "$DEPLOY_DIR/usr/local/bin/physicar-wifi-hotspot-migrate.sh"
 ln -sf "$DEPLOY_DIR/etc/modules-load.d/physicar-wifi.conf" /etc/modules-load.d/physicar-wifi.conf
 
 # noVNC symlink
@@ -491,29 +494,10 @@ ln -sf "$DEPLOY_DIR/etc/NetworkManager/conf.d/10-globally-managed-devices.conf" 
 
 mkdir -p /etc/NetworkManager/dispatcher.d
 
-cat > /etc/NetworkManager/dispatcher.d/90-physicar-cert <<'__NM_CERT__'
-#!/usr/bin/env bash
-# NetworkManager dispatcher: poke the physicar.sh cert fetcher whenever a
-# network interface comes up.
-
-iface="$1"
-action="$2"
-
-case "$action" in
-    up|dhcp4-change|dhcp6-change|connectivity-change) ;;
-    *) exit 0 ;;
-esac
-[ "$iface" = "ap0" ] && exit 0
-[ "$iface" = "lo" ]  && exit 0
-
-PID_FILE="/run/physicar/cert-fetcher.pid"
-[ -r "$PID_FILE" ] || exit 0
-pid=$(cat "$PID_FILE" 2>/dev/null)
-[ -n "$pid" ] || exit 0
-kill -0 "$pid" 2>/dev/null && kill -USR1 "$pid" 2>/dev/null
-exit 0
-__NM_CERT__
-chmod 0755 /etc/NetworkManager/dispatcher.d/90-physicar-cert
+# NetworkManager refuses non-root-owned dispatcher scripts, so the repo copy
+# cannot be symlinked — install it with root ownership. physicar.sh refreshes
+# it at boot whenever the repo copy changes (field updates).
+install -m 755 -o root -g root   "$DEPLOY_DIR/etc/NetworkManager/dispatcher.d/90-physicar-cert"   /etc/NetworkManager/dispatcher.d/90-physicar-cert
 
 systemctl enable NetworkManager
 systemctl start NetworkManager
@@ -629,8 +613,8 @@ echo "[6/7] Service setup..."
 
 systemctl enable --now avahi-daemon
 
-# code-server — 버전은 deploy/code-server-version 이 단일 진실. 여기서는 최초
-# 설치만 하고, 기설치 디바이스는 physicar.sh 가 부팅마다 같은 핀으로 수렴시킨다.
+# code-server — deploy/code-server-version is the single source of truth. Only the
+# initial install happens here; physicar.sh converges already-installed devices to the same pin every boot.
 CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
 if [ ! -f /usr/local/bin/code-server ]; then
   curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local ${CS_PIN:+--version="$CS_PIN"}
@@ -773,11 +757,14 @@ fi
 # code-server user settings
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
 sudo -u physicar mkdir -p "$CS_USER_DIR"
-# 심링크 금지: 사용자 설정 저장이 가능해야 한다 (기본값 갱신은 부팅 병합이 담당 — physicar.sh)
+# No symlink: user settings saves must work (default updates are handled by the boot merge — physicar.sh)
 [ -f "$CS_USER_DIR/settings.json" ] && [ ! -L "$CS_USER_DIR/settings.json" ] || {
   rm -f "$CS_USER_DIR/settings.json"
   cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
 }
+# This section runs as root — hand the file to the user, or code-server
+# (physicar) fails to save settings with EACCES and the boot merge cannot write.
+chown physicar:physicar "$CS_USER_DIR/settings.json"
 
 # Install boot script (from repo)
 chmod +x "$DEPLOY_DIR/physicar.sh"

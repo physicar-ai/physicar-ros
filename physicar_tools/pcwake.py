@@ -45,7 +45,7 @@ _pending = {}             # session id -> [{"message", "at"}]
 _MAX_PER_SESSION = 50
 
 _tickets = {}             # wake_id -> {"session", "message", "created"}
-_redeemed = {}            # wake_id -> redeemed_at — status() 가 '발동됨'과 '소멸'을 구별하게 한다
+_redeemed = {}   # wake_id -> redeemed_at — lets status() distinguish 'fired' from 'expired'
 _TICKET_TTL = 24 * 3600
 _MAX_TICKETS = 200
 
@@ -91,7 +91,7 @@ def redeem(wake_id, note=""):
     if not t:
         return False
     msg = t["message"] + ((" — " + str(note)[:500]) if note else "")
-    return _enqueue(t["session"], msg, wid)   # id 동봉 — 어느 예약이 발동됐는지 LLM 이 안다
+    return _enqueue(t["session"], msg, wid)   # id included — the LLM knows which reservation fired
 
 
 def status(wake_id):

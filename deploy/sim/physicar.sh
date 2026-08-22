@@ -67,7 +67,7 @@ do_build() {
     return $exit_code
 }
 
-# Boot-time update: 인터넷이 있으면 최신으로 갱신한 뒤 첫 실행 (updater.sh --boot).
+# Boot-time update: with internet, update to the latest before first run (updater.sh --boot).
 if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
     bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
 fi

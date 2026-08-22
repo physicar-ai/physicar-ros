@@ -184,6 +184,10 @@ proto=rsn
 pairwise=ccmp
 group=ccmp
 pmf=1
+# Disable WPS advertisement (same as the physicar.sh keyfile) — without
+# this, every migrate rewrite resurrects WPS and Windows prompts for a
+# router PIN instead of the passphrase until the next reboot re-heals it.
+wps-method=1
 psk=${_psk}
 
 [ipv4]

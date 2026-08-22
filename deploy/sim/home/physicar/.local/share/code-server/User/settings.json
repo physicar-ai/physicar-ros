@@ -35,6 +35,8 @@
   },
   "update.showReleaseNotes": false,
   "extensions.ignoreRecommendations": true,
+  "extensions.autoUpdate": "off",
+  "extensions.autoCheckUpdates": false,
   "workbench.tips.enabled": false,
   "security.workspace.trust.enabled": false,
   "workbench.trustedDomains": [

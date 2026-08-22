@@ -79,8 +79,8 @@ fi
 # code-server — serves `/` on a local (non-Codespaces) sim. Installed into
 # the image unconditionally; supervisord only starts it when CODESPACE_NAME
 # is unset (in Codespaces VS Code web is the Codespace itself).
-# 버전은 deploy/code-server-version 이 단일 진실 — 여기서 베이크하고,
-# entrypoint.sh 가 부팅마다 기설치 sim 을 같은 핀으로 수렴시킨다.
+# deploy/code-server-version is the single source of truth — bake it here;
+# entrypoint.sh converges already-installed sims to the same pin every boot.
 CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
 if ! command -v code-server &>/dev/null; then
   echo "  Installing code-server ${CS_PIN:-latest}..."
@@ -148,11 +148,11 @@ for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy ms-toolsa
     || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
 done
 
-# physicar-ext 를 built-in 으로도 복제 — built-in 확장은 UI 에 Uninstall 버튼이
-# 없어 학생이 지울 수 없는 베이스라인이 된다 (Disable 은 VS Code 구조상 못 막음).
-# 유저 디렉토리의 같은 ID 확장이 항상 이 사본을 덮어쓰므로(부팅 --force 최신화)
-# 배포 최신성은 그대로고, 유저 설치본이 지워진 세션에서만 이 층이 활성화된다.
-# code-server 업데이트 시 lib/vscode 가 교체돼 사본이 사라진다 — 리베이크가 복원.
+# Also clone physicar-ext as a built-in — built-in extensions have no Uninstall
+# button in the UI, making a baseline students cannot remove (Disable cannot be blocked by VS Code's design).
+# The same-ID extension in the user directory always overrides this copy (boot --force freshness),
+# so release freshness is unchanged; this layer activates only in sessions where the user copy was removed.
+# A code-server update replaces lib/vscode and drops the copy — a rebake restores it.
 CS_VSCODE=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
 EXT_USER_DIR=$(ls -d /home/physicar/.local/share/code-server/extensions/physicar.physicar-ext-* 2>/dev/null | sort | tail -1)
 if [ -n "$CS_VSCODE" ] && [ -n "$EXT_USER_DIR" ]; then
@@ -167,12 +167,12 @@ fi
 # take effect without re-running install)
 CS_USER_DIR="/home/physicar/.local/share/code-server/User"
 sudo -u physicar mkdir -p "$CS_USER_DIR"
-# 심링크 금지: 사용자 설정 저장이 가능해야 한다 (기본값 갱신은 부팅 병합이 담당 — entrypoint.sh)
+# No symlink: user settings saves must work (default updates are handled by the boot merge — entrypoint.sh)
 [ -f "$CS_USER_DIR/settings.json" ] && [ ! -L "$CS_USER_DIR/settings.json" ] || {
   rm -f "$CS_USER_DIR/settings.json"
   cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
-  # cp 는 root 로 실행되므로 소유권을 사용자에게 — root 소유로 베이크되면
-  # code-server(physicar)의 설정 저장이 EACCES 로 실패한다
+  # cp runs as root, so hand ownership to the user — if baked root-owned,
+  # code-server (physicar) fails to save settings with EACCES
   chown physicar:physicar "$CS_USER_DIR/settings.json"
 }
 

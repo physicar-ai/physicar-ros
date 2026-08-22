@@ -17,6 +17,32 @@
         // ─────────────────────────────────────────────────────────────────────
         // Confirm modal (replaces native confirm())
         // ─────────────────────────────────────────────────────────────────────
+        // ── Touch tap-guard ──
+        // A scroll fling on the touchscreen often ends within the browser's
+        // click slop, so the "tap" lands on whatever row the finger left from
+        // (password modals opening mid-scroll, stray Forget taps). Capture-
+        // phase filter: a trusted pointer click only passes when the pointer
+        // travelled < 12px since pointerdown and nothing scrolled in the last
+        // 150ms. Keyboard-driven clicks (detail === 0) are never filtered.
+        (function () {
+            let downX = 0, downY = 0, lastScrollT = 0;
+            document.addEventListener('pointerdown', (e) => {
+                downX = e.clientX; downY = e.clientY;
+            }, true);
+            document.addEventListener('scroll', () => {
+                lastScrollT = performance.now();
+            }, true);
+            document.addEventListener('click', (e) => {
+                if (!e.isTrusted || e.detail === 0) return;
+                const moved = Math.hypot(e.clientX - downX, e.clientY - downY) > 12;
+                const justScrolled = performance.now() - lastScrollT < 150;
+                if (moved || justScrolled) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }, true);
+        })();
+
         function confirmModal(message, opts) {
           opts = opts || {};
           return new Promise((resolve) => {
@@ -400,6 +426,40 @@
             'display-myapp': '/myapp',
         };
 
+        // MyApp liveness — parity with /app (app.html): the offline
+        // placeholder polls itself back to life, but a RUNNING app that dies
+        // leaves its last page frozen in the iframe. While the My App panel
+        // is visible, follow the server's /proc port watch over SSE and
+        // reload the frame on every up↔down transition. Closed when the
+        // panel is left, so the idle kiosk holds no extra stream.
+        let _myappES = null;
+        let _myappWasUp = null;
+        function startMyappWatch() {
+            if (_myappES) return;
+            _myappWasUp = null;
+            try {
+                _myappES = new EventSource('/states?stream=true&include=myapp');
+                _myappES.onmessage = (ev) => {
+                    let d;
+                    try { d = JSON.parse(ev.data); } catch { return; }
+                    if (!d || !d.myapp) return;
+                    const up = !!d.myapp.up;
+                    if (_myappWasUp !== null && up !== _myappWasUp) {
+                        const f = document.getElementById('iframe-myapp');
+                        if (f && f.src && f.src !== 'about:blank') {
+                            try { f.contentWindow.location.reload(); }
+                            catch (e) { f.src = iframeSrcs['display-myapp']; }
+                        }
+                    }
+                    _myappWasUp = up;
+                };
+            } catch {}
+        }
+        function stopMyappWatch() {
+            if (_myappES) { _myappES.close(); _myappES = null; }
+            _myappWasUp = null;
+        }
+
         // Monotonic token: any in-flight reload that doesn't match the
         // current token is dropped, so rapid clicks can't leave a hidden
         // iframe loaded in the background.
@@ -422,6 +482,9 @@
                 btn.classList.add('active');
                 const panelId = 'panel-' + panel;
                 document.getElementById(panelId).classList.add('active');
+
+                if (panel === 'display-myapp') startMyappWatch();
+                else stopMyappWatch();
 
                 if (iframeSrcs[panel]) {
                     // Clicked an Apps button: ensure all OTHER app iframes
@@ -475,6 +538,7 @@
 
         // WiFi Popup
         let connectedSsid = '';
+        let _lastWifiNetworks = [];   // last good scan — fallback when a rescan flakes
 
         function openWifiPopup() {
             document.getElementById('wifi-popup').classList.add('active');
@@ -486,23 +550,14 @@
             document.getElementById('wifi-popup').classList.remove('active');
         }
 
-        // Show the X button only when internet is reachable (via WiFi or
-        // Ethernet); otherwise show a small "Skip" link.  This nudges the
-        // user to actually connect when they have no internet path.
-        async function updateWifiPopupCloseAffordance() {
+        // Close affordance is always the standard ✕ — the old online-gated
+        // "Skip" link ran the exact same action but looked like a different
+        // control, inconsistent with every other modal.
+        function updateWifiPopupCloseAffordance() {
             const xBtn = document.getElementById('wifi-popup-close');
             const skip = document.getElementById('wifi-popup-skip');
-            if (!xBtn || !skip) return;
-            let online = false;
-            try {
-                const r = await fetch('/network/internet', { cache: 'no-store' });
-                if (r.ok) {
-                    const d = await r.json();
-                    online = !!(d && (d.wifi || d.ethernet));
-                }
-            } catch {}
-            xBtn.style.display = online ? '' : 'none';
-            skip.style.display = online ? 'none' : '';
+            if (xBtn) xBtn.style.display = '';
+            if (skip) skip.style.display = 'none';
         }
 
         async function scanWifiPopup() {
@@ -510,24 +565,37 @@
             list.innerHTML = '<div class="wifi-popup-scanning">Scanning...</div>';
 
             try {
-                const netRes = await fetch('/network/info');
-                const netData = await netRes.json();
-                connectedSsid = netData.wifi_ssid || '';
-                document.getElementById('net-wifi-ssid').textContent = connectedSsid || 'Not connected';
-                document.getElementById('net-wifi-ip').textContent = netData.wifi_ip || '-';
-                document.getElementById('net-eth-ip').textContent = netData.eth_ip || '-';
+                // Info fetch is cosmetic — never let it kill the list render.
+                try {
+                    const netRes = await fetch('/network/info');
+                    const netData = await netRes.json();
+                    connectedSsid = netData.wifi_ssid || '';
+                    document.getElementById('net-wifi-ssid').textContent = connectedSsid || 'Not connected';
+                    document.getElementById('net-wifi-ip').textContent = netData.wifi_ip || '-';
+                    document.getElementById('net-eth-ip').textContent = netData.eth_ip || '-';
+                } catch {}
 
                 // nmcli rescans flake intermittently (radio busy / recent
-                // rescan / etc.) → retry once on empty before showing the
-                // user "No networks found".
-                const res = await fetch('/network/wifi/scan');
-                let networks = await res.json();
+                // rescan / just-deleted profile) → retry once on empty.
+                let networks = [];
+                try {
+                    const res = await fetch('/network/wifi/scan');
+                    if (res.ok) networks = await res.json();
+                } catch {}
                 if (!networks || networks.length === 0) {
                     await new Promise(r => setTimeout(r, 1500));
                     try {
                         const res2 = await fetch('/network/wifi/scan');
                         if (res2.ok) networks = await res2.json();
                     } catch {}
+                }
+                // Still nothing → fall back to the last good list so the
+                // popup never dead-ends; the saved/connected badges below
+                // still refresh from their own (radio-free) fetches.
+                if (networks && networks.length) {
+                    _lastWifiNetworks = networks;
+                } else if (_lastWifiNetworks.length) {
+                    networks = _lastWifiNetworks;
                 }
 
                 // Saved connections (for forget button)
@@ -550,7 +618,7 @@
                     if (aCur !== bCur) return aCur - bCur;
                     return b.signal - a.signal;
                 });
-                list.innerHTML = networks.slice(0, 10).map(n => {
+                list.innerHTML = networks.slice(0, 100).map(n => {
                     const isConnected = n.ssid === connectedSsid;
                     const savedConn = savedMap.get(n.ssid);
                     const bars = n.signal > -50 ? 4 : n.signal > -60 ? 3 : n.signal > -70 ? 2 : 1;
@@ -586,7 +654,7 @@
                         + '</div>';
                 }).join('');
             } catch (e) {
-                list.innerHTML = '<div class="wifi-popup-scanning" style="color:#ff6666">Scan failed</div>';
+                list.innerHTML = '<div class="wifi-popup-scanning" style="color:#ff6666;cursor:pointer" onclick="scanWifiPopup()">Scan failed — tap to retry</div>';
             }
         }
 
@@ -601,6 +669,7 @@
         // though the backend completes successfully. We fall back to polling
         // /network/info to confirm — same pattern as connectWifi().
         async function activateSavedWifi(name, ssid) {
+            if (!(await confirmModal('Switch Wi-Fi to "' + ssid + '"?', { okText: 'Connect' }))) return;
             showConnectSpinner('Connecting to ' + ssid + '…');
             try {
                 const res = await fetch('/network/wifi/activate', {
@@ -654,8 +723,7 @@
         }
 
         async function forgetWifi(name, ssid) {
-            // Close popup so user sees the action took effect, then reopen.
-            closeWifiPopup();
+            if (!(await confirmModal('Forget saved network "' + ssid + '"?', { okText: 'Forget' }))) return;
             try {
                 const res = await fetch('/network/wifi/saved/' + encodeURIComponent(name), { method: 'DELETE' });
                 if (!res.ok) {
@@ -667,8 +735,10 @@
             } catch (e) {
                 showToast('Network error: ' + e.message, 'error');
             }
-            // Reopen with fresh list
-            openWifiPopup();
+            // Refresh in place — the old close→reopen flashed the whole
+            // popup, and the immediate post-delete rescan flakes ("Scan
+            // failed"); scanWifiPopup now falls back to the cached list.
+            scanWifiPopup();
         }
 
         function getSignalBars(signal) {
@@ -1272,6 +1342,11 @@
                         if (res2.ok) networks = await res2.json();
                     } catch {}
                 }
+                if (networks.length) {
+                    _lastWifiNetworks = networks;
+                } else if (_lastWifiNetworks.length) {
+                    networks = _lastWifiNetworks;
+                }
 
                 // Saved connections (for activate-without-password + forget btn)
                 let saved = [];
@@ -1293,7 +1368,7 @@
                     if (aCur !== bCur) return aCur - bCur;
                     return b.signal - a.signal;
                 });
-                list.innerHTML = networks.slice(0, 10).map(n => {
+                list.innerHTML = networks.slice(0, 100).map(n => {
                     const isConnected = n.ssid === curSsid;
                     const savedConn = savedMap.get(n.ssid);
                     const bars = n.signal > -50 ? 4 : n.signal > -60 ? 3 : n.signal > -70 ? 2 : 1;
@@ -1327,7 +1402,7 @@
                         + '</div>';
                 }).join('');
             } catch (e) {
-                list.innerHTML = '<div class="wifi-popup-scanning" style="color:#ff6666">Scan failed</div>';
+                list.innerHTML = '<div class="wifi-popup-scanning" style="color:#ff6666;cursor:pointer" onclick="certGateScan()">Scan failed — tap to retry</div>';
             }
         }
 
@@ -1690,6 +1765,10 @@
         }
 
         function btRenderManage() {
+            // Never rebuild the list while an action is in flight: the rebuild
+            // replaces the disabled in-progress button with a fresh enabled
+            // one, inviting a double Pair mid-pairing.
+            if (btBusy) return;
             const sc = document.getElementById('bt-scan-list');
             if (sc) {
                 const macs = new Set(btPairedList.map(d => d.mac));
@@ -1713,10 +1792,16 @@
 
         async function btAction(act, mac, btn) {
             if (btBusy) return;
+            if (act === 'remove' &&
+                !(await confirmModal('Forget this bluetooth device?', { okText: 'Forget' }))) return;
             btBusy = true;
             const orig = btn.textContent;
             btn.disabled = true;
-            btn.textContent = '…';
+            btn.textContent = ({ pair: 'Pairing…', remove: 'Removing…',
+                                 disconnect: 'Disconnecting…' })[act] || '…';
+            // One radio, one action — freeze every BT button (scan list AND
+            // paired list) so a second pair/remove can't start mid-action.
+            document.querySelectorAll('.bt-act').forEach(b => { b.disabled = true; });
             try {
                 const res = await fetch('/network/bluetooth/' + act, {
                     method: 'POST',
@@ -1727,15 +1812,19 @@
                     const d = await res.json().catch(() => ({}));
                     showToast(act + ' failed: ' + (d.detail || res.status), 'error');
                 } else {
-                    showToast(act + ' ok', 'success');
+                    showToast(act === 'pair' ? 'Paired & connected' : act + ' ok', 'success');
+                    // Pairing done — close the scan modal instead of leaving
+                    // the user staring at a stale device list.
+                    if (act === 'pair') btCloseManage();
                 }
             } catch (e) {
                 showToast('Network error: ' + e.message, 'error');
             } finally {
                 btBusy = false;
                 btn.textContent = orig;
-                btn.disabled = false;
+                document.querySelectorAll('.bt-act').forEach(b => { b.disabled = false; });
                 btRefresh();
+                if (btManageOpen) btRenderManage();
             }
         }
 
@@ -1775,7 +1864,7 @@
             btRenderManage();
             btScan();
             if (_btScanInterval) clearInterval(_btScanInterval);
-            _btScanInterval = setInterval(() => { if (btManageOpen && !btScanning) btScan(); }, 12000);
+            _btScanInterval = setInterval(() => { if (btManageOpen && !btScanning && !btBusy) btScan(); }, 12000);
         }
 
         function btCloseManage() {

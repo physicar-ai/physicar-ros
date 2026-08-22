@@ -123,12 +123,12 @@
 <link rel="stylesheet" href="/static/css/app.css">
 <link rel="stylesheet" href="/static/css/control.css">
 <style>
-/* ── /app layout — 3열 (경계 2개 모두 드래그 리사이즈, 세션 한정):
+/* ── /app layout — 3 columns (both dividers drag-resizable, session-only):
    ┌────────┬───────────────────┬──────────────┐
-   │        │ CONTROL (상단 고정) │              │
-   │ 상태    ├───── ↕ 경계 ──────┤ 시뮬레이터    │
-   │ 패널    │ 앱 (My App/VNC    │ (/sim, sim   │
-   │        │  필 버튼 전환)      │  모드 전용)   │
+   │        │ CONTROL (pinned top)│              │
+   │ Status ├──── ↕ divider ────┤ Simulator    │
+   │ panel  │ App (My App/VNC   │ (/sim, sim   │
+   │        │  pill toggle)     │  mode only)  │
    └────────┴───────────────────┴──────────────┘ */
 body{display:flex;flex-direction:row;height:100vh}
 
@@ -141,7 +141,7 @@ body{display:flex;flex-direction:row;height:100vh}
   flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
   display:flex;flex-direction:column;
 }
-/* 카드 장식 없음 — CONTROL/APP은 플랫 섹션, 사이는 가로 경계선이 가른다 */
+/* No card chrome — CONTROL/APP are flat sections split by a horizontal divider */
 .stack-panel{
   display:none;flex-direction:column;min-height:0;
   background:#111;overflow:hidden;
@@ -327,7 +327,7 @@ body:not(.sim-mode) #divider2{display:none}
 
 /* ── Divider ── */
 .divider{
-  width:6px;cursor:col-resize;background:#3a3055;   /* 어두운 보라 — hover 시 accent */
+  width:6px;cursor:col-resize;background:#3a3055;   /* dark purple — accent on hover */
   flex-shrink:0;position:relative;z-index:10;transition:background .15s;
 }
 .divider:hover,.divider.dragging{background:var(--accent)}
@@ -349,7 +349,7 @@ body:not(.sim-mode) #divider2{display:none}
 </head>
 <body>
 
-<!-- Sensors — 맨 좌측 컬럼 -->
+<!-- Sensors — leftmost column -->
 <div class="right" id="right">
   <div class="panel" id="sensor-panel">
     <div class="panel-section panel-section-flush" id="sec-camera">
@@ -397,8 +397,8 @@ body:not(.sim-mode) #divider2{display:none}
 
 <div class="main" id="main">
   <div class="stack" id="stack">
-    <!-- SIMULATOR 패널은 제거됨 — 클라우드 심에선 별도 sim.physicar 탭(독립 /sim 화면)이
-         담당한다. 실물 차량과 동일한 앱 구성(MYAPP/VNC/CONTROL)으로 UI 통일. -->
+    <!-- SIMULATOR panel removed — on cloud sim the separate sim.physicar tab (standalone /sim view)
+         owns it. Same app composition (MYAPP/VNC/CONTROL) as the real car for a unified UI. -->
 
     <!-- CONTROL card (control.js gates sending on #page-control.active) -->
     <div class="stack-panel on" id="panel-control">
@@ -506,9 +506,9 @@ body:not(.sim-mode) #divider2{display:none}
 (function(){
   'use strict';
 
-  /* ── 레이아웃: [Control 고정 + 선택 앱] | 상태 | 시뮬레이터(sim 전용) ──
-     Control 은 항상 표시(상단 고정), 그 아래는 셀렉트로 고른 앱 하나(My App/VNC).
-     시뮬레이터는 우측 고정 컬럼 — 독립 /sim 화면(자체 툴바 포함)을 그대로 임베드. */
+  /* ── Layout: [Control pinned + selected app] | status | simulator (sim only) ──
+     Control is always shown (pinned top); below it, the one app chosen via the select (My App/VNC).
+     The simulator is a fixed right column — embeds the standalone /sim view (own toolbar) as-is. */
   const APPS = [
     { id: 'myapp', label: 'My App', path: '/myapp/' },
     { id: 'vnc',   label: 'VNC',    path: '/vnc/'   },
@@ -527,9 +527,9 @@ body:not(.sim-mode) #divider2{display:none}
     if (s && s.open) {
       Object.keys(open).forEach(k => { if (k in s.open) open[k] = !!s.open[k]; });
     }
-    else if (s && APPS.some(x => x.id === s.app)) {  // 구 단일선택 스키마 승계
+    else if (s && APPS.some(x => x.id === s.app)) {   // migrate legacy single-select schema
       APPS.forEach(x => { open[x.id] = x.id === s.app; });
-    } else if (s && Array.isArray(s.sel)) {          // 구 멀티선택 스키마 승계
+    } else if (s && Array.isArray(s.sel)) {   // migrate legacy multi-select schema
       APPS.forEach(x => { open[x.id] = s.sel.includes(x.id); });
     }
   } catch(e){}
@@ -612,7 +612,7 @@ body:not(.sim-mode) #divider2{display:none}
   });
 
   function render(){
-    ctrlCol.classList.add('active');      // CTRL 전송 게이트 (접혀 있어도 키보드 주행 유지)
+    ctrlCol.classList.add('active');   // CTRL send gate (keyboard driving stays even when collapsed)
     document.getElementById('panel-control').classList.toggle('collapsed', !open.control);
     SENSOR_SECS.forEach(([k, id]) => {
       const el = document.getElementById(id);
@@ -624,7 +624,7 @@ body:not(.sim-mode) #divider2{display:none}
     APPS.forEach(x => {
       const on = !!open[x.id];
       panels[x.id].classList.toggle('collapsed', !on);
-      // 펼침 시 로드, 접힘 시 해제 (숨은 VNC 스트림 자원 회수 — 기존 프로파일 유지)
+   // Load on expand, unload on collapse (reclaim hidden VNC stream resources — keep the existing profile)
       const f = frames[x.id];
       const src = f.getAttribute('src');
       if (on) { if (src !== x.path) f.src = x.path; }
@@ -636,7 +636,7 @@ body:not(.sim-mode) #divider2{display:none}
     updateFocus(true);
   }
 
-  /* ── 3열 분할: [상태 | 앱 | 심] — 경계 두 개 모두 드래그 (세션 한정) ── */
+  /* ── 3-column split: [status | app | sim] — both dividers draggable (session-only) ── */
   let b1 = 0.2, b2 = 1;                // real default: sensors 1 : center 4 (no sim column)
   function applyRatio(){
     right.style.width = 'calc(' + (b1 * 100).toFixed(2) + '% - 4px)';
@@ -677,13 +677,13 @@ body:not(.sim-mode) #divider2{display:none}
     el.addEventListener('touchstart', down, {passive:false});
   }
 
-  // 경계1: 상태 | 앱 — 경계2와 최소 간격 유지
+  // Divider 1: status | app — keep a minimum gap from divider 2
   makeDrag(divider, (cx) => {
     const hi = (simMode ? b2 : 1) - 0.2;
     b1 = Math.max(0.1, Math.min(hi, cx / document.body.clientWidth));
     applyRatio();
   });
-  // 경계2: 앱 | 시뮬레이터 (sim 모드 전용)
+  // Divider 2: app | simulator (sim mode only)
   makeDrag(divider2, (cx) => {
     b2 = Math.max(b1 + 0.2, Math.min(0.9, cx / document.body.clientWidth));
     applyRatio();
@@ -794,7 +794,7 @@ body:not(.sim-mode) #divider2{display:none}
       const holder = target.closest('.stack-panel');
       if (holder) holder.classList.add('focused');
     } else if (ae && ae.closest && ae.closest('.stack-panel')) {
-      // A panel-header control (app select 등) is in use — keep that panel lit
+      // A panel-header control (app select, etc.) is in use — keep that panel lit
       ae.closest('.stack-panel').classList.add('focused');
     }
   }
@@ -841,7 +841,7 @@ body:not(.sim-mode) #divider2{display:none}
     ['keydown', 'keyup'].forEach(type => {
       doc.addEventListener(type, (e) => {
         if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-        // Typing in a sim-page form field (evaluation card 등): arrows belong
+        // Typing in a sim-page form field (evaluation card, etc.): arrows belong
         // to the text cursor there, not to driving — don't hijack keydowns.
         // Keyups are still mirrored (without preventDefault) so a key held
         // while clicking into the field can't stay latched in the driver.
@@ -860,7 +860,7 @@ body:not(.sim-mode) #divider2{display:none}
 
   /* ── Control (inline) ── */
   CTRL.init();
-  // Range sliders (max speed 등) must not hold keyboard focus after use —
+  // Range sliders (max speed, etc.) must not hold keyboard focus after use —
   // a focused slider swallows the arrow keys that should drive the car
   document.querySelectorAll('.ctrl-strip input[type="range"]').forEach(el => {
     const drop = () => el.blur();
@@ -910,7 +910,7 @@ body:not(.sim-mode) #divider2{display:none}
         navigator.clipboard.writeText(id).then(() => done(true), () => done(false));
       else done(false);
     }
-    // 카드 공통부: 썸네일 + 이름 + (사이즈 · ID · 복사) 줄
+    // Card common part: thumbnail + name + (size · ID · copy) row
     function makeCard(display, isCurrent){
       const card = document.createElement('div');
       card.className = 'wm-card' + (isCurrent ? ' active' : '');
@@ -957,7 +957,7 @@ body:not(.sim-mode) #divider2{display:none}
       worlds.forEach(w => {
         const isCurrent = w.name === current;
         const { card, img, sub } = makeCard(w.display || w.name, isCurrent);
-        // 로컬 트랙 아이콘 먼저, 배포 월드는 CDN 썸네일이 오면 업그레이드
+        // Local track icon first; published worlds upgrade when the CDN thumbnail arrives
         img.onerror = () => { img.style.display = 'none'; };
         img.src = '/sim/track_iconography/' + w.name + '.png';
         if (w.world_id) {
@@ -966,11 +966,11 @@ body:not(.sim-mode) #divider2{display:none}
             if (u) { img.style.display = ''; img.src = u; }
           });
         }
-        // 공식 월드는 내부명(physicar_base 등)이 ID 역할 — WORLDS 목록 등에 그대로 쓰는 값
+        // Official worlds use their internal name (physicar_base, etc.) as the ID — used verbatim in WORLDS lists etc.
         subInfo(sub, w.size, w.world_id || w.name);
         card.onclick = () => {
           if (isCurrent) return;
-          // 배포 월드는 world_id 로, 내장 월드는 파일명으로 스위치
+          // Published worlds switch by world_id, built-in worlds by filename
           switchWorld(w.world_id ? { world_id: w.world_id } : { world: w.file },
                       w.display || w.name);
         };
@@ -978,7 +978,7 @@ body:not(.sim-mode) #divider2{display:none}
           const del = document.createElement('button');
           del.className = 'wm-del'; del.innerHTML = TRASH_SVG;
           del.title = 'Delete ' + (w.display || w.name);
-          // 확인은 카드 전체를 확인 상태로 전환 — window.confirm 은 웹뷰에서 무시됨
+          // Confirm flips the whole card into a confirm state — window.confirm is ignored in webviews
           del.onclick = (e) => {
             e.stopPropagation();
             card.onclick = null;
@@ -1043,12 +1043,12 @@ body:not(.sim-mode) #divider2{display:none}
       refresh(true);
     }
 
-    /* ── Published worlds (worlds.physicar.ai) — my/classroom 목록 + 원클릭 설치 ──
-       목록은 api 세션(physicarSession — /__session 발급)으로 브라우저가 직접 조회하고,
-       설치는 sim_api 가 R2 에서 직접 내려받는다 (브라우저 릴레이 없음). */
+    /* ── Published worlds (worlds.physicar.ai) — my/classroom lists + one-click install ──
+       Lists are fetched by the browser itself with the api session (physicarSession — issued via /__session);
+       installs are downloaded by sim_api straight from R2 (no browser relay). */
     const WAPI = 'https://api.physicar.ai';
     function apiTok(){ return (window.physicarSession && physicarSession.token()) || null; }
-    let installedIds = {};   // world_id → 로컬 world 파일 (목록 대조용)
+    let installedIds = {};   // world_id → local world file (for list matching)
 
     const CDN = 'https://worlds.physicar.ai';
     const metaCache = {};
@@ -1059,7 +1059,7 @@ body:not(.sim-mode) #divider2{display:none}
       }
       return metaCache[id];
     }
-    // meta.thumb(표시 전용) 우선, 구 배포는 track_iconography 폴백
+    // Prefer meta.thumb (display only); old publishes fall back to track_iconography
     function thumbFromMeta(id, meta){
       if (!meta || !meta.rev) return null;
       const files = (meta.files || []).filter(p => typeof p === 'string');
@@ -1146,12 +1146,12 @@ body:not(.sim-mode) #divider2{display:none}
     linkGo.addEventListener('click', loadFromLink);
     linkIn.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); loadFromLink(); }
-      e.stopPropagation();   // 화살표 주행 단축키와 충돌 방지
+      e.stopPropagation();   // avoid clashing with the arrow-key driving shortcuts
     });
 
     function open(){ setSt(''); refresh(true).then(refreshCloud); modal.style.display = 'flex'; }
 
-    // 공유 링크 직행 (sim.physicar.ai/app?world=<id>) — 모달 열고 자동 설치·전환
+    // Share-link direct entry (sim.physicar.ai/app?world=<id>) — open the modal, auto-install and switch
     (function autoInstallFromQuery(){
       const m = location.search.match(/[?&]world=([0-9a-f]{32})(&|$)/);
       if (!m) return;
@@ -1168,13 +1168,13 @@ body:not(.sim-mode) #divider2{display:none}
     });
 
     refresh();
-    // 월드 상태는 SSE(/sim/api/events) 푸시 — 10초 폴링 제거 (게이트웨이 Worker
-    // 경유 요청이라 폴링은 유저 규모에서 비용 직격). 목록 자체는 모달 열 때 갱신.
+    // World state is pushed via SSE (/sim/api/events) — 10s polling removed (requests go through
+    // the gateway Worker, so polling is a direct cost at user scale). The list itself refreshes when the modal opens.
     (() => {
       let es;
       try { es = new EventSource('/sim/api/events'); } catch (e) { return; }
       let last = '';
-      // SSE 프레임은 이름표 있는 이벤트(event: state / run / ...) — state 만 구독
+      // SSE frames are named events (event: state / run / ...) — subscribe to state only
       es.addEventListener('state', (ev) => {
         let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
         const key = (d.current || '') + '|' + (d.switching ? 1 : 0);
@@ -1183,7 +1183,7 @@ body:not(.sim-mode) #divider2{display:none}
     })();
   }
 
-  /* ── Mode: 시뮬레이터 컬럼은 sim 모드에서만 열린다 ── */
+  /* ── Mode: the simulator column opens only in sim mode ── */
   (async function(){
     const mode = await detectMode();   // adds body.sim-mode when sim
     if (mode === 'sim') {

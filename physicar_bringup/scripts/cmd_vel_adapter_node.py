@@ -55,7 +55,7 @@ class CmdVelAdapterNode(Node):
         self.declare_parameter('wheelbase', 0.18)
         self.declare_parameter('max_steering', 20.0)  # degrees
         self.declare_parameter('max_speed', 3.0)      # m/s
-        self.declare_parameter('cmd_timeout', 1.0)     # 주행 명령 유효시간(초), 0=off
+        self.declare_parameter('cmd_timeout', 1.0)   # drive-command validity window (s), 0=off
         self.declare_parameter('min_speed', 0.3)       # m/s (ESC dead zone)
 
         self.wheelbase = self.get_parameter('wheelbase').value
@@ -102,8 +102,8 @@ class CmdVelAdapterNode(Node):
         # Wall clock — fires even when /clock (sim time) is not yet available
         wall_clock = Clock(clock_type=ClockType.STEADY_TIME)
 
-        # 주행 명령 워치독 — /speed가 cmd_timeout 넘게 갱신되지 않으면 자동 정지
-        # (디바이스 physicar_driver의 cmd_timeout과 동일 계약)
+        # Drive-command watchdog — auto-stop when /speed has not been refreshed within cmd_timeout
+        # (same contract as the device-side physicar_driver cmd_timeout)
         if self.cmd_timeout > 0.0:
             self.create_timer(0.1, self._cmd_watchdog, clock=wall_clock)
 

@@ -131,11 +131,11 @@ async def events(request: Request):
     async def gen():
         try:
             # replay current state so a late-joining browser starts playing.
-            # 끝난 곡 재재생 사고 방지(리스폰=페이지 리로드→SSE 재구독):
-            #  - duration 을 아는 비루프 곡이 이미 끝났으면 건너뛴다
-            #  - 재생 중인 곡은 offset(경과초)을 실어 이어듣게 한다
-            #  - URL 곡은 duration 미상 → 브라우저의 자연 종료 통지(POST /audio/stop)가
-            #    서버 보관 상태를 지우는 유일한 수단 (gzweb.js onended 참고)
+            # Prevent accidental replay of finished tracks (respawn = page reload → SSE resubscribe):
+            #  - a non-loop track with known duration that already ended is skipped
+            #  - a currently-playing track carries offset (elapsed seconds) so it resumes
+            #  - URL tracks have unknown duration → the browser's natural end notice (POST /audio/stop)
+            #    is the only way the server-held state gets cleared (see gzweb.js onended)
             for item in audio_manager.status():
                 if item["kind"] not in ("url", "path", "data"):
                     continue

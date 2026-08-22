@@ -44,3 +44,27 @@ sudo bash /opt/physicar/src/physicar-ros/deploy/create-real-image.sh
 Output: `physicar-YYYYMMDD.img.gz` on the USB. Flash with Raspberry Pi Imager; auto-expands on first boot.
 
 
+
+## Update propagation (real robots)
+
+`updater.sh` refreshes the repo checkout and rebuilds ROS packages; it never
+re-runs the installer. For a change to reach robots in the field it must
+therefore live on one of these paths:
+
+1. **Repo-direct (preferred)** — the running system executes/serves the repo
+   copy itself: `physicar.sh`, systemd units, udev rules, nginx config,
+   netplan/NM conf, webserver static+python, the wifi autobind/migrate
+   scripts (udev runs them from the repo), `cyclonedds.xml`, bashrc hook.
+2. **Boot-refreshed** — `physicar.sh` re-applies it every boot when the repo
+   copy changed: snap chromium kiosk policy, NM dispatcher hook (root-owned
+   file requirement), the PWM overlay dtbo (recompiled; applies next boot),
+   code-server binary (pinned by `deploy/code-server-version`), code-server
+   webview patches and settings merge, DDS sysctl values.
+3. **Install-only — NOT updatable in the field.** Changing any of these
+   requires a new SD image: apt/pip package set (except the `physicar`
+   package, which the updater upgrades), ufw rules, `config.txt` lines,
+   sudoers, group memberships, usb_modeswitch config, DKMS drivers, kernel.
+
+`deploy/real/**` is never read by the simulator; sim-shared surfaces are
+`physicar_webserver/`, `physicar_tools/`, the ROS packages, `updater.sh`,
+`cyclonedds.xml`, and `deploy/sim/**` + `install-sim.sh`.

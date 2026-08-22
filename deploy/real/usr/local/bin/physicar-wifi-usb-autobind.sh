@@ -35,7 +35,7 @@ fi
   for i in 1 2 3 4 5 6; do
     sleep 1
     for n in /sys/class/net/wlx*; do
-      [ -d "$n/wireless" ] && exec /usr/local/bin/physicar-wifi-hotspot-migrate.sh
+      [ -d "$n/wireless" ] && exec /opt/physicar/src/physicar-ros/deploy/real/usr/local/bin/physicar-wifi-hotspot-migrate.sh
     done
   done
 '

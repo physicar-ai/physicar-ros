@@ -86,8 +86,8 @@ def generate_launch_description():
     pkg_description = get_package_share_directory('physicar_description')
     pkg_bringup = get_package_share_directory('physicar_bringup')
 
-    # URDF file — 세대별 파일(<세대>.urdf.xacro)이 있으면 사용, 없으면 1세대 폴백.
-    # 1세대 파일명이 곧 세대 키(physicar)라 기본 경로와 자연 일치한다.
+    # URDF file — use the per-generation file (<generation>.urdf.xacro) if present, else fall back to gen 1.
+    # The gen-1 filename doubles as the generation key (physicar), so it matches the default path naturally.
     _gen = os.environ.get('PHYSICAR_GENERATION', 'physicar')
     urdf_file = os.path.join(pkg_description, 'urdf', f'{_gen}.urdf.xacro')
     if not os.path.exists(urdf_file):

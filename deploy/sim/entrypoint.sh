@@ -3,11 +3,12 @@
 CONF="/opt/physicar/src/physicar-ros/deploy/sim/supervisord.conf"
 DEPLOY_DIR="$(dirname "$CONF")"
 
-# ── src 트리 소유권 보장 (physicar) ──
-# 이미지 빌드 시 root 로 클론되면 src/ 가 root 소유가 된다 — 그러면 sim_api(physicar)의
-# 월드 임포트(share/ 쓰기)가 PermissionError → 502 로 죽고, updater 의 git fetch 도
-# .git 에 못 써서 태그 업데이트가 전면 불능이 된다 (둘 다 실사례). entrypoint 는
-# physicar 로 실행되므로 sudo(NOPASSWD)로 부팅마다 멱등 보정한다.
+# ── Ensure src tree ownership (physicar) ──
+# If the image build cloned as root, src/ ends up root-owned — then sim_api
+# (running as physicar) dies with PermissionError → 502 on world imports
+# (writes under share/), and the updater's git fetch cannot write .git so
+# tag updates stop entirely (both seen in production). The entrypoint runs
+# as physicar, so repair idempotently with sudo (NOPASSWD) on every boot.
 if [ -d /opt/physicar/src ]; then
   sudo mkdir -p /opt/physicar/src/physicar-sim/share/worlds 2>/dev/null || true
   sudo chown -R physicar:physicar /opt/physicar/src 2>/dev/null || true
@@ -72,18 +73,20 @@ chmod 644 /tmp/pc-gate.map
 
 STUDENT_WS="/home/physicar/physicar_ws"
 
-# ── code-server 버전 수렴 (레포 핀, idempotent) ──
-# deploy/code-server-version 이 단일 진실 — 설치본과 다르면 그 버전을 설치한다.
-# 베이크 박제 방지: AMI 리베이크 없이 핀 한 줄 갱신으로 전 인스턴스가 다음
-# 부팅에 따라온다. 핀을 올리기 전 새 버전 릴리스 tar 를 받아 아래 패치 패턴
-# (B/C·folder)과 브랜딩 경로가 유효한지 반드시 grep 으로 확인할 것.
-# 실패·오프라인·타임아웃은 현재 버전 유지 — 부팅을 절대 막지 않는다 (다음
-# 부팅에 재시도). 이 시점엔 supervisord(=code-server)가 아직 죽어 있어 재시작
-# 이 필요 없다. Codespaces 는 code-server 를 쓰지 않으므로 건너뛴다.
+# ── code-server version convergence (repo pin, idempotent) ──
+# deploy/code-server-version is the single source of truth — install that
+# version when the installed one differs. Prevents bake pinning: one pin-line
+# update brings every instance along on its next boot, no AMI rebake.
+# Before raising the pin, download the new release tar and grep that the
+# patch patterns below (B/C·folder) and the branding paths still hold.
+# Failure/offline/timeout keeps the current version — never block boot
+# (retried next boot). supervisord (= code-server) is not running yet at
+# this point, so no restart is needed. Codespaces does not use code-server,
+# so skip there.
 ROS_DIR="$(dirname "$(dirname "$DEPLOY_DIR")")"
 if [ -z "${CODESPACE_NAME:-}" ]; then
   CS_PIN=$(tr -d '[:space:]' < "$ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
-  # --version 첫 줄이 설정파일 생성 로그일 수 있어 버전 라인만 골라낸다
+  # The first --version line can be a config-file creation log line — pick only the version line
   CS_CUR=$(code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
   if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
     echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
@@ -138,10 +141,11 @@ patch_codeserver_webview_media() {
     echo "[media-patch] WARNING: no known allow-list pattern found in this code-server version — webview mic/cam will stay blocked until the patterns in this function are updated"
   fi
 
-  # CSP 해시 재동기화: 최신 code-server 의 webview index.html 은 인라인 스크립트를
-  # CSP 'sha256-…' 로 고정한다. C 패턴이 그 스크립트를 수정하는 순간 해시가 어긋나
-  # 브라우저가 스크립트를 차단 → webview(확장 패널·커스텀 에디터) 전면 빈 화면.
-  # → 패치된 HTML 마다 인라인 스크립트의 sha256 을 재계산해 CSP 를 맞춘다 (멱등).
+  # CSP hash resync: recent code-server pins the webview index.html inline
+  # script with a CSP 'sha256-…'. The moment pattern C edits that script
+  # the hash mismatches and the browser blocks it → every webview
+  # (extension panels·custom editors) renders blank.
+  # → Recompute each patched HTML's inline-script sha256 and fix the CSP (idempotent).
   while IFS= read -r f; do
     sudo python3 - "$f" <<'PYCSP'
 import sys, re, hashlib, base64
@@ -159,13 +163,61 @@ PYCSP
 }
 patch_codeserver_webview_media || true
 
-# ── code-server 기본 폴더 패치 (idempotent, every boot) ──
-# 쿼리 없는 / 를 기본 워크스페이스(/home/physicar/physicar_ws)로 연다.
-# 워크벤치는 folder 를 브라우저 주소창에서만 읽으므로 서버측 리다이렉트(302)는
-# 주소창을 ?folder=… 로 더럽히고, 주소창을 잠깐 조작하는 방식은 워크벤치가
-# 쿼리를 읽는 시점과 레이스가 난다 → 워크스페이스 프로바이더 번들에 "쿼리
-# 부재 시 기본 폴더" 폴백을 직접 심는 것이 유일하게 결정론적이다.
-# (nginx 내부 rewrite 가 서버 302 를 막고, 이 패치가 클라이언트 기본값을 만든다)
+# ── Webview service-worker non-blocking patch (idempotent, every boot) ──
+# VS Code's webview bootstrap (pre/index.html) AWAITS a ServiceWorker
+# update() before rendering any webview content, and Chrome throttles
+# repeated update jobs on one registration by ~60s (several webviews x page
+# reloads hit this constantly) — a throttled job blanked every panel for the
+# full delay: the "sometimes instant, sometimes 1-2 min blank" lottery
+# (real devices and cloud sim alike; measured 59s stalls on-device).
+# The SW scope embeds the build commit (/stable-<commit>/...), so a
+# code-server update lands on a fresh scope and stale resources are
+# impossible — the blocking wait is redundant; make it fire-and-forget and
+# resync the CSP script hash. A code-server update restores the stock file,
+# so re-apply every boot (no-op when already patched).
+patch_codeserver_webview_sw() {
+  local cs_bin cs_vscode f
+  cs_bin=$(readlink -f "$(command -v code-server)" 2>/dev/null) || return 0
+  cs_vscode=$(dirname "$cs_bin")/../lib/vscode
+  [ -d "$cs_vscode/out" ] || cs_vscode=/usr/lib/code-server/lib/vscode
+  f="$cs_vscode/out/vs/workbench/contrib/webview/browser/pre/index.html"
+  [ -f "$f" ] || { echo "[sw-patch] pre/index.html not found"; return 0; }
+  sudo python3 - "$f" <<'PYSW' || true
+import base64, hashlib, re, sys
+p = sys.argv[1]
+src = open(p, encoding="utf-8").read()
+old = "registration = await registration.update();"
+if old not in src:
+    if "registration.update().catch" not in src:
+        print("[sw-patch] WARNING: known pattern not found in this code-server version — webviews may stall behind Chrome's SW update throttle until this patch is updated")
+    sys.exit(0)
+m = re.search(r'(<script async type="module">)(.*?)(</script>)', src, re.S)
+if not m:
+    print("[sw-patch] WARNING: inline script block not found"); sys.exit(0)
+script = m.group(2).replace(old,
+    "/* PhysiCar: fire-and-forget — Chrome throttles repeated update() jobs\n"
+    "\t\t\t\t\t\t   ~60s and awaiting blanks every webview for the delay; the SW\n"
+    "\t\t\t\t\t\t   scope embeds the build commit, so stale resources are\n"
+    "\t\t\t\t\t\t   impossible after a code-server update. */\n"
+    "\t\t\t\t\t\tregistration.update().catch(() => {});", 1)
+out = src[:m.start(2)] + script + src[m.end(2):]
+h = base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode()
+out = re.sub(r"script-src 'sha256-[A-Za-z0-9+/=]+'", "script-src 'sha256-" + h + "'", out, count=1)
+open(p, "w", encoding="utf-8", newline="\n").write(out)
+print("[sw-patch] webview SW update made non-blocking")
+PYSW
+}
+patch_codeserver_webview_sw || true
+
+# ── code-server default folder patch (idempotent, every boot) ──
+# Open a bare / (no query) at the default workspace (/home/physicar/physicar_ws).
+# The workbench reads `folder` only from the browser address bar, so a
+# server-side redirect (302) dirties the bar with ?folder=…, and briefly
+# rewriting the bar races the moment the workbench reads the query →
+# planting a "default folder when the query is absent" fallback directly in
+# the workspace-provider bundle is the only deterministic option.
+# (The nginx internal rewrite suppresses the server 302; this patch supplies
+# the client-side default.)
 patch_codeserver_default_folder() {
   local cs_bin cs_vscode wb
   cs_bin=$(readlink -f "$(command -v code-server)" 2>/dev/null) || return 0
@@ -192,10 +244,11 @@ PYFOLD
 }
 patch_codeserver_default_folder || true
 
-# ── 브랜딩 재적용 (idempotent, every boot) ──
-# 파비콘/PWA/타이틀바 아이콘은 설치 트리 안에 있어 code-server 업데이트가
-# 원복시킨다 — media patch 와 같은 이유로 부팅마다 다시 덮는다 (install-sim.sh
-# 의 브랜딩 블록과 동일 로직, 여기는 physicar 사용자라 sudo 필요).
+# ── Branding re-apply (idempotent, every boot) ──
+# Favicon/PWA/titlebar icons live inside the install tree, so a code-server
+# update reverts them — re-cover them every boot for the same reason as the
+# media patch (same logic as install-sim.sh's branding block; sudo is needed
+# here because we run as the physicar user).
 brand_codeserver() {
   local static res media om b64 _svg _png
   static="$ROS_DIR/physicar_webserver/static"
@@ -229,10 +282,11 @@ brand_codeserver() {
 }
 brand_codeserver || true
 
-# ── 알림 방해금지(DND) 기본값 시드 (idempotent) ──
-# 우측 하단 알림 팝업을 "에러만" 남기고 숨긴다. DND 는 settings.json 키가 아니라
-# 전역 상태 DB(state.vscdb)의 토글이라 여기서 심는다. 키가 이미 있으면(사용자가
-# 직접 토글했다면) 그 선택을 존중한다. 실패해도 부팅은 계속 (best-effort).
+# ── Notification Do-Not-Disturb default seed (idempotent) ──
+# Hide the bottom-right notification popups except errors. DND is not a
+# settings.json key but a toggle in the global state DB (state.vscdb), so
+# seed it here. If the key already exists (the user toggled it themselves),
+# respect their choice. Failures never block boot (best-effort).
 python3 - <<'PYDND' || true
 import sqlite3, os
 p = os.path.expanduser('~/.local/share/code-server/User/globalStorage/state.vscdb')
@@ -249,11 +303,11 @@ except Exception:
     pass
 PYDND
 
-# ── settings.json 병합 시드 (심링크 → 실파일 전환) ──
-# 종전 심링크(레포行, root 소유·읽기전용)는 사용자의 설정 저장이 실패하게 만들어
-# "저장 안 된 settings.json" 편집기가 세션마다 복원되는 문제를 낳았다.
-# → 사용자 소유 실파일로 전환하고 부팅마다 관리 기본값을 병합한다
-#   (사용자가 바꾼 키는 사용자 값 우선, 새 기본값 키는 계속 전파).
+# ── settings.json merge seed (symlink → real-file transition) ──
+# The old symlink (repo file, root-owned/read-only) made user settings saves
+# fail, resurrecting an unsaved settings.json editor every session.
+# → Switch to a user-owned real file and merge managed defaults each boot
+#   (user-changed keys win; new default keys keep propagating).
 python3 - "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" <<'PYSET' || true
 import json, os, sys
 managed_path = sys.argv[1]
@@ -265,7 +319,7 @@ except Exception:
     sys.exit(0)
 user = {}
 if os.path.islink(user_path):
-    os.remove(user_path)   # 구 심링크 제거 (읽기전용 저장 실패의 원인)
+    os.remove(user_path)   # remove the old symlink (cause of read-only save failures)
 elif os.path.exists(user_path):
     try:
         user = json.load(open(user_path))
@@ -275,9 +329,11 @@ merged = {**managed, **user}
 if not os.path.exists(user_path) or merged != user:
     json.dump(merged, open(user_path, 'w'), indent=2, ensure_ascii=False)
 PYSET
-# settings.json 이 root 소유면(골든 베이크의 root cp 유산) code-server(physicar)의
-# 설정 저장이 EACCES 로 실패한다 (Claude Code 등 확장이 설정 키를 기록하는 순간 포함).
-# entrypoint 는 physicar 로 실행되므로 sudo 로 수복한다 — 오염 인스턴스도 부팅마다 치유.
+# If settings.json is root-owned (legacy of the golden bake's root cp),
+# code-server (physicar) fails to save settings with EACCES (including the
+# moment an extension such as Claude Code writes a settings key). The
+# entrypoint runs as physicar, so repair with sudo — polluted instances
+# heal on every boot.
 sudo chown physicar:physicar /home/physicar/.local/share/code-server/User \
   /home/physicar/.local/share/code-server/User/settings.json 2>/dev/null || true
 
@@ -299,27 +355,43 @@ sudo chown physicar:physicar /home/physicar/.local/share/code-server/User \
   fi
 ) &
 
-# ── physicar-ext 최신화 (베이크 박제 방지) ─────────────────────────────
-# 확장은 AMI 베이크 시점 버전으로 박히므로, 부팅(신규 생성·재개 모두 이 스크립트를
-# 재실행)마다 마켓플레이스 최신을 확인해 code-server 시작 전에 반영한다.
-# 실패(오프라인·open-vsx 장애)는 무시 — 베이크 버전으로 계속, 부팅을 절대 막지 않는다.
+# ── physicar-ext freshness (prevents bake pinning) ─────────────────────────
+# Extensions are pinned at AMI bake time, so on every boot (both fresh
+# creation and resume re-run this script) check the marketplace for the
+# latest and apply it before code-server starts.
+# Failures (offline·open-vsx outage) are ignored — keep the baked version, never block boot.
 if [ -z "${CODESPACE_NAME:-}" ]; then
-  timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force \
-    >/dev/null 2>&1 || true
-  # jupyter 는 --force 없이 — 없을 때만 설치되는 자가치유 (구 골든에 미탑재였던
-  # 세대 구제용). 이미 있으면 즉시 no-op 이라 부팅 지연 없음.
+  _ext_out=$(timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force 2>&1) || true
+  # The built-in baseline clone (install-sim.sh) makes code-server refuse
+  # updates of the same id ("Incompatible: ... built-in extension") — on that
+  # error, drop the clone, retry, and re-clone the fresh copy afterwards.
+  if echo "$_ext_out" | grep -q "Incompatible"; then
+    _cs_vscode=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
+    if [ -n "$_cs_vscode" ] && [ -d "$_cs_vscode/extensions/physicar-ext-builtin" ]; then
+      sudo rm -rf "$_cs_vscode/extensions/physicar-ext-builtin"
+      timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force \
+        >/dev/null 2>&1 || true
+      _ext_dir=$(ls -d /home/physicar/.local/share/code-server/extensions/physicar.physicar-ext-* 2>/dev/null | sort -V | tail -1)
+      [ -n "$_ext_dir" ] && sudo cp -r "$_ext_dir" "$_cs_vscode/extensions/physicar-ext-builtin" 2>/dev/null || true
+    fi
+  fi
+  # jupyter without --force — self-healing install only when missing
+  # (rescues generations whose golden image lacked it). Immediate no-op when
+  # already present, so no boot delay.
   timeout 25 sudo -u physicar code-server --list-extensions 2>/dev/null | grep -qi '^ms-toolsai.jupyter$' \
     || timeout 60 sudo -u physicar code-server --install-extension ms-toolsai.jupyter \
       >/dev/null 2>&1 || true
 fi
 
-# ── X 락 잔재 제거 (컨테이너 보존형이라 /tmp 가 재시작에도 살아남는다) ──
-# 인스턴스 정지→재개(또는 컨테이너 재시작) 시 이전 Xvfb 의 /tmp/.X1-lock 과
-# /tmp/.X11-unix/X1 이 남아 있으면 Xvfb 가 "Server is already active for display 1"
-# 로 기동을 거부한다. 그러면 openbox/tint2/x11vnc 가 연쇄 FATAL 이 되고 DISPLAY 가
-# 없어 Gazebo 가 렌더를 못 해 시뮬레이터·카메라·라이다가 전부 빈 화면이 된다
-# (2026-08-04 실제 장애). supervisord 시작 전 항상 정리 — 살아있는 X 가 있으면
-# 락을 지워도 소켓 사용 중이라 무해하고, 죽은 잔재만 제거된다.
+# ── Stale X lock cleanup (persistent container — /tmp survives restarts) ──
+# After an instance stop→resume (or container restart), a leftover
+# /tmp/.X1-lock and /tmp/.X11-unix/X1 from the previous Xvfb make Xvfb
+# refuse to start ("Server is already active for display 1"). openbox/
+# tint2/x11vnc then FATAL in a cascade, and with no DISPLAY Gazebo cannot
+# render — simulator, camera and lidar all go blank (actual outage,
+# 2026-08-04). Always clean before supervisord starts — if a live X exists,
+# removing the lock is harmless (socket still in use); only dead leftovers
+# are removed.
 if ! pgrep -x Xvfb >/dev/null 2>&1; then
   rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true
 fi

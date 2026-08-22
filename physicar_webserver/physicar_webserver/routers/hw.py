@@ -146,8 +146,8 @@ async def get_speed(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    # 실측(odom) 우선 — 드라이버 워치독이 차를 세운 뒤에도 낡은 명령값이
-    # "주행 중"으로 보이는 것 방지. odom이 아직 없으면 명령값 폴백.
+    # Prefer measured (odom) — prevents stale command values from showing
+    # "driving" after the driver watchdog stopped the car. Fall back to the command value until odom exists.
     data = sm.get_once("odom")
     if data is None:
         return sm.get_cmd_state()["speed"]
@@ -383,16 +383,16 @@ async def get_lidar(
 # POST — Speed Control
 # =============================================================================
 
-# 드라이버/어댑터의 cmd_timeout(기본 1초) 워치독과 한 쌍:
-# - 단발 POST는 ~1초 뒤 만료 (지속 주행은 루프 재호출 — 샘플들이 이미 이 패턴)
-# - duration이 오면 5Hz keep-alive 재발행으로 살려둔 뒤 0을 발행하고,
-#   응답은 주행 종료까지 블로킹('stopped') 또는 새 명령 등장 시 즉시('superseded')
-# - 세대 카운터(_speed_gen)는 POST·WS 프레임·WS 데드맨 0 발행 전부가 올린다 —
-#   어떤 새 명령/정지도 진행 중 홀드를 즉시 supersede (같은 이벤트 루프라 원자적)
-# - 웹서버가 죽으면 재발행이 끊겨 드라이버 워치독이 차를 세운다 (단대단 보장)
+# Paired with the driver/adapter cmd_timeout (default 1s) watchdog:
+# - A one-shot POST expires after ~1s (sustained driving re-calls in a loop — the samples already use this pattern)
+# - With duration, keep the drive alive by republishing at 5Hz, then publish 0;
+#   the response blocks until driving ends ('stopped') or returns at once when a new command appears ('superseded')
+# - The generation counter (_speed_gen) is bumped by POSTs, WS frames and the WS dead-man 0 publish alike —
+#   any new command/stop instantly supersedes an in-flight hold (same event loop, so atomic)
+# - If the webserver dies, republishing stops and the driver watchdog stops the car (end-to-end guarantee)
 _speed_gen = 0
-_speed_tasks: set = set()   # 홀드/미러 task 강참조 (GC 방지)
-_KEEPALIVE_PERIOD = 0.2     # 5Hz — cmd_timeout(1.0s)보다 충분히 촘촘히
+_speed_tasks: set = set()   # strong refs to hold/mirror tasks (prevent GC)
+_KEEPALIVE_PERIOD = 0.2   # 5Hz — comfortably denser than cmd_timeout (1.0s)
 
 # WS dead-man grace: a tunnel/proxy blip closes a control stream even though
 # the browser is alive and resumes commands within ~0.4 s (stream reconnect or
@@ -441,8 +441,8 @@ async def _speed_hold(gen: int, value: float, duration: float) -> str:
 
 
 async def _cmd_mirror_expire(gen: int, timeout: float = 1.2):
-    """단발(비-duration) 명령의 표시 미러 — 드라이버 워치독이 차를 세운 뒤
-    cmd_state가 낡은 속도를 계속 보여주지 않게 한다 (표시만, 발행 없음)."""
+    """Display mirror for a one-shot (non-duration) command — keeps cmd_state from
+    showing a stale speed after the driver watchdog stopped the car (display only, no publish)."""
     await asyncio.sleep(timeout)
     if gen == _speed_gen:
         get_state_manager().update_cmd_state(speed=0.0)
@@ -475,8 +475,8 @@ async def set_speed(request: SpeedRequest):
     sm.update_cmd_state(speed=request.value)
 
     if success and request.duration is not None and request.value != 0.0:
-        # 클라이언트가 응답을 기다리다 끊겨도 홀드는 계속돼야 한다 → 독립 task +
-        # shield (핸들러 취소는 전송 포기일 뿐, 정지 보장은 유지)
+        # The hold must continue even if the client disconnects while waiting → independent task +
+        # shield (handler cancellation only abandons the response; the stop guarantee stays)
         task = _track_task(asyncio.create_task(_speed_hold(gen, request.value, request.duration)))
         outcome = await asyncio.shield(task)
         return ControlResponse(success=True, value=request.value, message=outcome)
@@ -521,7 +521,7 @@ def _make_control_stream(path: str, field: str, publish_name: str, zero_on_close
                 except (ValueError, KeyError, TypeError):
                     continue
                 if field == "speed":
-                    _bump_speed_gen()   # 진행 중 duration 홀드 supersede
+                    _bump_speed_gen()   # supersede an in-flight duration hold
                 _drive_gen[field] += 1
                 publish(value)
                 sm.update_cmd_state(**{field: value})
@@ -537,7 +537,7 @@ def _make_control_stream(path: str, field: str, publish_name: str, zero_on_close
                     if _drive_gen[field] != gen:
                         return   # newer command bridged the blip — no stop
                     if field == "speed":
-                        _bump_speed_gen()   # 데드맨 0이 최종 상태 — 홀드가 덮어쓰지 못하게
+                        _bump_speed_gen()   # the dead-man 0 is the final state — don't let the hold overwrite it
                     b = get_ros_bridge()
                     if b.is_ready:
                         getattr(b, publish_name)(0.0)

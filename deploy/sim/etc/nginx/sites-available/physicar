@@ -27,7 +27,12 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 80;
+    # sndbuf: cap the kernel send buffer so a congested client link cannot
+    # queue seconds of stale camera/lidar frames for in-order replay — the
+    # webserver's latest-frame-only logic gets backpressure quickly instead.
+    # (Cloudflare sits between instance and student, so this only bounds the
+    # instance-side share of the backlog.) Same fix as deploy/real.
+    listen 80 sndbuf=131072;
     server_name _;
     absolute_redirect off;
 
