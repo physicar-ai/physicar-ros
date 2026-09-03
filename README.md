@@ -17,8 +17,8 @@ The ROS 2 Jazzy stack for **PhysiCar AI**, a Physical AI education platform.
 | Item | Spec |
 |------|------|
 | Computer | Raspberry Pi 5 (8 GB) |
-| LiDAR | 360°, 0.10–16 m, 10 Hz |
-| IMU | 6-axis (accelerometer + gyroscope), 50 Hz |
+| LiDAR | 360°, 0.15–16 m, 10 Hz |
+| IMU | 9-axis (accelerometer + gyroscope + magnetometer), 50 Hz |
 | Camera | 480×360, 15 fps, MF, FOV 100°, Night Vision |
 | Camera Pan | ±30° |
 | Camera Tilt | ±30° |
@@ -108,7 +108,7 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 
 ## Tool Server (`physicar_tools`)
 
-FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, plus the user-editable `/opt/physicar/userdata/custom_tools.py`. Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
+FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, `tutorial.py` (tutorial courses: run/stop/status/settings), plus the user-editable `/opt/physicar/userdata/custom_tools.py`. Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
 
 Reachable through nginx at **`/physicar-ext/`** (loopback-only — requests from the network are denied):
 
@@ -124,10 +124,15 @@ Reachable through nginx at **`/physicar-ext/`** (loopback-only — requests from
 
 Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (`from pcwake import reserve, redeem`); they are one-shot and in-memory. See `physicar_tools/pcwake.py` for the contract.
 
+## Tutorial
+
+Guided web courses at **`/tutorial`** (the `tutorial.physicar` tab in VS Code) — every step runs from the page, no terminal: **Racing — Rule-Based** (HSV line following with a live mask view) and **Racing — Supervised Learning** (Labeling → Train → Inference). A per-machine settings panel applies live to running scripts, "View Code" shows the executed script with current settings substituted, and a running course serves its live view on port 5000 (the MYAPP slot). APIs live under `/tutorial/api/*` (web job runner, per-course settings, dataset curation, model download/upload with ONNX validation, SSE sync across windows); the AI chat drives the same via the `tutorial_*` tools.
+
 ## MyApp
 
 - Your own robot web app.
 - Launch an app on port **5000** and it becomes accessible at `/myapp/`.
+- While a tutorial course runs, it takes over port 5000 for its live view (the managed MyApp process is stopped first); the port is released when the course stops.
 - Path rules
     - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
     - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
