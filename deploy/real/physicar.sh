@@ -710,6 +710,12 @@ sudo chattr -i "$APP_FILE" 2>/dev/null || true
 echo "https://real.physicar.ai/app" > "$APP_FILE"
 chmod 444 "$APP_FILE"
 sudo chattr +i "$APP_FILE"
+# tutorial.physicar gets the same treatment — managed, immutable
+TUT_FILE="$HOME/physicar_ws/tutorial.physicar"
+sudo chattr -i "$TUT_FILE" 2>/dev/null || true
+echo "https://real.physicar.ai/tutorial" > "$TUT_FILE"
+chmod 444 "$TUT_FILE"
+sudo chattr +i "$TUT_FILE"
 
 CODE_USER_DIR="$HOME/.local/share/code-server/User"
 mkdir -p "$CODE_USER_DIR"

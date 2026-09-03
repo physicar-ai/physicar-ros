@@ -475,7 +475,7 @@ server {
     # explicitly: pages (/app), assets
     # (/static /favicon.ico /docs /redoc /openapi.json) and APIs. Add new
     # top-level FastAPI prefixes to this list when introducing them.
-    location ~ ^/(app|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
+    location ~ ^/(app|tutorial|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
@@ -797,7 +797,7 @@ server {
     # explicitly: pages (/app), assets
     # (/static /favicon.ico /docs /redoc /openapi.json) and APIs. Add new
     # top-level FastAPI prefixes to this list when introducing them.
-    location ~ ^/(app|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
+    location ~ ^/(app|tutorial|static|docs|redoc|openapi\.json|favicon\.ico|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }

@@ -23,6 +23,7 @@
 set -uo pipefail
 
 APP_FILE="$HOME/physicar_ws/app.physicar"
+TUT_FILE="$HOME/physicar_ws/tutorial.physicar"
 LOG="/tmp/cloudflared.log"
 TOKEN_MAP="/tmp/pc-token.map"
 
@@ -30,20 +31,28 @@ TOKEN_MAP="/tmp/pc-token.map"
 # nginx conf includes this path and fails to load when missing.
 : > "$TOKEN_MAP"
 
-# Write $1 into the (immutable) bookmark file.
-write_bookmark() {
+# Write $2 into the (immutable) bookmark file $1.
+write_file() {
   # chattr direct first (supervisord runs this as root; sudo can fail where
   # plain chattr works), sudo as fallback for other callers. A silently failed
   # chattr once let a bookmark baked into an image survive every boot
   # (validation.invalid incident) — so verify the write took and shout if not.
-  chattr -i "$APP_FILE" 2>/dev/null || sudo chattr -i "$APP_FILE" 2>/dev/null || true
-  chmod u+w "$APP_FILE" 2>/dev/null || true
-  printf '%s\n' "$1" > "$APP_FILE" 2>/dev/null || true
-  chmod 444 "$APP_FILE" 2>/dev/null || true
-  chattr +i "$APP_FILE" 2>/dev/null || sudo chattr +i "$APP_FILE" 2>/dev/null || true
-  if [ "$(cat "$APP_FILE" 2>/dev/null)" != "$1" ]; then
-    echo "[app-browser] WARNING: bookmark write failed; stale content remains: $(head -c 120 "$APP_FILE" 2>/dev/null)" >&2
+  chattr -i "$1" 2>/dev/null || sudo chattr -i "$1" 2>/dev/null || true
+  chmod u+w "$1" 2>/dev/null || true
+  printf '%s\n' "$2" > "$1" 2>/dev/null || true
+  chmod 444 "$1" 2>/dev/null || true
+  chattr +i "$1" 2>/dev/null || sudo chattr +i "$1" 2>/dev/null || true
+  if [ "$(cat "$1" 2>/dev/null)" != "$2" ]; then
+    echo "[app-browser] WARNING: bookmark write failed ($1); stale content remains: $(head -c 120 "$1" 2>/dev/null)" >&2
   fi
+}
+
+# Publish $1 (the /app URLs) into app.physicar, and the SAME URLs with the
+# /tutorial path into tutorial.physicar — the two bookmarks always agree
+# (same domains, same tunnel token, only the path differs).
+write_bookmark() {
+  write_file "$APP_FILE" "$1"
+  write_file "$TUT_FILE" "$(printf '%s\n' "$1" | sed 's#/app\([?/]\|$\)#/tutorial\1#')"
 }
 
 # Point the nginx access-token gate at $1 (the session token). The nginx config

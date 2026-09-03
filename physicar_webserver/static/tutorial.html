@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhysiCar Tutorial</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --panel: #ffffff; --ink: #23262f; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #7e56c2; --accent-soft: #f1ebfb;
+    --go: #16a34a; --stop: #dc2626; --code-bg: #1e1e28; --code-ink: #e8e8f0;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--ink); font-size: 15px; }
+
+  /* ── sidebar ── */
+  #side { width: 168px; flex: none; background: var(--panel); border-right: 1px solid var(--line);
+          padding: 10px 8px; overflow-y: auto; }
+  #side h1 { font-size: 13.5px; white-space: nowrap; margin: 2px 6px 8px; display: flex; align-items: center; gap: 8px; }
+  #sideToggle { margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer;
+                font-size: 15px; padding: 2px 4px; border-radius: 6px; }
+  #sideToggle:hover { background: var(--accent-soft); color: var(--accent); }
+  #side.collapsed { width: 46px; padding: 14px 6px; }
+  #side.collapsed .mgroup, #side.collapsed .mitem, #side.collapsed h1 .ttl { display: none; }
+  #side.collapsed h1 { margin: 4px 2px 0; justify-content: center; }
+  .mgroup { margin: 8px 0 1px; padding: 3px 8px; font-size: 11.5px; font-weight: 700;
+            letter-spacing: .6px; color: var(--muted); text-transform: uppercase; }
+  .mitem { display: block; padding: 4px 8px; margin: 1px 0; border-radius: 8px; cursor: pointer;
+           color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .mitem.sub { padding-left: 18px; }
+  .mitem:hover { background: var(--accent-soft); }
+  .mitem.on { background: var(--accent); color: #fff; }
+  .mitem .soon { font-size: 10px; color: var(--muted); margin-left: 6px; }
+  .run-locked .mitem:not(.on), .run-locked .tab:not(.on) { opacity: .45;
+    pointer-events: none; }
+  .mitem.on .soon { color: rgba(255,255,255,.7); }
+
+  /* ── content ── */
+  #main { flex: 1; overflow-y: auto; padding: 14px 16px 40px; }
+  .page { max-width: 860px; margin: 0 auto; }
+  .page h2 { font-size: 19px; margin: 0; }
+  .pagehead { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+  .pagehead h2 { flex: 1; }
+  /* two columns: course content left, settings panel right */
+  .pcols { display: flex; gap: 18px; align-items: flex-start; }
+  .pmain { flex: 1; min-width: 0; }
+  .pside { width: 228px; flex: none; position: sticky; top: 0;
+           border-left: 1px solid var(--line); padding-left: 14px; }
+  .page:has(.pcols) { max-width: 1110px; }
+  .page.fill .pcols { flex: 1; }
+  .page.fill .pmain { display: flex; flex-direction: column; }
+  @media (max-width: 920px) {
+    .pcols { flex-wrap: wrap; }
+    .pside { width: 100%; position: static; border-left: 0; padding-left: 0;
+             border-top: 1px solid var(--line); padding-top: 14px; }
+  }
+  .setgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+             gap: 9px 12px; margin-top: 6px; align-items: end; }
+  .setgrid .gearreset { grid-column: 1 / -1; justify-self: stretch; text-align: center; }
+  .setgrid .modes { grid-column: 1 / -1; max-width: 340px; display: flex;
+                    flex-direction: column; gap: 6px;
+                    font-size: 12px; color: var(--muted); font-weight: 600; }
+  .radiorow { display: flex; gap: 14px; }
+  .radioopt { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px;
+              color: var(--ink); font-weight: 500; cursor: pointer; }
+  .radioopt input { accent-color: var(--accent); margin: 0; }
+  .setgrid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px;
+                   color: var(--muted); font-weight: 600; }
+  .setgrid input, .setgrid select { border: 1px solid var(--line); border-radius: 7px;
+                   padding: 5px 8px; font-size: 13.5px; font-family: inherit;
+                   background: var(--panel); min-width: 0; }
+  /* HSV picker inside the settings section */
+  .hsvhead { display: flex; align-items: center; justify-content: space-between; }
+  .gearpick { flex: none; border: 1px solid var(--line); background: var(--panel);
+              border-radius: 8px; padding: 5px 9px; cursor: pointer; color: var(--accent);
+              display: inline-flex; align-items: center; }
+  .gearpick:hover { background: var(--accent-soft); }
+  .hsvpick { margin-top: 6px; }
+  .sv-pad { position: relative; width: 100%; height: 140px; border-radius: 8px;
+            border: 1px solid var(--line); cursor: crosshair; touch-action: none; }
+  .sv-dot { position: absolute; width: 12px; height: 12px; border: 2px solid #fff;
+            border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.45);
+            transform: translate(-50%, -50%); pointer-events: none; }
+  .sv-range, .hue-range { position: absolute; border: 1.5px dashed rgba(255,255,255,.95);
+              background: rgba(255,255,255,.14); border-radius: 4px; pointer-events: none;
+              box-shadow: 0 0 0 1px rgba(0,0,0,.3); }
+  .hue-range { top: 0; bottom: 0; border-radius: 6px; }
+  .hue-bar { position: relative; height: 14px; margin-top: 8px; border-radius: 7px;
+             cursor: crosshair; touch-action: none;
+             background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+  .hue-dot { position: absolute; top: 50%; width: 14px; height: 14px; border: 2px solid #fff;
+             border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.45);
+             transform: translate(-50%, -50%); pointer-events: none; }
+  .hsvgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 8px;
+             margin-top: 8px; }
+  .hsvcol { text-align: center; font-size: 11.5px; color: var(--muted); font-weight: 700; }
+  .hsvgrid input { width: 100%; min-width: 0; text-align: center; }
+  .tolcell { display: flex; align-items: center; gap: 4px; }
+  .tolcell .pm { color: var(--muted); font-weight: 600; }
+  .pickbox { width: min(520px, 92vw); }
+  .pickimg { width: 100%; display: block; border-radius: 10px; cursor: crosshair;
+             background: #0c0c12; min-height: 200px; }
+  .rbwrap { position: relative; width: 100%; max-width: 540px; aspect-ratio: 4 / 3;
+            margin: 6px auto 0; border-radius: 12px; background: #0d0d10;
+            display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .rbidle { color: #5a5a6e; font-weight: 700; font-size: 17px; letter-spacing: .5px; }
+  .rbframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+             display: block; background: transparent; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px 14px; margin: 0 0 12px; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .card p { margin: 6px 0; color: var(--muted); line-height: 1.55; font-size: 14px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px;
+           border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: 2px; }
+  .fpath { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
+
+  /* run row + log console */
+  .runrow { display: flex; flex-direction: column; align-items: center; gap: 5px;
+            margin: 4px 0 2px; }
+  .runrow .btn { min-width: 220px; justify-content: center; }
+  .btn { border: 0; border-radius: 9px; cursor: pointer; font-size: 14px; font-weight: 600;
+         padding: 7px 14px; display: inline-flex; align-items: center; gap: 8px; color: #fff; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.play { background: var(--accent); }
+  .btn.stop { background: var(--stop); }
+  .rstat { font-size: 13px; color: var(--muted); }
+  .rstat.run { color: var(--go); font-weight: 600; }
+  pre.runlog { background: #0c0c12; color: #b9e8b9; border-radius: 10px; padding: 10px 14px;
+               overflow: auto; height: 58vh; font-size: 12.5px; line-height: 1.45; margin: 10px 0 0;
+               white-space: pre-wrap; }
+  .page.fill { display: flex; flex-direction: column; }
+  .page.fill > div { flex: 1; display: flex; flex-direction: column; min-height: calc(100vh - 70px); }
+  .page.fill .pagehead { flex: none; }
+  .page.fill .card { flex: 1; display: flex; flex-direction: column; margin-bottom: 0; }
+  .page.fill pre.runlog { flex: 1; height: auto; min-height: 200px; }
+  iframe.live { width: 100%; height: 380px; border: 1px solid var(--line); border-radius: 10px;
+                background: #fff; margin-top: 10px; }
+
+  /* sample code */
+  .codefile { margin: 10px 0 0; border-radius: 10px; overflow: hidden; border: 1px solid #2b2b3a; }
+  .codehead { display: flex; align-items: center; justify-content: space-between;
+              background: #171722; color: #b9b9cc; padding: 7px 12px;
+              font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .copybtn { border: 0; border-radius: 6px; background: #2c2c3d; color: #cfcfe2;
+             font-size: 11.5px; font-weight: 600; padding: 4px 10px; cursor: pointer; }
+  .copybtn:hover { background: #3a3a52; }
+  pre.cellpre { background: var(--code-bg); color: var(--code-ink);
+                padding: 14px 16px; overflow: auto; max-height: 60vh; font-size: 12.5px;
+                line-height: 1.55; margin: 0; font-family: ui-monospace, Consolas, "Courier New", monospace; }
+  .py-k { color: #c586c0; }
+  .py-s { color: #ce9178; }
+  .py-c { color: #6a9955; font-style: italic; }
+  .py-n { color: #b5cea8; }
+  details.code { margin: 14px 0 0; }
+  details.code summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13.5px;
+                         list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+  details.code summary::before { content: "▸"; transition: transform .15s; }
+  details.code[open] summary::before { transform: rotate(90deg); }
+
+  /* API reference cards — tweak params, copy the live command */
+  .apicard { padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; margin: 6px 0;
+             background: var(--panel); }
+  .apitop { display: flex; align-items: center; gap: 10px; }
+  .method { flex: none; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 7px;
+            color: #fff; letter-spacing: .3px; }
+  .method.get { background: #16a34a; }
+  .method.post { background: #d97706; }
+  .method.cli { background: #64748b; }
+  .apipath { font-family: ui-monospace, Consolas, monospace; font-size: 13.5px; font-weight: 600; }
+  .apidesc { flex: 1; min-width: 0; text-align: right; font-size: 12.5px; color: var(--muted);
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .apiparams { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
+  .apiparams label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+                     color: var(--muted); }
+  .apiparams input, .apiparams select { border: 1px solid var(--line); border-radius: 7px;
+             padding: 5px 8px; font-size: 13px; background: var(--bg); color: var(--ink); }
+  .apiparams input[type=number] { width: 84px; }
+  .apiparams input[type=text] { width: 180px; }
+  .cmdline { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--muted);
+             background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+             padding: 8px 10px; overflow-x: auto; white-space: pre; margin-top: 8px; }
+  .mini { border: 0; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600;
+          padding: 7px 11px; color: #fff; background: var(--go);
+          display: inline-flex; align-items: center; gap: 6px; font-family: inherit; }
+  .mini:disabled { opacity: .5; }
+  .mini.gray { background: #9ca3af; }
+
+  /* labeling — one vertical column per action */
+  #lab-classes { display: flex; gap: 10px; align-items: flex-start; }
+  .classcard { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line);
+               border-radius: 14px; padding: 12px; }
+  .labbtn { width: 100%; border: 0; border-radius: 12px; cursor: pointer; color: #fff;
+            background: var(--accent); padding: 9px 8px; font-size: 32px; font-weight: 700; line-height: 1;
+            display: flex; flex-direction: column; align-items: center; gap: 3px;
+            user-select: none; -webkit-user-select: none; touch-action: none; }
+  .labbtn:active { transform: scale(.97); background: #6a46ab; }
+  .labbtn svg { display: block; }
+  .lablabel { font-size: 12.5px; font-weight: 600; opacity: .9; letter-spacing: .3px; }
+  .classmeta { display: flex; align-items: center; gap: 8px; margin: 10px 2px 2px; }
+  .ccount { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .classfoot { display: flex; justify-content: center; margin-top: 10px; }
+  .cclear { white-space: nowrap; border: 1px solid var(--line); background: transparent; color: var(--stop);
+            border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .cclear:hover { background: #fef2f2; }
+  .thumbcol { display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
+              max-height: 60vh; overflow-y: auto; padding: 2px; }
+  .thumb { position: relative; flex: none; }
+  .thumb img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover;
+               border-radius: 8px; border: 1px solid var(--line); display: block;
+               background: var(--accent-soft) center / 26px no-repeat
+                 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a99cc4'%3E%3Cpath d='M21 5H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1zM8.5 9A1.5 1.5 0 1 1 7 10.5 1.5 1.5 0 0 1 8.5 9zM5 17l4-5 3 3.5 2.5-3L19 17z'/%3E%3C/svg%3E"); }
+  .thumb .x { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%;
+              background: rgba(220,38,38,.92); color: #fff; border: 0; font-size: 12px; line-height: 22px;
+              cursor: pointer; padding: 0; display: none; }
+  .thumb:hover .x { display: block; }
+  .more { flex: none; text-align: center; font-size: 12px; color: var(--accent);
+          padding: 6px 0; border: 1px dashed var(--line); border-radius: 8px;
+          background: none; cursor: pointer; font-weight: 600; }
+  .more:hover { background: var(--accent-soft); }
+  .more:disabled { opacity: .5; }
+  .trn-viz { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .trn-stats { display: flex; gap: 8px; margin-top: 8px; }
+  .trn-stat { flex: 1; border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; }
+  .trn-stat .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .trn-stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .trn-bar { flex: none; height: 7px; border-radius: 999px; background: var(--accent-soft);
+             margin-top: 8px; overflow: hidden; }
+  .trn-bar i { display: block; height: 100%; width: 0%; background: var(--accent);
+               border-radius: 999px; transition: width .25s; }
+  .trn-chart { position: relative; flex: 1; min-height: 170px; margin-top: 8px; }
+  .trn-chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .trn-last { display: none; margin-top: 10px; font-family: ui-monospace, Consolas, monospace;
+              font-size: 12.5px; color: var(--stop); white-space: pre-wrap; }
+  .modalov { position: fixed; inset: 0; background: rgba(15,15,25,.45); z-index: 40;
+             display: flex; align-items: center; justify-content: center; }
+  .modalbox { position: relative; background: var(--panel); border-radius: 14px; padding: 18px 20px;
+              width: min(780px, 92vw); max-height: 86vh; overflow: auto;
+              box-shadow: 0 18px 50px rgba(0,0,0,.3); }
+  .modalx { position: absolute; top: 10px; right: 12px; border: 0; background: transparent;
+            font-size: 16px; cursor: pointer; color: var(--muted); }
+  .modalx:hover { color: var(--ink); }
+  .confirmbox { width: min(380px, 90vw); }
+  .confirmbox p { margin: 4px 0 0; font-size: 14.5px; color: var(--ink); }
+  .confirmrow { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .cbtn { border: 0; border-radius: 8px; cursor: pointer; font-size: 13.5px; font-weight: 600;
+          padding: 9px 16px; color: #fff; }
+  .cbtn.gray { background: #9ca3af; }
+  .cbtn.danger { background: var(--stop); }
+  .codebtn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+             padding: 6px 10px; cursor: pointer; color: var(--accent); display: inline-flex;
+             align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+             font-family: inherit; }
+  .codebtn:hover { background: var(--accent-soft); }
+  .notice { background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 10px;
+            padding: 10px 14px; font-size: 13.5px; margin: 10px 0; display: none; }
+  .notice.show { display: block; }
+  .tabs { display: flex; gap: 14px; border-bottom: 1px solid var(--line); margin: 2px 0 10px; }
+  .tab { padding: 5px 2px 7px; font-size: 13.5px; font-weight: 600; color: var(--muted);
+         text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+         background: none; border-top: 0; border-left: 0; border-right: 0; cursor: pointer;
+         font-family: inherit; display: inline-flex; align-items: center; gap: 7px; }
+  .tnum { font-size: 15px; line-height: 1; }
+  .gearreset { margin-top: 6px; border: 1px solid var(--line); background: var(--bg);
+               color: var(--muted); border-radius: 7px; padding: 6px 10px;
+               font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .gearreset:hover { color: var(--ink); background: var(--accent-soft); }
+  .codetabs { margin: 4px 0 12px; }
+  .tab:hover { color: var(--ink); }
+  .tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .sideacts { display: flex; margin-top: 12px; }
+  .sideacts .codebtn { flex: 1; justify-content: center; }
+  .sidefoot { margin-top: 16px; }
+  .sidesec { padding-top: 12px; border-top: 1px solid var(--line); }
+  .sidesec h3 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .8px;
+                text-transform: uppercase; color: var(--muted); }
+  .siderow { display: flex; gap: 8px; }
+  .siderow .mini { flex: 1; justify-content: center; }
+  .sidemsg { margin-top: 6px; font-size: 12px; color: var(--muted); text-align: center;
+             word-break: break-word; min-height: 15px; }
+  .sidemsg.ok { color: var(--go); font-weight: 600; }
+  .sidemsg.bad { color: var(--stop); font-weight: 600; }
+  .rtools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+  <nav id="side"><h1><span class="ttl">PhysiCar Tutorial</span><button id="sideToggle" title="Toggle menu">☰</button></h1></nav>
+  <main id="main"><div class="page" id="page"></div></main>
+
+<script>
+(function () {
+  "use strict";
+  var $page = document.getElementById("page");
+  var $side = document.getElementById("side");
+
+  function el(tag, cls, html) {
+    var e = document.createElement(tag);
+    if (cls) { e.className = cls; }
+    if (html !== undefined) { e.innerHTML = html; }
+    return e;
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // shared 15px stroke icons for the small action buttons
+  function icon(paths) {
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+           ' stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"' +
+           ' style="display:block">' + paths + "</svg>";
+  }
+  var ICON_COPY = icon('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>');
+  var ICON_DL = icon('<path d="M12 3v12"/><polyline points="6 9 12 15 18 9"/><path d="M4 21h16"/>');
+  var ICON_UP = icon('<path d="M12 15V3"/><polyline points="6 9 12 3 18 9"/><path d="M4 21h16"/>');
+  var ICON_OK = icon('<polyline points="4 12 10 18 20 6"/>');
+  var ICON_X = icon('<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>');
+  function flashIcon(btn, tmp, back) {
+    btn.innerHTML = tmp;
+    setTimeout(function () { btn.innerHTML = back; }, 1300);
+  }
+  var ICON_PICK = icon('<path d="M18.5 2.7a2.8 2.8 0 0 1 4 4l-2.3 2.3-4-4z"/>' +
+    '<path d="M14.5 6.7l3 3L8 19.2c-.5.5-1.2.9-2 1l-2.8.4.4-2.8c.1-.8.5-1.5 1-2z"/>');
+
+  // RGB -> OpenCV HSV (h 0-179, s/v 0-255), for the eyedropper
+  function rgb2hsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
+    if (d) {
+      if (mx === r) { h = ((g - b) / d) % 6; }
+      else if (mx === g) { h = (b - r) / d + 2; }
+      else { h = (r - g) / d + 4; }
+      h *= 60; if (h < 0) { h += 360; }
+    }
+    return [Math.round(h / 2), Math.round((mx ? d / mx : 0) * 255), Math.round(mx * 255)];
+  }
+
+  /* ══════════ settings cache — the gear opens pre-filled, no round-trip ══════════ */
+  var settingsCache = {};   // course -> latest settings object
+  function refreshSettings(course) {
+    return fetch("/tutorial/api/" + course + "/settings")
+      .then(function (r) { return r.json(); })
+      .then(function (st) { settingsCache[course] = st; return st; });
+  }
+  refreshSettings("sl");
+  refreshSettings("rb");
+
+  /* ══════════ server runner (SSE logs) — everything runs web-side ══════════ */
+  var runner = { listeners: {}, logs: {}, es: null, job: null, running: false,
+                 gates: null, gateHooks: [] };
+
+  // while a job runs, navigation is PINNED to its section — the settings
+  // panel there is the live control surface, everything else waits
+  var JOB_PAGE = { "sl-train": "sl-train", "sl-run": "sl-inference",
+                   "rb-run": "line-tracing" };
+  function lockPage() {
+    return runner.running ? (JOB_PAGE[runner.job] || null) : null;
+  }
+
+  function ensureRunES() {
+    if (runner.es) { return; }
+    runner.es = new EventSource("/tutorial/api/run/events");
+    runner.es.onmessage = function (ev) {
+      var m = {};
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      var prev = runner.job;
+      runner.job = m.job; runner.running = !!m.running;
+      (m.lines || []).forEach(function (ln) {
+        var log = runner.logs[m.job];
+        if (log) {
+          log.textContent += ln + "\n";
+          log.scrollTop = log.scrollHeight;
+        }
+      });
+      [prev, m.job].forEach(function (j) {
+        if (j && runner.listeners[j]) {
+          runner.listeners[j](j === runner.job && runner.running ? "running" : "idle", m.exit);
+        }
+      });
+      if (runner.onTrain) { runner.onTrain(m.train); }
+      if (m.gates) {
+        runner.gates = m.gates;
+        runner.gateHooks.forEach(function (h) { h(m.gates); });
+      }
+      var lp = lockPage();
+      document.body.classList.toggle("run-locked", !!lp);
+      if (lp && (location.hash || "#sl-labeling").slice(1) !== lp) {
+        location.hash = "#" + lp;
+      }
+    };
+  }
+
+  function startJob(job) {
+    var log = runner.logs[job];
+    if (log) { log.textContent = ""; }
+    return fetch("/tutorial/api/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job: job }),
+    });
+  }
+  function stopJob() { return fetch("/tutorial/api/run/stop", { method: "POST" }); }
+
+  /* ══════════ builders ══════════ */
+  function runCard(opts) {
+    var c = el("div", "card");
+    var row = el("div", "runrow");
+    var btn = el("button", "btn play", "");   // ONE button: <title> <-> Stop
+    var stat = el("span", "rstat", "");
+    row.appendChild(btn); row.appendChild(stat);
+    if (opts.tools) {
+      var tools = el("span", "rtools");
+      opts.tools.forEach(function (n) { tools.appendChild(n); });
+      row.appendChild(tools);
+    }
+    c.appendChild(row);
+    var err = null, tail = null, wasRunning = false;
+    if (!opts.noLog) {
+      var log = el("pre", "runlog", "");
+      runner.logs[opts.job] = log;
+      c.appendChild(log);
+    } else {
+      // no console on this card — still collect lines so a failed run can
+      // show its final message (e.g. "model.onnx not found")
+      tail = { textContent: "", scrollTop: 0, scrollHeight: 0 };
+      runner.logs[opts.job] = tail;
+      err = el("div", "trn-last");
+      c.appendChild(err);
+    }
+    if (opts.extra) { c.appendChild(opts.extra); }
+    // run gates: opts.gate(gates) false -> Run stays disabled and the stat
+    // line SAYS WHY (live: re-evaluated when photos/model change)
+    var curState = "idle", starting = false, stopping = false,
+        blocked = false, showingReason = false;
+    function render() {
+      if (curState === "running") {
+        btn.className = "btn stop";
+        btn.textContent = "■ Stop";
+        btn.disabled = stopping;
+      } else {
+        btn.className = "btn play";
+        btn.textContent = "▶ " + opts.title;
+        btn.disabled = starting || blocked;
+      }
+    }
+    function applyGate() {
+      if (opts.gate && runner.gates) { blocked = !opts.gate(runner.gates); }
+      render();
+      if (curState === "running" || starting) { return; }
+      if (blocked) {
+        stat.textContent = opts.gateReason ? opts.gateReason(runner.gates) : "";
+        stat.className = "rstat";
+        showingReason = true;
+      } else if (showingReason) {
+        stat.textContent = "";
+        showingReason = false;
+      }
+    }
+    if (opts.gate) { runner.gateHooks.push(applyGate); }
+    applyGate();
+
+    // the server round-trip takes a moment — react to the CLICK instantly,
+    // then let the event stream correct the state once the server confirms
+    function go() {
+      starting = true;
+      render();
+      stat.textContent = "starting…";
+      stat.className = "rstat run";
+      startJob(opts.job).then(function (r) {
+        if (!r.ok) { throw new Error(); }
+      }).catch(function () {
+        starting = false;
+        applyGate();
+        stat.textContent = "start failed";
+        stat.className = "rstat";
+      });
+    }
+    btn.addEventListener("click", function () {
+      if (curState === "running") {
+        stopping = true;
+        render();
+        stat.textContent = "stopping…";
+        stopJob().catch(function () { stopping = false; render(); });
+        return;
+      }
+      if (opts.confirmIf && runner.gates && opts.confirmIf(runner.gates)) {
+        confirmModal(opts.confirmText, "Run", go);
+        return;
+      }
+      go();
+    });
+    runner.listeners[opts.job] = function (state, exitCode) {
+      curState = state;
+      starting = false;
+      if (state !== "running") { stopping = false; }
+      stat.textContent = state === "running" ? (stopping ? "stopping…" : "running…")
+                       : (exitCode !== null && exitCode !== undefined) ? ("exit " + exitCode) : "";
+      stat.className = "rstat" + (state === "running" && !stopping ? " run" : "");
+      applyGate();   // a blocked reason overrides the idle text
+      if (err) {
+        if (state === "running") {
+          if (!wasRunning) { tail.textContent = ""; }   // fresh run, maybe started elsewhere
+          wasRunning = true;
+          err.style.display = "none";
+          return;
+        }
+        wasRunning = false;
+        var lines = tail.textContent.split("\n").filter(function (s) { return s.trim(); });
+        var failed = typeof exitCode === "number" && exitCode > 0 && lines.length;
+        err.style.display = failed ? "block" : "none";
+        if (failed) { err.textContent = lines[lines.length - 1]; }
+      }
+    };
+    ensureRunES();
+    return c;
+  }
+
+  // "write it yourself" samples — live: reload on every settings ping
+  var _samples = [];   // {box, ids} of loaded sample folds on this page
+
+  var PY_RE = new RegExp(
+    '("""[\\s\\S]*?"""|\'\'\'[\\s\\S]*?\'\'\'|"(?:\\\\.|[^"\\\\\\n])*"|\'(?:\\\\.|[^\'\\\\\\n])*\')' +
+    '|(#[^\\n]*)' +
+    '|\\b(def|class|import|from|return|if|elif|else|for|while|try|except|finally|with|as|pass|break|continue|in|not|and|or|is|None|True|False|lambda|raise|global|yield)\\b' +
+    '|\\b(\\d+\\.?\\d*)\\b', 'g');
+
+  function highlightPy(code) {
+    return esc(code).replace(PY_RE, function (m, str, com, kw, num) {
+      if (str !== undefined) { return '<span class="py-s">' + m + "</span>"; }
+      if (com !== undefined) { return '<span class="py-c">' + m + "</span>"; }
+      if (kw !== undefined) { return '<span class="py-k">' + m + "</span>"; }
+      return '<span class="py-n">' + m + "</span>";
+    });
+  }
+
+  function buildCodeFile(j, id) {
+    var file = el("div", "codefile");
+    var head = el("div", "codehead");
+    head.appendChild(el("span", "", esc((j.path || id).split("/").pop())));
+    var copy = el("button", "copybtn", "");
+    copy.title = "Copy";
+    copy.innerHTML = ICON_COPY;
+    copy.addEventListener("click", function () {
+      if (navigator.clipboard) { navigator.clipboard.writeText(j.text || ""); }
+      flashIcon(copy, ICON_OK, ICON_COPY);
+    });
+    head.appendChild(copy);
+    file.appendChild(head);
+    var pre = el("pre", "cellpre");
+    pre.innerHTML = highlightPy(j.text || j.detail || "(unavailable)");
+    file.appendChild(pre);
+    return file;
+  }
+
+  function loadSample(box, ids) {
+    // the old content stays on screen until the NEW one is ready — swapping
+    // only on arrival keeps the modal from collapsing between tab clicks.
+    // seq guard: overlapping loads (tab click + live sync ping) — only the
+    // latest may swap, or the modal shows a stale file
+    var seq = (box._loadSeq = (box._loadSeq || 0) + 1);
+    Promise.all(ids.map(function (id) {
+      return fetch("/tutorial/api/code/" + id)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { return buildCodeFile(j, id); })
+        .catch(function () { return el("pre", "cellpre", "failed to load " + id); });
+    })).then(function (files) {
+      if (box._loadSeq !== seq) { return; }
+      box.innerHTML = "";
+      files.forEach(function (f) { box.appendChild(f); });
+    });
+  }
+
+  function reloadSamples() {
+    _samples.forEach(function (sset) { loadSample(sset.box, sset.ids); });
+  }
+
+
+  // API reference card: param inputs -> the command string re-renders live,
+  // Copy grabs exactly what is shown. Nothing runs server-side.
+  function apiCard(method, path, desc, params, cmd) {
+    var c = el("div", "apicard");
+    var top = el("div", "apitop");
+    top.appendChild(el("span", "method " + method.toLowerCase(), method));
+    top.appendChild(el("span", "apipath", esc(path)));
+    top.appendChild(el("div", "apidesc", esc(desc || "")));
+    var copy = el("button", "mini gray", "");
+    copy.title = "Copy";
+    copy.innerHTML = ICON_COPY;
+    top.appendChild(copy);
+    c.appendChild(top);
+    var vals = {};
+    if (params && params.length) {
+      var row = el("div", "apiparams");
+      params.forEach(function (p) {
+        vals[p.k] = p.init;
+        var lab = el("label", "", esc(p.label || p.k));
+        var inp;
+        if (p.opts) {
+          inp = el("select");
+          p.opts.forEach(function (o) {
+            var op = el("option", "", esc(o)); op.value = o; inp.appendChild(op);
+          });
+          inp.value = String(p.init);
+        } else {
+          inp = el("input");
+          inp.type = p.text ? "text" : "number";
+          if (p.step !== undefined) { inp.step = p.step; }
+          inp.value = p.init;
+        }
+        var evt = p.opts ? "change" : "input";
+        inp.addEventListener(evt, function () {
+          vals[p.k] = (p.text || p.opts) ? inp.value : Number(inp.value);
+          line.textContent = cmd(vals);
+        });
+        lab.appendChild(inp);
+        row.appendChild(lab);
+      });
+      c.appendChild(row);
+    }
+    var line = el("div", "cmdline", "");
+    line.textContent = cmd(vals);
+    c.appendChild(line);
+    copy.addEventListener("click", function () {
+      if (navigator.clipboard) { navigator.clipboard.writeText(cmd(vals)); }
+      flashIcon(copy, ICON_OK, ICON_COPY);
+    });
+    return c;
+  }
+
+  // curl builders + degree->radian (the APIs speak radians)
+  function curlGet(url) { return "curl -s " + (url.indexOf("?") >= 0 ? "'" + url + "'" : url); }
+  function curlPost(url, body) {
+    return "curl -s -X POST " + url +
+           " -H 'Content-Type: application/json' -d '" + JSON.stringify(body) + "'";
+  }
+  function rad(deg) { return Number((Number(deg) * Math.PI / 180).toFixed(4)); }
+
+
+  function confirmModal(message, yesLabel, onYes) {
+    var ov = el("div", "modalov");
+    var box = el("div", "modalbox confirmbox");
+    function close() { ov.remove(); }
+    ov.addEventListener("click", function (e) { if (e.target === ov) { close(); } });
+    box.appendChild(el("p", "", esc(message)));
+    var row = el("div", "confirmrow");
+    var no = el("button", "cbtn gray", "Cancel");
+    var yes = el("button", "cbtn danger", esc(yesLabel));
+    no.addEventListener("click", close);
+    yes.addEventListener("click", function () { close(); onYes(); });
+    row.appendChild(no); row.appendChild(yes);
+    box.appendChild(row);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+  }
+
+  function openCodeModal(ids, labels) {
+    var ov = el("div", "modalov");
+    var box = el("div", "modalbox");
+    var x = el("button", "modalx", "✕");
+    var body = el("div");
+    var entry = { box: body, ids: [ids[0]] };   // one file shown at a time
+    function close() {
+      ov.remove();
+      var i = _samples.indexOf(entry);
+      if (i >= 0) { _samples.splice(i, 1); }
+    }
+    ov.addEventListener("click", function (e) { if (e.target === ov) { close(); } });
+    x.addEventListener("click", close);
+    box.appendChild(x);
+    if (ids.length > 1) {
+      var strip = el("div", "tabs codetabs");
+      ids.forEach(function (id, i) {
+        var t = el("button", "tab" + (i === 0 ? " on" : ""), esc((labels && labels[i]) || id));
+        t.addEventListener("click", function () {
+          Array.prototype.forEach.call(strip.children, function (n) { n.classList.remove("on"); });
+          t.classList.add("on");
+          entry.ids = [id];
+          loadSample(body, entry.ids);
+        });
+        strip.appendChild(t);
+      });
+      box.appendChild(strip);
+    }
+    box.appendChild(body);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    _samples.push(entry);   // stays live while open
+    loadSample(body, entry.ids);
+  }
+
+  function pageHead(title) {
+    var head = el("div", "pagehead");
+    head.appendChild(el("h2", "", title));
+    return head;
+  }
+
+  // eyedropper fallback (no EyeDropper API): ONE camera frame per open —
+  // every request to /camera is a paid CDN hit — click a pixel to pick
+  function openColorPickModal(onPick) {
+    var ov = el("div", "modalov");
+    ov.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (e.target === ov) { ov.remove(); }
+    });
+    var box = el("div", "modalbox pickbox");
+    var x = el("button", "modalx", "✕");
+    x.addEventListener("click", function () { ov.remove(); });
+    var img = el("img", "pickimg");
+    img.src = "/camera?width=480&t=" + Date.now();
+    img.addEventListener("click", function (ev) {
+      if (!img.naturalWidth) { return; }
+      var r = img.getBoundingClientRect();
+      var px = Math.floor((ev.clientX - r.left) / r.width * img.naturalWidth);
+      var py = Math.floor((ev.clientY - r.top) / r.height * img.naturalHeight);
+      var c = document.createElement("canvas");
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      var g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      var d = g.getImageData(px, py, 1, 1).data;
+      var hsv = rgb2hsv(d[0], d[1], d[2]);
+      ov.remove();
+      onPick(hsv[0], hsv[1], hsv[2]);
+    });
+    box.appendChild(x);
+    box.appendChild(img);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+  }
+
+  // two-column shell: course content left, the settings panel on the right
+  function withSettings(content, fields, course, codeId, foot) {
+    var cols = el("div", "pcols");
+    var main = el("div", "pmain");
+    main.appendChild(content);
+    var side = el("div", "pside");
+    side.appendChild(settingsCard(fields, course, codeId));
+    if (foot && foot.length) {
+      var ft = el("div", "sidefoot");
+      foot.forEach(function (n) { ft.appendChild(n); });
+      side.appendChild(ft);
+    }
+    cols.appendChild(main);
+    cols.appendChild(side);
+    return cols;
+  }
+
+  // settings live IN the page as a panel (no popover) — one per page, synced
+  var _setPanel = null;
+  function settingsCard(fields, course, codeId) {
+    var card = el("div", "setsec");
+    var pop = el("div", "setgrid");
+    fields.forEach(function (f) {
+          if (f.color) {
+            // always-open HSV picker (OpenCV ranges): SV pad + hue bar with
+            // the ±tolerance RANGE drawn on both, and an H/S/V number grid
+            var cr = el("div", "modes");
+            var hd = el("div", "hsvhead");
+            hd.appendChild(el("span", "", esc(f.label)));
+            var pick = el("button", "gearpick", "");
+            pick.title = "Pick a color from the screen";
+            pick.innerHTML = ICON_PICK;
+            hd.appendChild(pick);
+            cr.appendChild(hd);
+            var pk = el("div", "hsvpick");
+            pk.innerHTML =
+              '<div class="sv-pad"><i class="sv-range"></i><i class="sv-dot"></i></div>' +
+              '<div class="hue-bar"><i class="hue-range"></i><i class="hue-dot"></i></div>';
+            var pad = pk.querySelector(".sv-pad"), dotSV = pk.querySelector(".sv-dot"),
+                rngSV = pk.querySelector(".sv-range");
+            var bar = pk.querySelector(".hue-bar"), dotH = pk.querySelector(".hue-dot"),
+                rngH = pk.querySelector(".hue-range");
+            cr.appendChild(pk);
+            // Hue Sat Val / value / ±tolerance — three columns
+            var grid = el("div", "hsvgrid");
+            var CH = [["Hue", "hue", "hue_tol", 179], ["Sat", "sat", "sat_tol", 255],
+                      ["Val", "val", "val_tol", 255]];
+            CH.forEach(function (c) { grid.appendChild(el("span", "hsvcol", c[0])); });
+            CH.forEach(function (c) {
+              var i = el("input");
+              i.type = "number"; i.step = 1; i.min = 0; i.max = c[3];
+              i.dataset.key = c[1];
+              grid.appendChild(i);
+            });
+            CH.forEach(function (c) {
+              var cell = el("span", "tolcell", '<span class="pm">±</span>');
+              var i = el("input");
+              i.type = "number"; i.step = 1; i.min = 0; i.max = c[3];
+              i.dataset.key = c[2];
+              cell.appendChild(i);
+              grid.appendChild(cell);
+            });
+            cr.appendChild(grid);
+            function num(k) {
+              return pop.querySelector('input[data-key="' + k + '"]');
+            }
+            function val(k) {
+              var n = num(k);
+              return n ? Number(n.value) || 0 : 0;
+            }
+            function pct(x) { return Math.max(0, Math.min(100, x * 100)) + "%"; }
+            function paint() {
+              var h = val("hue"), s = val("sat"), v = val("val");
+              var th = val("hue_tol"), ts = val("sat_tol"), tv = val("val_tol");
+              pad.style.background =
+                "linear-gradient(to top, #000, rgba(0,0,0,0)), " +
+                "linear-gradient(to right, #fff, hsl(" + (h * 2) + ", 100%, 50%))";
+              dotSV.style.left = pct(s / 255);
+              dotSV.style.top = pct(1 - v / 255);
+              dotH.style.left = pct(h / 179);
+              var sl = Math.max(0, (s - ts) / 255), sr = Math.min(1, (s + ts) / 255);
+              var vt = Math.max(0, 1 - (v + tv) / 255), vb = Math.min(1, 1 - (v - tv) / 255);
+              rngSV.style.left = pct(sl);
+              rngSV.style.width = pct(sr - sl);
+              rngSV.style.top = pct(vt);
+              rngSV.style.height = pct(vb - vt);
+              var hl = Math.max(0, (h - th) / 179), hr = Math.min(1, (h + th) / 179);
+              rngH.style.left = pct(hl);
+              rngH.style.width = pct(hr - hl);
+            }
+            pop._paint = paint;
+            function setHSV(h, s, v) {
+              [["hue", h], ["sat", s], ["val", v]].forEach(function (kv) {
+                var n = num(kv[0]);
+                if (n) { n.value = kv[1]; }
+              });
+              paint();
+              if (saveTimer) { clearTimeout(saveTimer); }
+              saveTimer = setTimeout(saveNow, 300);
+            }
+            function dragger(elm, fn) {
+              var live = false;
+              elm.addEventListener("pointerdown", function (ev) {
+                ev.preventDefault();
+                elm.setPointerCapture(ev.pointerId);
+                live = true;
+                fn(ev);
+              });
+              elm.addEventListener("pointermove", function (ev) { if (live) { fn(ev); } });
+              elm.addEventListener("pointerup", function () { live = false; });
+            }
+            dragger(pad, function (ev) {
+              var r = pad.getBoundingClientRect();
+              var s = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+              var v = Math.max(0, Math.min(1, 1 - (ev.clientY - r.top) / r.height));
+              setHSV(val("hue"), Math.round(s * 255), Math.round(v * 255));
+            });
+            dragger(bar, function (ev) {
+              var r = bar.getBoundingClientRect();
+              var h = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+              setHSV(Math.round(h * 179), val("sat"), val("val"));
+            });
+            pick.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              if (window.EyeDropper) {
+                // native: pick ANY pixel on screen (e.g. the app camera view)
+                new window.EyeDropper().open().then(function (res) {
+                  var hx = res.sRGBHex;
+                  var hsv = rgb2hsv(parseInt(hx.slice(1, 3), 16),
+                                    parseInt(hx.slice(3, 5), 16),
+                                    parseInt(hx.slice(5, 7), 16));
+                  setHSV(hsv[0], hsv[1], hsv[2]);
+                }).catch(function () {});
+                return;
+              }
+              openColorPickModal(setHSV);   // fallback: one camera frame
+            });
+            pop.appendChild(cr);
+            return;
+          }
+          if (f.radio) {
+            var md = el("div", "modes", esc(f.label));
+            var rr = el("div", "radiorow");
+            f.radio.forEach(function (o) {
+              var ro = el("label", "radioopt");
+              var r = el("input");
+              r.type = "radio"; r.name = "gear-" + f.key; r.value = o; r.dataset.key = f.key;
+              ro.appendChild(r);
+              ro.appendChild(document.createTextNode(o));
+              rr.appendChild(ro);
+            });
+            md.appendChild(rr);
+            pop.appendChild(md);
+            return;
+          }
+          var lb = el("label", "", esc(f.label));
+          var inp;
+          if (f.select) {
+            inp = el("select");
+            f.select.forEach(function (o) {
+              var op = el("option", "", esc(o)); op.value = o; inp.appendChild(op);
+            });
+          } else {
+            inp = el("input");
+            inp.type = "number"; inp.step = f.step; inp.min = f.min; inp.max = f.max;
+          }
+          inp.dataset.key = f.key;
+          lb.appendChild(inp);
+          pop.appendChild(lb);
+        });
+        var saveTimer = null;
+        function saveNow() {
+          var body = {};
+          pop.querySelectorAll("input, select").forEach(function (i) {
+            if (i.tagName === "SELECT") { body[i.dataset.key] = i.value; return; }
+            if (i.type === "radio") {
+              if (i.checked) { body[i.dataset.key] = i.value; }
+              return;
+            }
+            var v = Number(i.value);
+            if (!isNaN(v) && i.value !== "") { body[i.dataset.key] = v; }
+          });
+          var cached = settingsCache[course];
+          if (cached) { Object.keys(body).forEach(function (k) { cached[k] = body[k]; }); }
+              fetch("/tutorial/api/" + course + "/settings", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          // the change stream pings every window — buttons and sample code follow
+        }
+        pop.querySelectorAll("input, select").forEach(function (i) {
+          var evt = (i.tagName === "SELECT" || i.type === "radio") ? "change" : "input";
+          i.addEventListener(evt, function () {
+            if (pop._paint) { pop._paint(); }   // typed HSV moves the swatch too
+            if (saveTimer) { clearTimeout(saveTimer); }
+            saveTimer = setTimeout(saveNow, 300);
+          });
+        });
+        function fill(st) {
+          pop.querySelectorAll("input, select").forEach(function (i) {
+            if (i.type === "radio") { i.checked = (st[i.dataset.key] === i.value); return; }
+            if (i === document.activeElement) { return; }
+            i.value = st[i.dataset.key];
+          });
+          if (pop._paint) { pop._paint(); }
+        }
+    _setPanel = { fill: fill, course: course };   // the sync stream re-fills it
+    if (settingsCache[course]) { fill(settingsCache[course]); }   // instant
+    refreshSettings(course).then(function (st) {  // reconcile in background
+      if (pop.isConnected) { fill(st); }
+    });
+    var rst = el("button", "gearreset", "Reset");
+    rst.addEventListener("click", function () {
+      fetch("/tutorial/api/" + course + "/settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: true }),
+      }).then(function (r) { return r.json(); }).then(function (st) {
+        settingsCache[course] = st;
+        fill(st);
+      });
+    });
+    pop.appendChild(rst);
+    card.appendChild(pop);
+    if (codeId) {
+      var acts = el("div", "sideacts");
+      var cb = el("button", "codebtn",
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>' +
+        "<span>View Code</span>");
+      cb.addEventListener("click", function (e) {
+        e.stopPropagation();
+        openCodeModal([codeId]);
+      });
+      acts.appendChild(cb);
+      card.appendChild(acts);
+    }
+    return card;
+  }
+
+  // ONE settings list for every SL tab — the gear looks the same everywhere.
+  // Two per row: Speed|Pan, Left|Right, then the mode radios across.
+  var SL_FIELDS = [
+    { key: "speed", label: "Speed (m/s)", step: 0.1, min: 0.1, max: 3 },
+    { key: "left", label: "Left (°)", step: 1, min: 0, max: 20 },
+    { key: "right", label: "Right (°)", step: 1, min: 0, max: 20 },
+    { key: "pan", label: "Pan (°)", step: 1, min: -30, max: 30 },
+    { key: "tilt", label: "Tilt (°)", step: 1, min: -30, max: 30 },
+    { key: "mode", label: "Action selection", radio: ["greedy", "stochastic", "mean"] },
+  ];
+  // Rule-Based: the line color IS the rule — target HSV, each channel with
+  // its own tolerance. Tune it live, watch the mask.
+  var RB_FIELDS = [
+    { key: "speed", label: "Speed (m/s)", step: 0.1, min: 0.1, max: 3 },
+    { key: "gain", label: "Steer gain", step: 1, min: 0, max: 60 },
+    { color: true, label: "Line color" },
+    { key: "crop", label: "Crop top", step: 0.05, min: 0, max: 0.9 },
+    { key: "pan", label: "Pan (°)", step: 1, min: -30, max: 30 },
+    { key: "tilt", label: "Tilt (°)", step: 1, min: -30, max: 30 },
+  ];
+  var SL_TABS = [
+    { id: "sl-labeling", label: "Labeling" },
+    { id: "sl-train", label: "Train" },
+    { id: "sl-inference", label: "Inference" },
+  ];
+  var RL_TABS = [
+    { id: "rl-training", label: "Training" },
+    { id: "rl-inference", label: "Inference" },
+  ];
+
+  function tabStrip(tabs, active) {
+    var strip = el("div", "tabs");
+    tabs.forEach(function (t, i) {
+      var on = t.id === active;
+      // ①②③ outline when idle, ❶❷❸ filled when active
+      var num = String.fromCharCode((on ? 0x2776 : 0x2460) + i);
+      var a = el("a", "tab" + (on ? " on" : ""),
+        '<span class="tnum">' + num + "</span>" + esc(t.label));
+      a.href = "#" + t.id;
+      strip.appendChild(a);
+    });
+    return strip;
+  }
+
+  function comingSoon(title) {
+    var w = el("div");
+    w.appendChild(el("h2", "", title + ' <span class="badge">coming soon</span>'));
+    return w;
+  }
+
+  function rlPage(active) {
+    var w = el("div");
+    w.appendChild(el("h2", "", 'Racing — Reinforcement Learning <span class="badge">coming soon</span>'));
+    w.appendChild(tabStrip(RL_TABS, active));
+    return w;
+  }
+
+  var NAV_TABS = [
+    { id: "nav-slam", label: "SLAM" },
+    { id: "nav-nav", label: "NAV" },
+  ];
+
+  function navPage(active) {
+    var w = el("div");
+    w.appendChild(el("h2", "", 'Navigation <span class="badge">coming soon</span>'));
+    w.appendChild(tabStrip(NAV_TABS, active));
+    return w;
+  }
+
+  /* ══════════ pages ══════════ */
+  var PAGES = {
+
+    "sl-labeling": function () {
+      var w = el("div");
+      w.appendChild(pageHead("Racing — Supervised Learning"));
+      w.appendChild(tabStrip(SL_TABS, "sl-labeling"));
+      var host = el("div"); host.id = "lab-classes";
+      w.appendChild(withSettings(host, SL_FIELDS, "sl", "sl-labeling"));
+      initLabeling(host);
+      return w;
+    },
+
+    "sl-train": function () {
+      var w = el("div");
+      w.appendChild(pageHead("Racing — Supervised Learning"));
+      w.appendChild(tabStrip(SL_TABS, "sl-train"));
+      var viz = el("div", "trn-viz");
+      viz.innerHTML =
+        '<div class="trn-stats">' +
+          '<div class="trn-stat"><div class="v" id="tv-photos">–</div><div class="l">training photos</div></div>' +
+          '<div class="trn-stat"><div class="v" id="tv-epoch">–</div><div class="l">epoch</div></div>' +
+          '<div class="trn-stat"><div class="v" id="tv-acc">–</div><div class="l">validation accuracy</div></div>' +
+        '</div>' +
+        '<div class="trn-bar"><i id="tv-bar"></i></div>' +
+        '<div class="trn-chart"><canvas id="tv-chart"></canvas></div>';
+      w.appendChild(withSettings(runCard({
+        job: "sl-train", title: "Train the model", noLog: true, extra: viz,
+        gate: function (g) { return g.photos >= g.min; },
+        gateReason: function (g) {
+          return "need " + g.min + "+ photos to train (" + g.photos + " so far)";
+        },
+        confirmIf: function (g) { return g.model; },
+        confirmText: "model.onnx already exists — training again will overwrite it. Continue?",
+      }), SL_FIELDS, "sl", "sl-train"));
+      initTrainView(viz);
+      return w;
+    },
+
+    "sl-inference": function () {
+      var w = el("div");
+      w.appendChild(pageHead("Racing — Supervised Learning"));
+      w.appendChild(tabStrip(SL_TABS, "sl-inference"));
+      var viz = el("div", "rbwrap");
+      viz.appendChild(el("div", "rbidle", "MyApp"));
+      var frame = el("iframe", "rbframe");
+      viz.appendChild(frame);
+      function setFrame(on) {
+        var cur = frame.getAttribute("src") || "";
+        if (on && cur !== "/myapp/") { frame.src = "/myapp/"; }
+        if (!on && cur) { frame.src = "about:blank"; frame.removeAttribute("src"); }
+      }
+      var dl = el("button", "mini gray", "");
+      dl.title = "Download model.onnx";
+      dl.innerHTML = ICON_DL + "<span>Download</span>";
+      var gateDl = function (g) { dl.disabled = !g.model; };
+      runner.gateHooks.push(gateDl);
+      if (runner.gates) { gateDl(runner.gates); }
+      dl.addEventListener("click", function () {
+        msg.textContent = "downloading…";
+        msg.className = "sidemsg";
+        dl.disabled = true;
+        fetch("/tutorial/api/sl/model").then(function (r) {
+          if (!r.ok) {
+            return r.json().then(function (j) {
+              throw new Error(j.detail || "download failed");
+            });
+          }
+          return r.blob();
+        }).then(function (b) {
+          var u = URL.createObjectURL(b);
+          var a = document.createElement("a");
+          a.href = u; a.download = "model.onnx"; a.click();
+          setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+          msg.textContent = "downloaded — " + (b.size / 1048576).toFixed(1) + " MB";
+          msg.className = "sidemsg ok";
+          gateDl(runner.gates || { model: true });   // re-enable per the gate
+        }).catch(function (e) {
+          msg.textContent = e.message || "download failed";
+          msg.className = "sidemsg bad";
+          gateDl(runner.gates || { model: true });
+        });
+      });
+      var imp = el("button", "mini gray", "");
+      imp.title = "Upload model.onnx";
+      imp.innerHTML = ICON_UP + "<span>Upload</span>";
+      var file = el("input");
+      file.type = "file"; file.accept = ".onnx"; file.style.display = "none";
+      imp.addEventListener("click", function () { file.click(); });
+      var modelSec = el("div", "sidesec");
+      modelSec.appendChild(el("h3", "", "Model"));
+      var mrow = el("div", "siderow");
+      mrow.appendChild(dl); mrow.appendChild(imp); mrow.appendChild(file);
+      modelSec.appendChild(mrow);
+      var msg = el("div", "sidemsg");
+      modelSec.appendChild(msg);
+      file.addEventListener("change", function () {
+        if (!file.files.length) { return; }
+        msg.textContent = "uploading…";
+        msg.className = "sidemsg";
+        imp.disabled = true;
+        fetch("/tutorial/api/sl/model", {
+          method: "POST", headers: { "Content-Type": "application/octet-stream" },
+          body: file.files[0],
+        }).then(function (r) {
+          return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+        }).then(function (res) {
+          imp.disabled = false;
+          file.value = "";
+          if (res.ok) {
+            msg.textContent = "uploaded — " + (res.j.bytes / 1048576).toFixed(1) + " MB";
+            msg.className = "sidemsg ok";
+          } else {
+            msg.textContent = res.j.detail || "upload failed";
+            msg.className = "sidemsg bad";
+          }
+        }).catch(function () {
+          imp.disabled = false;
+          file.value = "";
+          msg.textContent = "upload failed";
+          msg.className = "sidemsg bad";
+        });
+      });
+      w.appendChild(withSettings(runCard({ job: "sl-run", title: "Run inference", noLog: true,
+                              extra: viz,
+                              gate: function (g) { return g.model; },
+                              gateReason: function () {
+                                return "model.onnx not found — run Train first";
+                              } }), SL_FIELDS, "sl", "sl-run", [modelSec]));
+      // attach only once the viewer (:5000) is really up — gates.myapp —
+      // so the "MyApp is not running" fallback never flashes
+      function frameOn() {
+        return runner.running && runner.job === "sl-run" &&
+               !!(runner.gates && runner.gates.myapp);
+      }
+      var baseSl = runner.listeners["sl-run"];
+      runner.listeners["sl-run"] = function (state, exitCode) {
+        baseSl(state, exitCode);
+        setFrame(frameOn());
+      };
+      runner.gateHooks.push(function () { setFrame(frameOn()); });
+      setFrame(frameOn());
+      return w;
+    },
+
+    "rl-training": function () { return rlPage("rl-training"); },
+    "rl-inference": function () { return rlPage("rl-inference"); },
+
+    "line-tracing": function () {
+      var w = el("div");
+      w.appendChild(pageHead("Racing — Rule-Based"));
+      var viz = el("div", "rbwrap");
+      viz.appendChild(el("div", "rbidle", "MyApp"));
+      var frame = el("iframe", "rbframe");
+      viz.appendChild(frame);
+      // the MYAPP slot (:5000) belongs to whatever the student runs there —
+      // only hook the iframe up while THIS course is the one driving it
+      function setFrame(on) {
+        var cur = frame.getAttribute("src") || "";
+        if (on && cur !== "/myapp/") { frame.src = "/myapp/"; }
+        if (!on && cur) { frame.src = "about:blank"; frame.removeAttribute("src"); }
+      }
+      w.appendChild(withSettings(runCard({ job: "rb-run", title: "Follow the line", noLog: true,
+                                           extra: viz }), RB_FIELDS, "rb", "rb-run"));
+      // attach only once the viewer (:5000) is really up — gates.myapp —
+      // so the "MyApp is not running" fallback never flashes
+      function frameOn() {
+        return runner.running && runner.job === "rb-run" &&
+               !!(runner.gates && runner.gates.myapp);
+      }
+      var baseRb = runner.listeners["rb-run"];
+      runner.listeners["rb-run"] = function (state, exitCode) {
+        baseRb(state, exitCode);
+        setFrame(frameOn());
+      };
+      runner.gateHooks.push(function () { setFrame(frameOn()); });
+      setFrame(frameOn());
+      return w;
+    },
+
+    "object-following": function () { return comingSoon("Object Detection"); },
+    "nav-slam": function () { return navPage("nav-slam"); },
+    "nav-nav": function () { return navPage("nav-nav"); },
+    "agent-realtime": function () { return comingSoon("Agent Realtime"); },
+
+    "robot-api": function () {
+      var w = el("div");
+      w.appendChild(el("h2", "", "Robot API"));
+      var R = "http://localhost";
+      var web = el("div", "card");
+      web.appendChild(el("h3", "", "Web API — curl"));
+      web.appendChild(apiCard("GET", "/states", "many readings in one call", [
+        { k: "include", label: "include", init: "odom,battery", text: true }],
+        function (v) { return curlGet(R + "/states?include=" + v.include); }));
+      web.appendChild(apiCard("GET", "/speed", "current speed (m/s)", null,
+        function () { return curlGet(R + "/speed"); }));
+      web.appendChild(apiCard("POST", "/speed", "drive", [
+        { k: "value", label: "m/s", init: 0.5, step: 0.1 },
+        { k: "duration", label: "seconds", init: 2, step: 0.5 }],
+        function (v) { return curlPost(R + "/speed", { value: v.value, duration: v.duration }); }));
+      web.appendChild(apiCard("GET", "/steering", "current steering (rad)", null,
+        function () { return curlGet(R + "/steering"); }));
+      web.appendChild(apiCard("POST", "/steering", "steer, + is left (rad)", [
+        { k: "deg", label: "deg", init: 10, step: 1 }],
+        function (v) { return curlPost(R + "/steering", { value: rad(v.deg) }); }));
+      web.appendChild(apiCard("GET", "/camera", "camera frame (JPEG)", [
+        { k: "width", label: "width", init: 480, step: 20 }],
+        function (v) { return curlGet(R + "/camera?width=" + v.width) + " -o camera.jpg"; }));
+      web.appendChild(apiCard("GET", "/camera/pan", "camera pan (rad)", null,
+        function () { return curlGet(R + "/camera/pan"); }));
+      web.appendChild(apiCard("POST", "/camera/pan", "turn the camera", [
+        { k: "deg", label: "deg", init: 15, step: 1 }],
+        function (v) { return curlPost(R + "/camera/pan", { value: rad(v.deg) }); }));
+      web.appendChild(apiCard("GET", "/camera/tilt", "camera tilt (rad)", null,
+        function () { return curlGet(R + "/camera/tilt"); }));
+      web.appendChild(apiCard("POST", "/camera/tilt", "tilt the camera", [
+        { k: "deg", label: "deg", init: -15, step: 1 }],
+        function (v) { return curlPost(R + "/camera/tilt", { value: rad(v.deg) }); }));
+      web.appendChild(apiCard("GET", "/odom", "odometry", null,
+        function () { return curlGet(R + "/odom"); }));
+      web.appendChild(apiCard("GET", "/battery", "battery state", null,
+        function () { return curlGet(R + "/battery"); }));
+      web.appendChild(apiCard("GET", "/imu", "IMU", null,
+        function () { return curlGet(R + "/imu"); }));
+      web.appendChild(apiCard("GET", "/lidar", "LiDAR scan", null,
+        function () { return curlGet(R + "/lidar"); }));
+      web.appendChild(apiCard("POST", "/audio/play", "play a sound file", [
+        { k: "path", label: "path", init: "/tmp/beep.wav", text: true },
+        { k: "volume", label: "volume", init: 0.8, step: 0.1 }],
+        function (v) { return curlPost(R + "/audio/play", { path: v.path, volume: v.volume }); }));
+      web.appendChild(apiCard("GET", "/audio", "playback state", null,
+        function () { return curlGet(R + "/audio"); }));
+      web.appendChild(apiCard("POST", "/audio/stop", "stop every sound", null,
+        function () { return curlPost(R + "/audio/stop", { all: true }); }));
+      w.appendChild(web);
+      var ros = el("div", "card");
+      ros.appendChild(el("h3", "", "ROS 2 — command line"));
+      ros.appendChild(apiCard("CLI", "topic list", "every topic", null,
+        function () { return "ros2 topic list"; }));
+      ros.appendChild(apiCard("CLI", "topic echo", "one battery message", null,
+        function () { return "ros2 topic echo /battery_state --once"; }));
+      ros.appendChild(apiCard("CLI", "topic echo", "one odometry message", null,
+        function () { return "ros2 topic echo /odom --once"; }));
+      ros.appendChild(apiCard("CLI", "topic hz", "camera publish rate", null,
+        function () { return "ros2 topic hz /camera/image_raw --window 30"; }));
+      ros.appendChild(apiCard("CLI", "topic pub", "drive via the raw topic", [
+        { k: "x", label: "m/s", init: 0.3, step: 0.1 }],
+        function (v) {
+          return "ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist '{linear: {x: " + v.x + "}}'";
+        }));
+      w.appendChild(ros);
+      return w;
+    },
+
+    "sim-api": function () {
+      var w = el("div");
+      w.appendChild(el("h2", "", "Simulation API"));
+      var S = "http://localhost/sim/api";
+      var c = el("div", "card");
+      c.appendChild(el("h3", "", "Web API — curl"));
+      c.appendChild(apiCard("GET", "/status", "simulator alive + current world", null,
+        function () { return curlGet(S + "/status"); }));
+      c.appendChild(apiCard("GET", "/state", "full snapshot in one call", null,
+        function () { return curlGet(S + "/state"); }));
+      c.appendChild(apiCard("GET", "/clock", "simulation time", null,
+        function () { return curlGet(S + "/clock"); }));
+      c.appendChild(apiCard("GET", "/pose", "vehicle pose", null,
+        function () { return curlGet(S + "/pose"); }));
+      c.appendChild(apiCard("POST", "/pose", "teleport; omitted keys keep current", [
+        { k: "x", label: "x", init: 0, step: 0.1 },
+        { k: "y", label: "y", init: 0, step: 0.1 },
+        { k: "yaw", label: "yaw deg", init: 0, step: 5 }],
+        function (v) { return curlPost(S + "/pose", { x: v.x, y: v.y, yaw: rad(v.yaw) }); }));
+      c.appendChild(apiCard("POST", "/reset", "everything back to the start", null,
+        function () { return curlPost(S + "/reset", {}); }));
+      c.appendChild(apiCard("GET", "/world", "current world", null,
+        function () { return curlGet(S + "/world"); }));
+      c.appendChild(apiCard("GET", "/worlds", "installed worlds", null,
+        function () { return curlGet(S + "/worlds"); }));
+      c.appendChild(apiCard("GET", "/worldpub", "published world info", null,
+        function () { return curlGet(S + "/worldpub"); }));
+      c.appendChild(apiCard("GET", "/route", "track center line", null,
+        function () { return curlGet(S + "/route"); }));
+      c.appendChild(apiCard("GET", "/bounds", "track bounds", null,
+        function () { return curlGet(S + "/bounds"); }));
+      c.appendChild(apiCard("GET", "/objects", "objects in the world", null,
+        function () { return curlGet(S + "/objects"); }));
+      c.appendChild(apiCard("POST", "/models/{name}/pose", "move an object", [
+        { k: "name", label: "name", init: "box1", text: true },
+        { k: "x", label: "x", init: 1, step: 0.1 },
+        { k: "y", label: "y", init: 1, step: 0.1 },
+        { k: "yaw", label: "yaw deg", init: 0, step: 5 }],
+        function (v) {
+          return curlPost(S + "/models/" + v.name + "/pose", { x: v.x, y: v.y, yaw: rad(v.yaw) });
+        }));
+      c.appendChild(apiCard("GET", "/traffic_lights", "traffic lights + states", null,
+        function () { return curlGet(S + "/traffic_lights"); }));
+      c.appendChild(apiCard("POST", "/traffic_lights/{name}", "switch a light", [
+        { k: "name", label: "name", init: "light1", text: true },
+        { k: "state", label: "state", init: "red", opts: ["red", "green"] }],
+        function (v) {
+          return curlPost(S + "/traffic_lights/" + v.name, { state: v.state });
+        }));
+      c.appendChild(apiCard("GET", "/brightness", "scene brightness", null,
+        function () { return curlGet(S + "/brightness"); }));
+      c.appendChild(apiCard("POST", "/brightness", "day / night", [
+        { k: "value", label: "value", init: 1.0, step: 0.1 }],
+        function (v) { return curlPost(S + "/brightness", { value: v.value }); }));
+      c.appendChild(apiCard("POST", "/overlay", "write on the simulator screen", [
+        { k: "text", label: "text", init: "Hello from the API", text: true },
+        { k: "ttl", label: "ttl s", init: 5, step: 1 }],
+        function (v) { return curlPost(S + "/overlay", { text: v.text, ttl: v.ttl }); }));
+      c.appendChild(apiCard("GET", "/events", "live event stream (SSE)", null,
+        function () { return "curl -sN " + S + "/events"; }));
+      c.appendChild(apiCard("GET", "/evaluation", "evaluation script", null,
+        function () { return curlGet(S + "/evaluation"); }));
+      w.appendChild(c);
+      return w;
+    },
+  };
+
+  /* ══════════ Deep Racing SL: training dashboard ══════════ */
+  function initTrainView(viz) {
+    var vPhotos = viz.querySelector("#tv-photos"), vEpoch = viz.querySelector("#tv-epoch"),
+        vAcc = viz.querySelector("#tv-acc"), vBar = viz.querySelector("#tv-bar"),
+        canvas = viz.querySelector("#tv-chart");
+    var last = null;
+
+    function draw(t) {
+      var dpr = window.devicePixelRatio || 1;
+      var w = canvas.clientWidth, h = canvas.clientHeight;
+      if (!w || !h) { return; }
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      var g = canvas.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      var padL = 46, padR = 16, padT = 12, padB = 24;
+      var iw = w - padL - padR, ih = h - padT - padB;
+      g.font = "11px system-ui, sans-serif";
+      [0, 25, 50, 75, 100].forEach(function (p) {
+        var y = padT + ih * (1 - p / 100);
+        g.strokeStyle = "rgba(120,120,150,.18)"; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+        g.fillStyle = "#8a8aa0"; g.textAlign = "right"; g.textBaseline = "middle";
+        g.fillText(p + "%", padL - 8, y);
+      });
+      var hist = (t && t.history) || [];
+      var total = Math.max((t && t.epochs) || 0, hist.length, 1);
+      function xFor(ep) { return padL + iw * ep / total; }
+      var step = Math.max(1, Math.ceil(total / 10));
+      g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = "#8a8aa0";
+      for (var e = step; e <= total; e += step) { g.fillText(e, xFor(e), h - padB + 6); }
+      if (!hist.length) { return; }
+      g.strokeStyle = "#7e56c2"; g.lineWidth = 2.5; g.lineJoin = "round";
+      g.beginPath();
+      hist.forEach(function (p, i) {
+        var x = xFor(p.epoch), y = padT + ih * (1 - p.accuracy);
+        if (i === 0) { g.moveTo(x, y); } else { g.lineTo(x, y); }
+      });
+      g.stroke();
+      g.fillStyle = "#7e56c2";
+      hist.forEach(function (p) {
+        g.beginPath();
+        g.arc(xFor(p.epoch), padT + ih * (1 - p.accuracy), 3, 0, Math.PI * 2);
+        g.fill();
+      });
+    }
+
+    runner.onTrain = function (t) {
+      last = t;
+      var hist = (t && t.history) || [];
+      var ep = hist.length ? hist[hist.length - 1].epoch : 0;
+      vPhotos.textContent = t && t.photos ? t.photos : "–";
+      vEpoch.textContent = t && t.epochs ? ep + " / " + t.epochs : "–";
+      vAcc.textContent = hist.length ? (hist[hist.length - 1].accuracy * 100).toFixed(1) + "%" : "–";
+      vBar.style.width = (t && t.epochs ? Math.round(100 * ep / t.epochs) : 0) + "%";
+      draw(t);
+    };
+    new ResizeObserver(function () { draw(last); }).observe(canvas);
+  }
+
+  /* ══════════ Deep Racing SL: button labeling ══════════ */
+  var lab = { timer: null, held: null, busy: false, meta: null, es: null };
+
+  // one SVG triangle per direction — identical bounding box, identical mass
+  // (the ◀▲▶ glyphs render at visibly different sizes)
+  function arrowFor(a) {
+    var s = Number(a.steering) || 0;
+    var pts = s > 5 ? "17,4 5,12 17,20" : s < -5 ? "7,4 19,12 7,20" : "12,5 3,19 21,19";
+    return '<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">' +
+           '<polygon points="' + pts + '"/></svg>';
+  }
+
+  function initLabeling(host) {
+    function build(m) {
+      host.innerHTML = "";
+      Object.keys(m.actions).forEach(function (key) { host.appendChild(classCard(key, m)); });
+    }
+    fetch("/tutorial/api/sl/meta").then(function (r) { return r.json(); }).then(function (m) {
+      if (m.error) { host.appendChild(el("div", "notice show", esc(m.error))); return; }
+      lab.meta = m;
+      fetch("/tutorial/api/sl/camera", { method: "POST" });   // model viewpoint
+      build(m);
+      lab.refresh = refreshAll;
+    });
+
+    function photoUrl(key, name) {
+      return "/tutorial/api/sl/photo?action=" + encodeURIComponent(key) +
+             "&name=" + encodeURIComponent(name) + "&w=160";
+    }
+
+    function thumb(key, name) {
+      var t = el("div", "thumb");
+      var img = el("img"); img.loading = "lazy"; img.src = photoUrl(key, name); img.alt = name;
+      var x = el("button", "x", "✕");
+      x.addEventListener("click", function () {
+        fetch("/tutorial/api/sl/photo/delete", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: key, name: name }),
+        }).then(function (r) { return r.json(); }).then(function (j) {
+          t.remove();
+          setCount(key, j.count);
+        });
+      });
+      t.appendChild(img); t.appendChild(x);
+      return t;
+    }
+
+    function setCount(key, n) {
+      var c = document.getElementById("cnt-" + key);
+      if (c && n !== undefined) { c.textContent = n + " photos"; }
+    }
+
+    function classCard(key, m) {
+      var a = m.actions[key];
+      var card = el("div", "classcard");
+      var b = el("button", "labbtn");
+      b.innerHTML = arrowFor(a) + '<span class="lablabel">' + esc(key) + "</span>";
+      var down = function (ev) { ev.preventDefault(); holdStart(key); };
+      var up = function () { holdEnd(); };
+      b.addEventListener("pointerdown", down);
+      b.addEventListener("pointerup", up);
+      b.addEventListener("pointerleave", up);
+      card.appendChild(b);
+      var meta = el("div", "classmeta");
+      var cnt = el("span", "ccount", (m.counts[key] || 0) + " photos"); cnt.id = "cnt-" + key;
+      meta.appendChild(cnt);
+      var clear = el("button", "cclear", "Delete all");
+      clear.addEventListener("click", function () {
+        confirmModal("Delete all " + (document.getElementById("cnt-" + key) || {}).textContent + " photos of [" + key + "]?", "Delete", function () {
+          fetch("/tutorial/api/sl/clear", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: key }),
+          }).then(function (r) { return r.json(); }).then(function () {
+            col.innerHTML = ""; setCount(key, 0);
+          });
+        });
+      });
+      card.appendChild(meta);
+      var col = el("div", "thumbcol"); col.id = "ph-" + key;
+      card.appendChild(col);
+      var foot = el("div", "classfoot");
+      foot.appendChild(clear);
+      card.appendChild(foot);
+      fetch("/tutorial/api/sl/photos?action=" + encodeURIComponent(key)).then(function (r) { return r.json(); })
+        .then(function (j) {
+          (j.photos || []).forEach(function (n) { col.appendChild(thumb(key, n)); });
+          var mb = moreBtn(key, col, j.total);
+          if (mb) { col.appendChild(mb); }
+        });
+      return card;
+    }
+
+    // "+N more" loads the next page of thumbnails (curation needs them ALL,
+    // just not in one 600-request burst)
+    function moreBtn(key, col, total) {
+      var left = total - col.querySelectorAll(".thumb").length;
+      if (left <= 0) { return null; }
+      var b = el("button", "more", "+" + left + " more");
+      b.addEventListener("click", function () {
+        b.disabled = true;
+        var have = col.querySelectorAll(".thumb").length;
+        fetch("/tutorial/api/sl/photos?action=" + encodeURIComponent(key) +
+              "&offset=" + have + "&limit=120")
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            b.remove();
+            (j.photos || []).forEach(function (n) { col.appendChild(thumb(key, n)); });
+            var nb = moreBtn(key, col, j.total);
+            if (nb) { col.appendChild(nb); }
+          }).catch(function () { b.disabled = false; });
+      });
+      return b;
+    }
+
+    function refreshAll() {
+      fetch("/tutorial/api/sl/meta").then(function (r) { return r.json(); }).then(function (m) {
+        if (m.error || !lab.meta) { return; }
+        if (JSON.stringify(m.actions) !== JSON.stringify(lab.meta.actions)) {
+          lab.meta = m;
+          build(m);   // another window changed the settings — rebuild buttons
+        } else { lab.meta = m; }
+      });
+      // ask for as many names as the most-expanded column shows, and keep
+      // each column at ITS OWN expansion level across the rebuild
+      var want = {};
+      var maxWant = 60;
+      Array.prototype.forEach.call(document.querySelectorAll(".thumbcol"), function (c) {
+        var k = c.id.slice(3);
+        want[k] = Math.max(60, c.querySelectorAll(".thumb").length);
+        maxWant = Math.max(maxWant, want[k]);
+      });
+      fetch("/tutorial/api/sl/photos_all?limit=" + maxWant)
+        .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.classes) { return; }
+        Object.keys(j.classes).forEach(function (k) {
+          var col = document.getElementById("ph-" + k);
+          if (!col) { return; }
+          var names = (j.classes[k].photos || []).slice(0, want[k] || 60);
+          var cur = Array.prototype.map.call(col.querySelectorAll(".thumb img"),
+                                             function (i) { return i.alt; }).join(",");
+          setCount(k, j.classes[k].total);
+          if (cur === names.join(",")) { return; }
+          col.innerHTML = "";
+          names.forEach(function (n) { col.appendChild(thumb(k, n)); });
+          var mb = moreBtn(k, col, j.classes[k].total);
+          if (mb) { col.appendChild(mb); }
+        });
+      });
+    }
+
+    function shoot(key) {
+      if (lab.busy) { return; }
+      lab.busy = true;
+      fetch("/tutorial/api/sl/label", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: key }),
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        lab.busy = false;
+        if (j.saved) {
+          var col = document.getElementById("ph-" + key);
+          if (col) { col.insertBefore(thumb(key, j.saved), col.firstChild); }
+          setCount(key, j.count);
+        }
+      }).catch(function () { lab.busy = false; });
+    }
+    function holdStart(key) {
+      holdEnd();
+      lab.held = key;
+      shoot(key);
+      lab.timer = setInterval(function () { shoot(key); }, 350);
+    }
+    function holdEnd() {
+      // release = just stop repeating. No stop command is sent — the drive
+      // command expires on its own (~1s watchdog), same as the sample code.
+      if (lab.timer) { clearInterval(lab.timer); lab.timer = null; }
+      lab.held = null;
+    }
+    lab.holdStart = holdStart; lab.holdEnd = holdEnd;
+  }
+
+  var KEYMAP = { ArrowLeft: function (m) { return pickBySteer(m, 1); },
+                 ArrowUp: function (m) { return pickBySteer(m, 0); },
+                 ArrowRight: function (m) { return pickBySteer(m, -1); } };
+  function pickBySteer(m, sign) {
+    var best = null, bestv = null;
+    Object.keys(m.actions).forEach(function (k) {
+      var s = Number(m.actions[k].steering) || 0;
+      var v = sign === 0 ? -Math.abs(s) : sign * s;
+      if (bestv === null || v > bestv) { bestv = v; best = k; }
+    });
+    return best;
+  }
+  document.addEventListener("keydown", function (e) {
+    if (!lab.meta || !document.getElementById("lab-classes") || e.repeat) { return; }
+    var f = KEYMAP[e.key]; var k = f && f(lab.meta);
+    if (!k && lab.meta.actions[e.key]) { k = e.key; }
+    if (k) { e.preventDefault(); lab.holdStart(k); }
+  });
+  document.addEventListener("keyup", function (e) {
+    if (KEYMAP[e.key] || (lab.meta && lab.meta.actions[e.key])) { lab.holdEnd(); }
+  });
+
+  /* ══════════ menu + router ══════════ */
+  var MENU = [
+    { group: "Racing" },
+    { id: "line-tracing", label: "Rule-Based", sub: true },
+    { id: "sl-labeling", label: "Supervised", match: "sl-", sub: true },
+    { id: "rl-training", label: "Reinforcement", match: "rl-", soon: true, sub: true },
+    { group: "More Projects" },
+    { id: "object-following", label: "Object Detection", soon: true, sub: true },
+    { id: "nav-slam", label: "Navigation", match: "nav-", soon: true, sub: true },
+    { id: "agent-realtime", label: "Agent Realtime", soon: true, sub: true },
+    { group: "APIs" },
+    { id: "robot-api", label: "Robot API", sub: true },
+    { id: "sim-api", label: "Simulation API", sub: true },
+  ];
+
+  MENU.forEach(function (m) {
+    if (m.group) { $side.appendChild(el("div", "mgroup", m.group)); return; }
+    var a = el("a", "mitem" + (m.sub ? " sub" : ""), esc(m.label) + (m.soon ? '<span class="soon">soon</span>' : ""));
+    a.href = "#" + m.id;
+    a.dataset.id = m.id;
+    if (m.match) { a.dataset.match = m.match; }
+    $side.appendChild(a);
+  });
+
+  var sideEl = document.getElementById("side");
+  document.getElementById("sideToggle").addEventListener("click", function () {
+    sideEl.classList.toggle("collapsed");
+    try { localStorage.setItem("tutSide", sideEl.classList.contains("collapsed") ? "c" : "o"); } catch (e) {}
+  });
+  try { if (localStorage.getItem("tutSide") === "c") { sideEl.classList.add("collapsed"); } } catch (e) {}
+
+  // one machine-wide change stream: photos, settings — every page reacts
+  // pan/tilt changes re-point the camera while on the Labeling page (a
+  // running inference re-points itself from the settings file)
+  var _lastCam = null;
+  function maybePointCamera(st) {
+    var cam = st.pan + "/" + st.tilt;
+    if (_lastCam === null) { _lastCam = cam; return; }
+    if (cam === _lastCam) { return; }
+    _lastCam = cam;
+    var id = (location.hash || "#sl-labeling").slice(1);
+    if (id === "sl-labeling") { fetch("/tutorial/api/sl/camera", { method: "POST" }); }
+  }
+
+  var syncES = new EventSource("/tutorial/api/sl/events");
+  syncES.onmessage = function () {
+    refreshSettings("sl").then(function (st) {
+      maybePointCamera(st);
+      if (_setPanel && _setPanel.course === "sl") { _setPanel.fill(st); }
+    });
+    refreshSettings("rb").then(function (st) {
+      if (_setPanel && _setPanel.course === "rb") { _setPanel.fill(st); }
+    });
+    if (lab.refresh) { lab.refresh(); }
+    reloadSamples();
+  };
+
+  function route() {
+    var id = (location.hash || "#sl-labeling").slice(1);
+    if (!PAGES[id]) { id = "sl-labeling"; }
+    var lp = lockPage();
+    if (lp && id !== lp) {
+      id = lp;
+      try { history.replaceState(null, "", "#" + lp); } catch (e) {}
+    }
+    try { localStorage.setItem("tutPage", id); } catch (e) {}
+    if (lab.held || lab.timer) { lab.holdEnd && lab.holdEnd(); }
+    lab.refresh = null;
+    lab.meta = null;
+    _setPanel = null;
+    runner.onTrain = null;
+    runner.gateHooks = [];
+    runner.logs = {};
+    _samples.length = 0;
+    $page.innerHTML = "";
+    $page.classList.toggle("fill", id === "sl-train");
+    $page.appendChild(PAGES[id]());
+    Array.prototype.forEach.call(document.querySelectorAll(".mitem"), function (a) {
+      a.classList.toggle("on", a.dataset.match ? id.indexOf(a.dataset.match) === 0
+                                               : a.dataset.id === id);
+    });
+  }
+  // no hash in the URL -> reopen where the user left off last time
+  if (!location.hash) {
+    try {
+      var lastPage = localStorage.getItem("tutPage");
+      if (lastPage && PAGES[lastPage]) {
+        history.replaceState(null, "", "#" + lastPage);
+      }
+    } catch (e) {}
+  }
+  window.addEventListener("hashchange", route);
+  route();
+}());
+</script>
+</body>
+</html>

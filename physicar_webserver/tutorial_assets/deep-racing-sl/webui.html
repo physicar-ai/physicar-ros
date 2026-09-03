@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supervised</title>
+<style>
+  /* the whole page IS the 4:3 stage — it fills whatever frame shows it
+     (the MYAPP tab and the tutorial iframe are both 4:3) */
+  html, body { margin: 0; height: 100%; background: #0d0d10; color: #cfcfe2;
+               font-family: system-ui, sans-serif; overflow: hidden; }
+  .stage { position: absolute; inset: 0; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+                  display: block; z-index: 1; pointer-events: none; }
+  .probs { position: absolute; inset: 0; display: flex; gap: 8%;
+           padding: 6px 12% 0; z-index: 0; }
+  .pv-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .pv-wrap { width: 100%; flex: 1; border-radius: 10px; overflow: hidden;
+             display: flex; align-items: flex-end; }
+  .pv-bar { width: 100%; height: 0%; background: rgba(182,167,216,.35);
+            transition: height .1s; border-radius: 10px 10px 0 0; }
+  .pv-bar.sel { background: rgba(167,139,250,.5); }
+  .pv-name { font-weight: 600; font-size: clamp(9px, 3.2vw, 13.5px); color: #b9b9cc;
+             margin-top: 10px; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+  .pv-pct { font-size: clamp(8px, 3vw, 12.5px); color: #9a9ab0;
+            font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="probs" id="probs"></div>
+    <canvas id="cv"></canvas>
+  </div>
+<script>
+(function () {
+  "use strict";
+  var rows = document.getElementById("probs"), cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var space = [];   // [{name}]
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function buildRows() {
+    rows.innerHTML = "";
+    space.forEach(function (a, i) {
+      var col = document.createElement("div");
+      col.className = "pv-col";
+      col.innerHTML =
+        '<div class="pv-wrap"><div class="pv-bar" id="pb-' + i + '"></div></div>' +
+        '<span class="pv-name">' + esc(a.name) + '</span>' +
+        '<span class="pv-pct" id="pp-' + i + '">&mdash;</span>';
+      rows.appendChild(col);
+    });
+  }
+
+  function loadMeta() {
+    fetch("/tutorial/api/sl/meta").then(function (r) { return r.json(); })
+      .then(function (m) {
+        if (m.error) { setTimeout(loadMeta, 3000); return; }
+        space = Object.keys(m.actions).map(function (k) { return { name: k }; });
+        buildRows();
+        draw(null);
+      }).catch(function () { setTimeout(loadMeta, 3000); });
+  }
+  loadMeta();
+
+  function arrow(cx2, cy, len, steerDeg) {
+    len = Math.max(len, 12);
+    var a = -Math.PI / 2 - (steerDeg * 2 * Math.PI / 180);
+    var ex = cx2 + Math.cos(a) * len, ey = cy + Math.sin(a) * len;
+    var hl = 15;
+    ctx.beginPath();
+    ctx.moveTo(cx2, cy); ctx.lineTo(ex, ey);
+    ctx.moveTo(ex, ey); ctx.lineTo(ex - hl * Math.cos(a - 0.45), ey - hl * Math.sin(a - 0.45));
+    ctx.moveTo(ex, ey); ctx.lineTo(ex - hl * Math.cos(a + 0.45), ey - hl * Math.sin(a + 0.45));
+    ctx.strokeStyle = "rgba(239,68,68,.55)"; ctx.lineWidth = 6; ctx.lineCap = "round";
+    ctx.stroke();
+  }
+
+  function draw(d) {
+    var r = cv.getBoundingClientRect();
+    var w = Math.round(r.width), h = Math.round(r.height);
+    if (w < 10 || h < 10) { return; }
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    var cx2 = w / 2, cy = h - 2, maxR = Math.min(w / 2 - 2, h - 8);
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(cx2, cy, maxR, Math.PI, 0); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx2, cy, maxR / 2, Math.PI, 0); ctx.stroke();
+    ctx.setLineDash([]);
+    var probs = (d && d.probs && d.probs.length) ? d.probs
+              : space.map(function () { return 0; });
+    var sel = d ? d.action : -1;
+    if (d) { arrow(cx2, cy, maxR * 0.92, d.steering); }
+    probs.forEach(function (p, i) {
+      var bar = document.getElementById("pb-" + i);
+      var pct = document.getElementById("pp-" + i);
+      if (bar) {
+        bar.style.height = (p * 100) + "%";
+        bar.className = "pv-bar" + (i === sel ? " sel" : "");
+      }
+      if (pct) { pct.textContent = d ? (p * 100).toFixed(0) + "%" : "—"; }
+    });
+  }
+
+  // smooth rendering: snapshots arrive ~15 Hz, the canvas animates at
+  // display rate and eases toward the latest snapshot instead of jumping
+  var target = null, disp = null;
+  function tick() {
+    if (target && target.probs) {
+      if (!disp) {
+        disp = { probs: target.probs.slice(), steering: target.steering,
+                 action: target.action };
+      } else {
+        var k = 0.3;
+        disp.probs = disp.probs.map(function (v, i) { return v + ((target.probs[i] || 0) - v) * k; });
+        disp.steering += (target.steering - disp.steering) * k;
+        disp.action = target.action;
+      }
+      draw(disp);
+    } else if (disp) {
+      disp = null;
+      draw(null);
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  var es = new EventSource("/tutorial/api/run/events");
+  es.onmessage = function (ev) {
+    var m = {};
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    var d = (m.running && m.job === "sl-run") ? m.infer : null;
+    target = (d && d.probs && d.probs.length) ? d : null;
+  };
+}());
+</script>
+</body>
+</html>

@@ -26,6 +26,12 @@ while true; do
   if [ "$FAILS" -ge 3 ]; then
     echo "$(date -Is) sim_api unresponsive — killing pid $PID for respawn"
     kill -9 "$PID" 2>/dev/null
+    # sim_api's respawn restarts gz, and the launch-managed ros_gz_bridge
+    # stays wedged on the DEAD gz instance (driving silently stops working).
+    # Bounce it too — the launch respawns it against the fresh gz.
+    sleep 20
+    pkill -9 -f parameter_bridge 2>/dev/null
+    echo "$(date -Is) bounced ros_gz_bridge for the fresh gz instance"
     FAILS=0
   fi
 done

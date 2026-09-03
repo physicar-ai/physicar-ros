@@ -37,6 +37,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from physicar_webserver.routers import health, kiosk, info, auth
 from physicar_webserver.routers import hw, calibration, network, bluetooth, myapp
 from physicar_webserver.routers import pages
+from physicar_webserver.routers import tutorial
 from physicar_webserver.routers import audio as audio_router
 from physicar_webserver.routers import joy
 from physicar_webserver.ros_bridge import get_ros_bridge
@@ -284,6 +285,7 @@ app.include_router(myapp.router)       # /settings/myapp (host-side :5000 studen
 if not _is_sim_mode():
     app.include_router(joy.router)     # /teleop/joy — gamepad (sim has no joy node and no kiosk UI)
 app.include_router(pages.router)       # /app (standalone UI page)
+app.include_router(tutorial.router)    # /tutorial (beginner front end for examples/sample_projects)
 app.include_router(audio_router.router)  # /audio (command-based playback + WS PCM16 stream)
 
 # Mount static files (for kiosk assets like JS/CSS libraries)
