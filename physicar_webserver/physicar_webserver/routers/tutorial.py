@@ -64,6 +64,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from pydantic import BaseModel
 
 from physicar_webserver.routers.kiosk import _load_html
+from physicar_webserver.sim import is_sim_mode
 
 router = APIRouter(tags=["Tutorial"])
 
@@ -82,8 +83,10 @@ _ASSETS = os.path.join(
 # the course data home as cwd, so outputs always land there.
 _SL_DIR = "/opt/physicar/userdata/tutorial/deep-racing-sl"   # photos + models
 _RB_DIR = "/opt/physicar/userdata/tutorial/racing-rule-based"   # settings only
+_RL_DIR = "/opt/physicar/userdata/tutorial/deep-racing-rl"   # model + settings
 os.makedirs(_SL_DIR, exist_ok=True)
 os.makedirs(_RB_DIR, exist_ok=True)
+os.makedirs(_RL_DIR, exist_ok=True)
 
 # code cells — id -> path under tutorial_assets/
 _CODE_FILES = {
@@ -91,6 +94,8 @@ _CODE_FILES = {
     "sl-train": "deep-racing-sl/train.py",
     "sl-run": "deep-racing-sl/inference.py",
     "rb-run": "racing-rule-based/follow_line.py",
+    "rl-train": "deep-racing-rl/train.py",
+    "rl-run": "deep-racing-sl/inference.py",
 }
 
 
@@ -146,6 +151,30 @@ def tutorial_code(file_id: str):
                           text, count=1, flags=re.S)
     if file_id == "sl-run":
         text = re.sub(r'(?m)^MODE = .*$', 'MODE = "%s"' % st["mode"], text, count=1)
+    if file_id in ("rl-train", "rl-run"):
+        rl = _read_rl_settings()
+        acts = {"left": {"speed": rl["speed"], "steering": abs(rl["left"])},
+                "straight": {"speed": rl["speed"], "steering": 0.0},
+                "right": {"speed": rl["speed"], "steering": -abs(rl["right"])}}
+        text = re.sub(r"ACTIONS\s*=\s*\{.*?\n\}", _fmt_actions(acts),
+                      text, count=1, flags=re.S)
+    if file_id == "rl-run":
+        rl = _read_rl_settings()
+        text = re.sub(r'(?m)^MODE = .*$', 'MODE = "%s"' % rl["mode"], text, count=1)
+    if file_id == "rl-train":
+        # runner-argument plumbing (steps/worlds) and the dashboard feed are
+        # tutorial wiring — hide them like the rest
+        text = re.sub(
+            r"\n# The Train page picks this run's length.*?"
+            r"sys\.argv\[2\]\.split[^\n]*\n",
+            "\n", text, flags=re.S)
+        text = re.sub(
+            r"\n# The tutorial page's dashboard reads this file.*?"
+            r"os\.replace\([^\n]*train_progress[^\n]*\n",
+            "\n", text, flags=re.S)
+        text = re.sub(r"(?m)^\s*report\([^\n]*\n", "", text)
+        for mod in ("json", "os"):
+            text = re.sub(r"(?m)^import %s\n" % mod, "", text)
     if file_id == "rb-run":
         rb = _read_rb_settings()
         text = re.sub(r"(?m)^(SPEED = )[0-9.]+", r"\g<1>%s" % rb["speed"], text)
@@ -260,7 +289,7 @@ _SETTINGS_LIMITS = {"speed": (0.1, 3.0), "left": (0.0, 20.0), "right": (0.0, 20.
                     "pan": (-30.0, 30.0), "tilt": (-30.0, 30.0)}
 
 _RB_SETTINGS_PATH = os.path.join(_RB_DIR, "settings.json")
-_RB_DEFAULTS = {"speed": 0.5, "gain": 20.0, "hue": 27, "sat": 170, "val": 170,
+_RB_DEFAULTS = {"speed": 0.5, "gain": 20.0, "hue": 18, "sat": 255, "val": 255,
                 "hue_tol": 8, "sat_tol": 90, "val_tol": 90, "crop": 0.5,
                 "pan": 0.0, "tilt": -15.0}
 _RB_LIMITS = {"speed": (0.1, 3.0), "gain": (0.0, 60.0),
@@ -320,6 +349,14 @@ def _read_rb_settings():
                           ints=_RB_INTS)
 
 
+_RL_SETTINGS_PATH = os.path.join(_RL_DIR, "settings.json")
+
+
+def _read_rl_settings():
+    return _settings_load(_RL_SETTINGS_PATH, _SETTINGS_DEFAULTS,
+                          _SETTINGS_LIMITS, enums={"mode": _MODES})
+
+
 @router.get("/tutorial/api/sl/settings")
 def sl_settings():
     return _read_settings()
@@ -328,6 +365,17 @@ def sl_settings():
 @router.post("/tutorial/api/sl/settings")
 def sl_settings_write(req: dict):
     return _settings_store(req, _SETTINGS_PATH, _SETTINGS_DEFAULTS,
+                           _SETTINGS_LIMITS, enums={"mode": _MODES})
+
+
+@router.get("/tutorial/api/rl/settings")
+def rl_settings():
+    return _read_rl_settings()
+
+
+@router.post("/tutorial/api/rl/settings")
+def rl_settings_write(req: dict):
+    return _settings_store(req, _RL_SETTINGS_PATH, _SETTINGS_DEFAULTS,
                            _SETTINGS_LIMITS, enums={"mode": _MODES})
 
 
@@ -436,6 +484,10 @@ def _sl_signature():
         sig.append("r:%s" % os.path.getmtime(_RB_SETTINGS_PATH))
     except OSError:
         sig.append("r:0")
+    try:
+        sig.append("q:%s" % os.path.getmtime(_RL_SETTINGS_PATH))
+    except OSError:
+        sig.append("q:0")
     data = os.path.join(_SL_DIR, "data")
     try:
         names = sorted(os.listdir(data))
@@ -558,17 +610,35 @@ def sl_clear(req: ClearReq):
 
 # ---- trained model: download / import -------------------------------------
 
-@router.get("/tutorial/api/sl/model")
-def sl_model_download():
-    path = os.path.join(_SL_DIR, "model.onnx")
+def _model_download(course_dir):
+    path = os.path.join(course_dir, "model.onnx")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="model.onnx not trained yet")
     return FileResponse(path, media_type="application/octet-stream",
                         filename="model.onnx")
 
 
+@router.get("/tutorial/api/sl/model")
+def sl_model_download():
+    return _model_download(_SL_DIR)
+
+
+@router.get("/tutorial/api/rl/model")
+def rl_model_download():
+    return _model_download(_RL_DIR)
+
+
+@router.post("/tutorial/api/rl/model")
+async def rl_model_import(request: Request):
+    return await _model_import(request, _RL_DIR)
+
+
 @router.post("/tutorial/api/sl/model")
 async def sl_model_import(request: Request):
+    return await _model_import(request, _SL_DIR)
+
+
+async def _model_import(request, course_dir):
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty upload")
@@ -596,11 +666,10 @@ async def sl_model_import(request: Request):
         if len(outs) != 1 or _dims(outs[0])[-1] not in (0, 3):
             raise HTTPException(status_code=400,
                                 detail="wrong model — output must be 3 action scores")
-    os.makedirs(_SL_DIR, exist_ok=True)
-    tmp = os.path.join(_SL_DIR, ".model.onnx.tmp")
+    tmp = os.path.join(course_dir, ".model.onnx.tmp")
     with open(tmp, "wb") as f:
         f.write(data)
-    os.replace(tmp, os.path.join(_SL_DIR, "model.onnx"))
+    os.replace(tmp, os.path.join(course_dir, "model.onnx"))
     return {"ok": True, "bytes": len(data)}
 
 
@@ -620,6 +689,14 @@ _JOBS = {
     "rb-run": {"argv": ["/usr/bin/python3", "-u",
                         os.path.join(_ASSETS, "racing-rule-based", "follow_line.py")],
                "cwd": _RB_DIR, "takes_myapp": True},
+    # rl-run drives with the SL inference script — same model contract, the
+    # RL data home as cwd makes it pick up THIS course's model and settings
+    "rl-train": {"argv": ["/usr/bin/python3", "-u",
+                          os.path.join(_ASSETS, "deep-racing-rl", "train.py")],
+                 "cwd": _RL_DIR, "sim_only": True, "grace": 30.0},
+    "rl-run": {"argv": ["/usr/bin/python3", "-u",
+                        os.path.join(_ASSETS, "deep-racing-sl", "inference.py")],
+               "cwd": _RL_DIR, "takes_myapp": True},
 }
 
 
@@ -662,12 +739,12 @@ def _run_reader(proc):
             _run_state["ver"] += 1
 
 
-def _terminate(proc):
+def _terminate(proc, grace=2.0):
     try:
         os.killpg(proc.pid, signal.SIGINT)
     except (ProcessLookupError, PermissionError):
         return
-    for _ in range(20):
+    for _ in range(int(grace * 10)):
         if proc.poll() is not None:
             return
         time.sleep(0.1)
@@ -685,7 +762,9 @@ _infer_state = {"data": None, "ver": 0}
 # the run event stream carries it to every open page. mtime-gated — the
 # 0.05s loop only stats the file; it re-parses when it actually changed.
 _TRAIN_FILE = os.path.join(_SL_DIR, "train_progress.json")
+_RL_TRAIN_FILE = os.path.join(_RL_DIR, "train_progress.json")
 _train_cache = {"mtime": None, "data": None}
+_rl_train_cache = {"mtime": None, "data": None}
 
 
 # run-button gates: photo total (Train needs >= _MIN_PHOTOS) and whether a
@@ -727,24 +806,30 @@ def _run_gates():
         myapp = False
     return {"photos": _gate_cache["photos"], "min": _MIN_PHOTOS,
             "model": os.path.exists(os.path.join(_SL_DIR, "model.onnx")),
+            "rl_model": os.path.exists(os.path.join(_RL_DIR, "model.onnx")),
+            "sim": is_sim_mode(),
             "myapp": myapp}
 
 
-def _read_train_progress():
+def _read_progress_file(path, cache):
     try:
-        mtime = os.path.getmtime(_TRAIN_FILE)
+        mtime = os.path.getmtime(path)
     except OSError:
-        _train_cache["mtime"] = None
-        _train_cache["data"] = None
+        cache["mtime"] = None
+        cache["data"] = None
         return None, None
-    if mtime != _train_cache["mtime"]:
+    if mtime != cache["mtime"]:
         try:
-            with open(_TRAIN_FILE) as f:
-                _train_cache["data"] = json.load(f)
-            _train_cache["mtime"] = mtime
+            with open(path) as f:
+                cache["data"] = json.load(f)
+            cache["mtime"] = mtime
         except (OSError, ValueError):
             pass    # mid-write — keep the last good copy, retry next tick
-    return _train_cache["data"], _train_cache["mtime"]
+    return cache["data"], cache["mtime"]
+
+
+def _read_train_progress():
+    return _read_progress_file(_TRAIN_FILE, _train_cache)
 
 
 @router.post("/tutorial/api/sl/infer")
@@ -778,6 +863,8 @@ def rb_telemetry(req: dict):
 
 class RunReq(BaseModel):
     job: str
+    steps: int | None = None            # rl-train only: this run's length
+    worlds: list[str] | None = None     # rl-train only: tracks to rotate
 
 
 @router.post("/tutorial/api/run")
@@ -785,14 +872,24 @@ def run_start(req: RunReq):
     job = _JOBS.get(req.job)
     if not job:
         raise HTTPException(status_code=400, detail="unknown job: " + req.job)
+    if job.get("sim_only") and not is_sim_mode():
+        raise HTTPException(status_code=400,
+                            detail="this course trains in the simulator only")
+    argv = list(job["argv"])
+    if req.job == "rl-train":
+        argv.append(str(max(1000, min(300000, req.steps or 10000))))
+        worlds = [w for w in (req.worlds or [])
+                  if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", w)]
+        if worlds:
+            argv.append(",".join(worlds))
     with _run_lock:
         old = _run_state["proc"]
     if old is not None:
-        _terminate(old)
+        _terminate(old, _JOBS.get(_run_state["job"], {}).get("grace", 2.0))
     if job.get("takes_myapp"):
         _free_myapp_port()
     proc = subprocess.Popen(
-        job["argv"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         start_new_session=True, cwd=job["cwd"],
         env={**os.environ, "PYTHONUNBUFFERED": "1",
              "PYTHONPYCACHEPREFIX": "/opt/physicar/pycache"})
@@ -805,6 +902,11 @@ def run_start(req: RunReq):
             os.remove(_TRAIN_FILE)      # fresh dashboard for the new run
         except OSError:
             pass
+    if req.job == "rl-train":
+        try:
+            os.remove(_RL_TRAIN_FILE)
+        except OSError:
+            pass
     threading.Thread(target=_run_reader, args=(proc,), daemon=True).start()
     return {"job": req.job, "running": True}
 
@@ -813,8 +915,9 @@ def run_start(req: RunReq):
 def run_stop():
     with _run_lock:
         proc = _run_state["proc"]
+        grace = _JOBS.get(_run_state["job"], {}).get("grace", 2.0)
     if proc is not None:
-        threading.Thread(target=_terminate, args=(proc,), daemon=True).start()
+        threading.Thread(target=_terminate, args=(proc, grace), daemon=True).start()
     return {"ok": True}
 
 
@@ -832,9 +935,11 @@ async def run_events():
                             _run_state["base"], list(_run_state["lines"]))
             ver, job, running, exit_code, base, lines = await asyncio.to_thread(snap)
             train, train_mtime = _read_train_progress()
+            rl_train, rl_mtime = _read_progress_file(_RL_TRAIN_FILE, _rl_train_cache)
             gates = await asyncio.to_thread(_run_gates)
             ver = (ver, _infer_state["ver"], _rb_state["ver"], train_mtime,
-                   gates["photos"], gates["model"], gates["myapp"])
+                   rl_mtime, gates["photos"], gates["model"], gates["rl_model"],
+                   gates["myapp"])
             if ver != last_ver:
                 last_ver = ver
                 if cursor is None:
@@ -846,7 +951,8 @@ async def run_events():
                            "exit": exit_code, "lines": new,
                            "infer": _infer_state["data"] if running else None,
                            "rb": _rb_state["data"] if running else None,
-                           "train": train, "gates": gates}
+                           "train": train, "rl_train": rl_train,
+                           "gates": gates}
                 if running and _rb_state["img"] and _rb_state["img_ver"] != sent_img:
                     sent_img = _rb_state["img_ver"]
                     payload["rb_img"] = _rb_state["img"]

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset
 
 # The action table: class labels the model learns AND the data/<key>/ folders.
 ACTIONS = {
@@ -19,7 +19,6 @@ CAMERA_W, CAMERA_H = 160, 120   # model input resolution
 EPOCHS = 10
 BATCH_SIZE = 64
 LEARNING_RATE = 0.001
-VAL_SPLIT = 0.2
 MIN_PHOTOS = 100    # below this the model just memorizes — refuse to train
 
 # The tutorial page's settings (gear) are saved per machine — apply overrides.
@@ -80,22 +79,15 @@ class DrivingData(Dataset):
 
 
 def main():
-    data = DrivingData(augment=True)      # training: random lighting
+    data = DrivingData(augment=True)      # random lighting so it generalizes
     if len(data) < MIN_PHOTOS:
         raise SystemExit(f"only {len(data)} photos — too few to train well; "
                          f"collect at least {MIN_PHOTOS} on the Labeling page")
-    plain = DrivingData()                 # validation: photos as-is
-    n_val = max(1, int(len(data) * VAL_SPLIT))
-    idx = torch.randperm(len(data)).tolist()
-    train_set = Subset(data, idx[n_val:])
-    val_set = Subset(plain, idx[:n_val])
-    train_dl = DataLoader(train_set, BATCH_SIZE, shuffle=True)
-    val_dl = DataLoader(val_set, BATCH_SIZE)
-    print(f"training on {len(train_set)} photos, validating on {len(val_set)}"
-          f" / {len(ACTIONS)} actions")
+    train_dl = DataLoader(data, BATCH_SIZE, shuffle=True)
+    print(f"training on {len(data)} photos / {len(ACTIONS)} actions")
 
     # training curve on disk, rewritten every epoch (the Train page charts it)
-    progress = {"photos": len(train_set), "epochs": EPOCHS, "history": []}
+    progress = {"photos": len(data), "epochs": EPOCHS, "history": []}
     Path("train_progress.json").write_text(json.dumps(progress))
 
     net = PhysicarNet()
@@ -103,16 +95,14 @@ def main():
 
     for epoch in range(EPOCHS):
         net.train()
-        for camera, y in train_dl:
-            loss = F.nll_loss(net(camera).clamp_min(1e-8).log(), y)
-            opt.zero_grad(); loss.backward(); opt.step()
-
-        net.eval()
         correct = total = 0
-        with torch.no_grad():
-            for camera, y in val_dl:
-                correct += (net(camera).argmax(1) == y).sum().item()
-                total += len(y)
+        for camera, y in train_dl:
+            out = net(camera)
+            loss = F.nll_loss(out.clamp_min(1e-8).log(), y)
+            opt.zero_grad(); loss.backward(); opt.step()
+            # accuracy: how many of this batch the net already gets right
+            correct += (out.argmax(1) == y).sum().item()
+            total += len(y)
         print(f"epoch {epoch + 1:2d}/{EPOCHS}  accuracy {correct / total:.3f}")
         progress["history"].append({"epoch": epoch + 1, "accuracy": correct / total})
         Path("train_progress.json").write_text(json.dumps(progress))

@@ -126,7 +126,7 @@ Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (
 
 ## Tutorial
 
-Guided web courses at **`/tutorial`** (the `tutorial.physicar` tab in VS Code) — every step runs from the page, no terminal: **Racing — Rule-Based** (HSV line following with a live mask view) and **Racing — Supervised Learning** (Labeling → Train → Inference). A per-machine settings panel applies live to running scripts, "View Code" shows the executed script with current settings substituted, and a running course serves its live view on port 5000 (the MYAPP slot). APIs live under `/tutorial/api/*` (web job runner, per-course settings, dataset curation, model download/upload with ONNX validation, SSE sync across windows); the AI chat drives the same via the `tutorial_*` tools.
+Guided web courses at **`/tutorial`** (the `tutorial.physicar` tab in VS Code) — every step runs from the page, no terminal: **Racing — Rule-Based** (HSV line following with a live mask view), **Racing — Supervised Learning** (Labeling → Train → Inference) and **Racing — Reinforcement Learning** (Training → Inference; PPO in the simulator, training is SIM-only — SL and RL share one model contract, so either model drives the same Inference viewer). A per-machine settings panel applies live to running scripts, "View Code" shows the executed script with current settings substituted, and a running course serves its live view on port 5000 (the MYAPP slot). APIs live under `/tutorial/api/*` (web job runner, per-course settings, dataset curation, model download/upload with ONNX validation, SSE sync across windows); the AI chat drives the same via the `tutorial_*` tools.
 
 ## MyApp
 

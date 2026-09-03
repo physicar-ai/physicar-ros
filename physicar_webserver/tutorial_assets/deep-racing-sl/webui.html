@@ -133,7 +133,7 @@
   es.onmessage = function (ev) {
     var m = {};
     try { m = JSON.parse(ev.data); } catch (e) { return; }
-    var d = (m.running && m.job === "sl-run") ? m.infer : null;
+    var d = (m.running && (m.job === "sl-run" || m.job === "rl-run")) ? m.infer : null;
     target = (d && d.probs && d.probs.length) ? d : null;
   };
 }());

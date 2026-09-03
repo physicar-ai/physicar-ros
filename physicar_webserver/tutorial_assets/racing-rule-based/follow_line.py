@@ -10,7 +10,7 @@ import requests
 
 # The rule: pixels near this HSV color ARE the line (each channel may be
 # off by its tolerance). Everything else is road.
-LINE_HSV = (27, 170, 170)    # target color of the line (yellow)
+LINE_HSV = (18, 255, 255)    # target color of the line (yellow)
 LINE_TOL = (8, 90, 90)       # allowed distance per channel (H, S, V)
 
 SPEED = 0.5                  # m/s while the line is visible

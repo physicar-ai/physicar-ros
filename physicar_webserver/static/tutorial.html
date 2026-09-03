@@ -46,24 +46,20 @@
   /* two columns: course content left, settings panel right */
   .pcols { display: flex; gap: 18px; align-items: flex-start; }
   .pmain { flex: 1; min-width: 0; }
-  .pside { width: 228px; flex: none; position: sticky; top: 0;
+  .pside { width: 136px; flex: none; position: sticky; top: 0;
            border-left: 1px solid var(--line); padding-left: 14px; }
   .page:has(.pcols) { max-width: 1110px; }
   .page.fill .pcols { flex: 1; }
   .page.fill .pmain { display: flex; flex-direction: column; }
-  @media (max-width: 920px) {
-    .pcols { flex-wrap: wrap; }
-    .pside { width: 100%; position: static; border-left: 0; padding-left: 0;
-             border-top: 1px solid var(--line); padding-top: 14px; }
-  }
-  .setgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  .setgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
              gap: 9px 12px; margin-top: 6px; align-items: end; }
   .setgrid .gearreset { grid-column: 1 / -1; justify-self: stretch; text-align: center; }
   .setgrid .modes { grid-column: 1 / -1; max-width: 340px; display: flex;
                     flex-direction: column; gap: 6px;
                     font-size: 12px; color: var(--muted); font-weight: 600; }
-  .radiorow { display: flex; gap: 14px; }
-  .radioopt { display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px;
+  .radiorow { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .setgrid label.radioopt { display: flex; flex-direction: row; align-items: center;
+              gap: 6px; white-space: nowrap; font-size: 13.5px;
               color: var(--ink); font-weight: 500; cursor: pointer; }
   .radioopt input { accent-color: var(--accent); margin: 0; }
   .setgrid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px;
@@ -73,30 +69,29 @@
                    background: var(--panel); min-width: 0; }
   /* HSV picker inside the settings section */
   .hsvhead { display: flex; align-items: center; justify-content: space-between; }
+  .hueval { margin-top: 4px; text-align: center; font-size: 12px; font-weight: 700;
+            color: var(--ink); font-variant-numeric: tabular-nums; }
   .gearpick { flex: none; border: 1px solid var(--line); background: var(--panel);
               border-radius: 8px; padding: 5px 9px; cursor: pointer; color: var(--accent);
               display: inline-flex; align-items: center; }
   .gearpick:hover { background: var(--accent-soft); }
   .hsvpick { margin-top: 6px; }
-  .sv-pad { position: relative; width: 100%; height: 140px; border-radius: 8px;
-            border: 1px solid var(--line); cursor: crosshair; touch-action: none; }
-  .sv-dot { position: absolute; width: 12px; height: 12px; border: 2px solid #fff;
-            border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.45);
-            transform: translate(-50%, -50%); pointer-events: none; }
-  .sv-range, .hue-range { position: absolute; border: 1.5px dashed rgba(255,255,255,.95);
-              background: rgba(255,255,255,.14); border-radius: 4px; pointer-events: none;
-              box-shadow: 0 0 0 1px rgba(0,0,0,.3); }
-  .hue-range { top: 0; bottom: 0; border-radius: 6px; }
-  .hue-bar { position: relative; height: 14px; margin-top: 8px; border-radius: 7px;
+  .hue-range { position: absolute; top: 0; bottom: 0; border-radius: 6px;
+              border: 1.5px dashed rgba(255,255,255,.95); pointer-events: none;
+              background: rgba(255,255,255,.14); box-shadow: 0 0 0 1px rgba(0,0,0,.3); }
+  .hue-bar { position: relative; height: 14px; margin-top: 2px; border-radius: 7px;
              cursor: crosshair; touch-action: none;
              background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
   .hue-dot { position: absolute; top: 50%; width: 14px; height: 14px; border: 2px solid #fff;
              border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.45);
              transform: translate(-50%, -50%); pointer-events: none; }
-  .hsvgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 8px;
-             margin-top: 8px; }
-  .hsvcol { text-align: center; font-size: 11.5px; color: var(--muted); font-weight: 700; }
-  .hsvgrid input { width: 100%; min-width: 0; text-align: center; }
+  .hsvgrid { display: grid; grid-template-columns: auto 1fr 1.2fr; gap: 6px;
+             margin-top: 8px; align-items: center; }
+  .hsvcol { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+  .hsvgrid input { width: 100%; min-width: 0; text-align: center; padding: 4px 2px;
+                   appearance: textfield; -moz-appearance: textfield; }
+  .hsvgrid input::-webkit-inner-spin-button,
+  .hsvgrid input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .tolcell { display: flex; align-items: center; gap: 4px; }
   .tolcell .pm { color: var(--muted); font-weight: 600; }
   .pickbox { width: min(520px, 92vw); }
@@ -221,10 +216,6 @@
   .more:hover { background: var(--accent-soft); }
   .more:disabled { opacity: .5; }
   .trn-viz { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  .trn-stats { display: flex; gap: 8px; margin-top: 8px; }
-  .trn-stat { flex: 1; border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; }
-  .trn-stat .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .trn-stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .trn-bar { flex: none; height: 7px; border-radius: 999px; background: var(--accent-soft);
              margin-top: 8px; overflow: hidden; }
   .trn-bar i { display: block; height: 100%; width: 0%; background: var(--accent);
@@ -233,6 +224,20 @@
   .trn-chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .trn-last { display: none; margin-top: 10px; font-family: ui-monospace, Consolas, monospace;
               font-size: 12.5px; color: var(--stop); white-space: pre-wrap; }
+  .trn-phase { flex: none; font-size: 12px; color: var(--muted); margin-top: 5px;
+               min-height: 15px; }
+  .trackbox { width: min(460px, 92vw); }
+  .trackbox h3 { margin: 0 0 10px; font-size: 15px; }
+  .trackwarn { margin: 10px 0 0; font-size: 13px; color: var(--stop); }
+  .rlworlds { min-width: 0; display: flex; flex-direction: column; gap: 4px;
+              max-height: min(50vh, 380px); overflow-y: auto; }
+  .rlworld { display: flex; align-items: center; gap: 7px; font-size: 13px;
+             cursor: pointer; }
+  .rlworld .wname { flex: none; }
+  .rlworld code { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                  white-space: nowrap; font-family: ui-monospace, Consolas, monospace;
+                  font-size: 11px; color: #a8aeb9; }
+  .rlworld input { accent-color: var(--accent); }
   .modalov { position: fixed; inset: 0; background: rgba(15,15,25,.45); z-index: 40;
              display: flex; align-items: center; justify-content: center; }
   .modalbox { position: relative; background: var(--panel); border-radius: 14px; padding: 18px 20px;
@@ -275,7 +280,7 @@
   .sidesec { padding-top: 12px; border-top: 1px solid var(--line); }
   .sidesec h3 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .8px;
                 text-transform: uppercase; color: var(--muted); }
-  .siderow { display: flex; gap: 8px; }
+  .siderow { display: flex; flex-direction: column; gap: 8px; }
   .siderow .mini { flex: 1; justify-content: center; }
   .sidemsg { margin-top: 6px; font-size: 12px; color: var(--muted); text-align: center;
              word-break: break-word; min-height: 15px; }
@@ -344,6 +349,7 @@
   }
   refreshSettings("sl");
   refreshSettings("rb");
+  refreshSettings("rl");
 
   /* ══════════ server runner (SSE logs) — everything runs web-side ══════════ */
   var runner = { listeners: {}, logs: {}, es: null, job: null, running: false,
@@ -352,7 +358,8 @@
   // while a job runs, navigation is PINNED to its section — the settings
   // panel there is the live control surface, everything else waits
   var JOB_PAGE = { "sl-train": "sl-train", "sl-run": "sl-inference",
-                   "rb-run": "line-tracing" };
+                   "rb-run": "line-tracing",
+                   "rl-train": "rl-training", "rl-run": "rl-inference" };
   function lockPage() {
     return runner.running ? (JOB_PAGE[runner.job] || null) : null;
   }
@@ -378,6 +385,7 @@
         }
       });
       if (runner.onTrain) { runner.onTrain(m.train); }
+      if (runner.onRlTrain) { runner.onRlTrain(m.rl_train); }
       if (m.gates) {
         runner.gates = m.gates;
         runner.gateHooks.forEach(function (h) { h(m.gates); });
@@ -390,12 +398,14 @@
     };
   }
 
-  function startJob(job) {
+  function startJob(job, extra) {
     var log = runner.logs[job];
     if (log) { log.textContent = ""; }
+    var body = { job: job };
+    Object.keys(extra || {}).forEach(function (k) { body[k] = extra[k]; });
     return fetch("/tutorial/api/run", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job: job }),
+      body: JSON.stringify(body),
     });
   }
   function stopJob() { return fetch("/tutorial/api/run/stop", { method: "POST" }); }
@@ -457,6 +467,13 @@
     }
     if (opts.gate) { runner.gateHooks.push(applyGate); }
     applyGate();
+    // progress feeds (epoch, steps) replace the generic "running…" text
+    runner.runStat = runner.runStat || {};
+    runner.runStat[opts.job] = function (text) {
+      if (curState === "running" && !starting && !stopping) {
+        stat.textContent = text;
+      }
+    };
 
     // the server round-trip takes a moment — react to the CLICK instantly,
     // then let the event stream correct the state once the server confirms
@@ -465,7 +482,7 @@
       render();
       stat.textContent = "starting…";
       stat.className = "rstat run";
-      startJob(opts.job).then(function (r) {
+      startJob(opts.job, opts.runBody && opts.runBody()).then(function (r) {
         if (!r.ok) { throw new Error(); }
       }).catch(function () {
         starting = false;
@@ -482,6 +499,7 @@
         stopJob().catch(function () { stopping = false; render(); });
         return;
       }
+      if (opts.preRun) { opts.preRun(go); return; }
       if (opts.confirmIf && runner.gates && opts.confirmIf(runner.gates)) {
         confirmModal(opts.confirmText, "Run", go);
         return;
@@ -762,30 +780,29 @@
             cr.appendChild(hd);
             var pk = el("div", "hsvpick");
             pk.innerHTML =
-              '<div class="sv-pad"><i class="sv-range"></i><i class="sv-dot"></i></div>' +
               '<div class="hue-bar"><i class="hue-range"></i><i class="hue-dot"></i></div>';
-            var pad = pk.querySelector(".sv-pad"), dotSV = pk.querySelector(".sv-dot"),
-                rngSV = pk.querySelector(".sv-range");
             var bar = pk.querySelector(".hue-bar"), dotH = pk.querySelector(".hue-dot"),
                 rngH = pk.querySelector(".hue-range");
             cr.appendChild(pk);
-            // Hue Sat Val / value / ±tolerance — three columns
+            var hval = el("div", "hueval", "");
+            cr.appendChild(hval);
+            // hidden value carriers: the eyedropper, hue bar, save and sync
+            // logic all read/write these inputs — only the UI is gone
             var grid = el("div", "hsvgrid");
+            grid.style.display = "none";
             var CH = [["Hue", "hue", "hue_tol", 179], ["Sat", "sat", "sat_tol", 255],
                       ["Val", "val", "val_tol", 255]];
-            CH.forEach(function (c) { grid.appendChild(el("span", "hsvcol", c[0])); });
             CH.forEach(function (c) {
+              grid.appendChild(el("span", "hsvcol", c[0]));
               var i = el("input");
               i.type = "number"; i.step = 1; i.min = 0; i.max = c[3];
               i.dataset.key = c[1];
               grid.appendChild(i);
-            });
-            CH.forEach(function (c) {
               var cell = el("span", "tolcell", '<span class="pm">±</span>');
-              var i = el("input");
-              i.type = "number"; i.step = 1; i.min = 0; i.max = c[3];
-              i.dataset.key = c[2];
-              cell.appendChild(i);
+              var t = el("input");
+              t.type = "number"; t.step = 1; t.min = 0; t.max = c[3];
+              t.dataset.key = c[2];
+              cell.appendChild(t);
               grid.appendChild(cell);
             });
             cr.appendChild(grid);
@@ -798,27 +815,18 @@
             }
             function pct(x) { return Math.max(0, Math.min(100, x * 100)) + "%"; }
             function paint() {
-              var h = val("hue"), s = val("sat"), v = val("val");
-              var th = val("hue_tol"), ts = val("sat_tol"), tv = val("val_tol");
-              pad.style.background =
-                "linear-gradient(to top, #000, rgba(0,0,0,0)), " +
-                "linear-gradient(to right, #fff, hsl(" + (h * 2) + ", 100%, 50%))";
-              dotSV.style.left = pct(s / 255);
-              dotSV.style.top = pct(1 - v / 255);
+              var h = val("hue"), th = val("hue_tol");
+              hval.textContent = "H " + h;
               dotH.style.left = pct(h / 179);
-              var sl = Math.max(0, (s - ts) / 255), sr = Math.min(1, (s + ts) / 255);
-              var vt = Math.max(0, 1 - (v + tv) / 255), vb = Math.min(1, 1 - (v - tv) / 255);
-              rngSV.style.left = pct(sl);
-              rngSV.style.width = pct(sr - sl);
-              rngSV.style.top = pct(vt);
-              rngSV.style.height = pct(vb - vt);
               var hl = Math.max(0, (h - th) / 179), hr = Math.min(1, (h + th) / 179);
               rngH.style.left = pct(hl);
               rngH.style.width = pct(hr - hl);
             }
             pop._paint = paint;
             function setHSV(h, s, v) {
-              [["hue", h], ["sat", s], ["val", v]].forEach(function (kv) {
+              // the line mask keys on hue — saturation/value stay pinned at
+              // full strength no matter what the eyedropper sampled
+              [["hue", h], ["sat", 255], ["val", 255]].forEach(function (kv) {
                 var n = num(kv[0]);
                 if (n) { n.value = kv[1]; }
               });
@@ -837,12 +845,6 @@
               elm.addEventListener("pointermove", function (ev) { if (live) { fn(ev); } });
               elm.addEventListener("pointerup", function () { live = false; });
             }
-            dragger(pad, function (ev) {
-              var r = pad.getBoundingClientRect();
-              var s = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
-              var v = Math.max(0, Math.min(1, 1 - (ev.clientY - r.top) / r.height));
-              setHSV(val("hue"), Math.round(s * 255), Math.round(v * 255));
-            });
             dragger(bar, function (ev) {
               var r = bar.getBoundingClientRect();
               var h = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
@@ -908,11 +910,15 @@
             var v = Number(i.value);
             if (!isNaN(v) && i.value !== "") { body[i.dataset.key] = v; }
           });
-          var cached = settingsCache[course];
-          if (cached) { Object.keys(body).forEach(function (k) { cached[k] = body[k]; }); }
-              fetch("/tutorial/api/" + course + "/settings", {
+          saveTimer = null;
+          fetch("/tutorial/api/" + course + "/settings", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
+          }).then(function (r) { return r.json(); }).then(function (st) {
+            // the server clamps to the hardware's real limits — show what it
+            // actually kept (the field being typed in is corrected on blur)
+            settingsCache[course] = st;
+            fill(st);
           });
           // the change stream pings every window — buttons and sample code follow
         }
@@ -922,6 +928,12 @@
             if (pop._paint) { pop._paint(); }   // typed HSV moves the swatch too
             if (saveTimer) { clearTimeout(saveTimer); }
             saveTimer = setTimeout(saveNow, 300);
+          });
+          i.addEventListener("blur", function () {
+            // leaving the field: flush the pending save (its response snaps
+            // the value back into range), or re-fill from the settled state
+            if (saveTimer) { clearTimeout(saveTimer); saveNow(); }
+            else if (settingsCache[course]) { fill(settingsCache[course]); }
           });
         });
         function fill(st) {
@@ -1014,10 +1026,113 @@
     return w;
   }
 
-  function rlPage(active) {
+  // SL and RL share ONE model contract (camera in, three actions out) — the
+  // Inference page is the same page, only the course endpoints and job differ
+  function racingInferencePage(cfg) {
     var w = el("div");
-    w.appendChild(el("h2", "", 'Racing — Reinforcement Learning <span class="badge">coming soon</span>'));
-    w.appendChild(tabStrip(RL_TABS, active));
+    w.appendChild(pageHead(cfg.title));
+    w.appendChild(tabStrip(cfg.tabs, cfg.active));
+    var viz = el("div", "rbwrap");
+    viz.appendChild(el("div", "rbidle", "MyApp"));
+    var frame = el("iframe", "rbframe");
+    viz.appendChild(frame);
+    function setFrame(on) {
+      var cur = frame.getAttribute("src") || "";
+      if (on && cur !== "/myapp/") { frame.src = "/myapp/"; }
+      if (!on && cur) { frame.src = "about:blank"; frame.removeAttribute("src"); }
+    }
+    var api = "/tutorial/api/" + cfg.course + "/model";
+    var hasModel = function (g) { return !!g[cfg.modelKey]; };
+    var dl = el("button", "mini gray", "");
+    dl.title = "Download model.onnx";
+    dl.innerHTML = ICON_DL + "<span>Download</span>";
+    var gateDl = function (g) { dl.disabled = !hasModel(g); };
+    runner.gateHooks.push(gateDl);
+    if (runner.gates) { gateDl(runner.gates); }
+    function regate() { gateDl(runner.gates || { model: true, rl_model: true }); }
+    dl.addEventListener("click", function () {
+      msg.textContent = "downloading…";
+      msg.className = "sidemsg";
+      dl.disabled = true;
+      fetch(api).then(function (r) {
+        if (!r.ok) {
+          return r.json().then(function (j) {
+            throw new Error(j.detail || "download failed");
+          });
+        }
+        return r.blob();
+      }).then(function (b) {
+        var u = URL.createObjectURL(b);
+        var a = document.createElement("a");
+        a.href = u; a.download = "model.onnx"; a.click();
+        setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+        msg.textContent = "downloaded — " + (b.size / 1048576).toFixed(1) + " MB";
+        msg.className = "sidemsg ok";
+        regate();   // re-enable per the gate
+      }).catch(function (e) {
+        msg.textContent = e.message || "download failed";
+        msg.className = "sidemsg bad";
+        regate();
+      });
+    });
+    var imp = el("button", "mini gray", "");
+    imp.title = "Upload model.onnx";
+    imp.innerHTML = ICON_UP + "<span>Upload</span>";
+    var file = el("input");
+    file.type = "file"; file.accept = ".onnx"; file.style.display = "none";
+    imp.addEventListener("click", function () { file.click(); });
+    var modelSec = el("div", "sidesec");
+    modelSec.appendChild(el("h3", "", "Model"));
+    var mrow = el("div", "siderow");
+    mrow.appendChild(dl); mrow.appendChild(imp); mrow.appendChild(file);
+    modelSec.appendChild(mrow);
+    var msg = el("div", "sidemsg");
+    modelSec.appendChild(msg);
+    file.addEventListener("change", function () {
+      if (!file.files.length) { return; }
+      msg.textContent = "uploading…";
+      msg.className = "sidemsg";
+      imp.disabled = true;
+      fetch(api, {
+        method: "POST", headers: { "Content-Type": "application/octet-stream" },
+        body: file.files[0],
+      }).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+      }).then(function (res) {
+        imp.disabled = false;
+        file.value = "";
+        if (res.ok) {
+          msg.textContent = "uploaded — " + (res.j.bytes / 1048576).toFixed(1) + " MB";
+          msg.className = "sidemsg ok";
+        } else {
+          msg.textContent = res.j.detail || "upload failed";
+          msg.className = "sidemsg bad";
+        }
+      }).catch(function () {
+        imp.disabled = false;
+        file.value = "";
+        msg.textContent = "upload failed";
+        msg.className = "sidemsg bad";
+      });
+    });
+    w.appendChild(withSettings(runCard({ job: cfg.job, title: "Run inference", noLog: true,
+                            extra: viz,
+                            gate: hasModel,
+                            gateReason: function () { return cfg.gateReason; } }),
+                  SL_FIELDS, cfg.course, cfg.job, [modelSec]));
+    // attach only once the viewer (:5000) is really up — gates.myapp —
+    // so the "MyApp is not running" fallback never flashes
+    function frameOn() {
+      return runner.running && runner.job === cfg.job &&
+             !!(runner.gates && runner.gates.myapp);
+    }
+    var baseRun = runner.listeners[cfg.job];
+    runner.listeners[cfg.job] = function (state, exitCode) {
+      baseRun(state, exitCode);
+      setFrame(frameOn());
+    };
+    runner.gateHooks.push(function () { setFrame(frameOn()); });
+    setFrame(frameOn());
     return w;
   }
 
@@ -1052,11 +1167,6 @@
       w.appendChild(tabStrip(SL_TABS, "sl-train"));
       var viz = el("div", "trn-viz");
       viz.innerHTML =
-        '<div class="trn-stats">' +
-          '<div class="trn-stat"><div class="v" id="tv-photos">–</div><div class="l">training photos</div></div>' +
-          '<div class="trn-stat"><div class="v" id="tv-epoch">–</div><div class="l">epoch</div></div>' +
-          '<div class="trn-stat"><div class="v" id="tv-acc">–</div><div class="l">validation accuracy</div></div>' +
-        '</div>' +
         '<div class="trn-bar"><i id="tv-bar"></i></div>' +
         '<div class="trn-chart"><canvas id="tv-chart"></canvas></div>';
       w.appendChild(withSettings(runCard({
@@ -1073,113 +1183,90 @@
     },
 
     "sl-inference": function () {
+      return racingInferencePage({
+        title: "Racing — Supervised Learning", tabs: SL_TABS,
+        active: "sl-inference", job: "sl-run", course: "sl",
+        modelKey: "model",
+        gateReason: "model.onnx not found — run Train first",
+      });
+    },
+
+    "rl-training": function () {
       var w = el("div");
-      w.appendChild(pageHead("Racing — Supervised Learning"));
-      w.appendChild(tabStrip(SL_TABS, "sl-inference"));
-      var viz = el("div", "rbwrap");
-      viz.appendChild(el("div", "rbidle", "MyApp"));
-      var frame = el("iframe", "rbframe");
-      viz.appendChild(frame);
-      function setFrame(on) {
-        var cur = frame.getAttribute("src") || "";
-        if (on && cur !== "/myapp/") { frame.src = "/myapp/"; }
-        if (!on && cur) { frame.src = "about:blank"; frame.removeAttribute("src"); }
-      }
-      var dl = el("button", "mini gray", "");
-      dl.title = "Download model.onnx";
-      dl.innerHTML = ICON_DL + "<span>Download</span>";
-      var gateDl = function (g) { dl.disabled = !g.model; };
-      runner.gateHooks.push(gateDl);
-      if (runner.gates) { gateDl(runner.gates); }
-      dl.addEventListener("click", function () {
-        msg.textContent = "downloading…";
-        msg.className = "sidemsg";
-        dl.disabled = true;
-        fetch("/tutorial/api/sl/model").then(function (r) {
-          if (!r.ok) {
-            return r.json().then(function (j) {
-              throw new Error(j.detail || "download failed");
-            });
-          }
-          return r.blob();
-        }).then(function (b) {
-          var u = URL.createObjectURL(b);
-          var a = document.createElement("a");
-          a.href = u; a.download = "model.onnx"; a.click();
-          setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
-          msg.textContent = "downloaded — " + (b.size / 1048576).toFixed(1) + " MB";
-          msg.className = "sidemsg ok";
-          gateDl(runner.gates || { model: true });   // re-enable per the gate
-        }).catch(function (e) {
-          msg.textContent = e.message || "download failed";
-          msg.className = "sidemsg bad";
-          gateDl(runner.gates || { model: true });
+      w.appendChild(pageHead("Racing — Reinforcement Learning"));
+      w.appendChild(tabStrip(RL_TABS, "rl-training"));
+      // tracks are one-shot run parameters — picked in a modal when Run is
+      // pressed, remembered for the next run on this page
+      var selWorlds = null;
+      function trackModal(go) {
+        var ov = el("div", "modalov");
+        var box = el("div", "modalbox trackbox");
+        function close() { ov.remove(); }
+        ov.addEventListener("click", function (e) { if (e.target === ov) { close(); } });
+        box.appendChild(el("h3", "", "Tracks"));
+        var wbox = el("div", "rlworlds");
+        box.appendChild(wbox);
+        Promise.all([
+          fetch("/sim/api/worlds").then(function (r) { return r.json(); }),
+          fetch("/sim/api/status").then(function (r) { return r.json(); }),
+        ]).then(function (rs) {
+          var cur = rs[1].current;
+          (rs[0].worlds || []).forEach(function (wd) {
+            var lb = el("label", "rlworld");
+            var cb = el("input");
+            cb.type = "checkbox"; cb.value = wd.name;
+            cb.checked = selWorlds ? selWorlds.indexOf(wd.name) !== -1
+                                   : wd.name === cur;
+            lb.appendChild(cb);
+            lb.appendChild(el("span", "wname", esc(wd.display || wd.name)));
+            lb.appendChild(el("code", "", esc(wd.name)));
+            wbox.appendChild(lb);
+          });
         });
-      });
-      var imp = el("button", "mini gray", "");
-      imp.title = "Upload model.onnx";
-      imp.innerHTML = ICON_UP + "<span>Upload</span>";
-      var file = el("input");
-      file.type = "file"; file.accept = ".onnx"; file.style.display = "none";
-      imp.addEventListener("click", function () { file.click(); });
-      var modelSec = el("div", "sidesec");
-      modelSec.appendChild(el("h3", "", "Model"));
-      var mrow = el("div", "siderow");
-      mrow.appendChild(dl); mrow.appendChild(imp); mrow.appendChild(file);
-      modelSec.appendChild(mrow);
-      var msg = el("div", "sidemsg");
-      modelSec.appendChild(msg);
-      file.addEventListener("change", function () {
-        if (!file.files.length) { return; }
-        msg.textContent = "uploading…";
-        msg.className = "sidemsg";
-        imp.disabled = true;
-        fetch("/tutorial/api/sl/model", {
-          method: "POST", headers: { "Content-Type": "application/octet-stream" },
-          body: file.files[0],
-        }).then(function (r) {
-          return r.json().then(function (j) { return { ok: r.ok, j: j }; });
-        }).then(function (res) {
-          imp.disabled = false;
-          file.value = "";
-          if (res.ok) {
-            msg.textContent = "uploaded — " + (res.j.bytes / 1048576).toFixed(1) + " MB";
-            msg.className = "sidemsg ok";
-          } else {
-            msg.textContent = res.j.detail || "upload failed";
-            msg.className = "sidemsg bad";
-          }
-        }).catch(function () {
-          imp.disabled = false;
-          file.value = "";
-          msg.textContent = "upload failed";
-          msg.className = "sidemsg bad";
+        if (runner.gates && runner.gates.rl_model) {
+          box.appendChild(el("p", "trackwarn",
+            "model.onnx already exists — training again will overwrite it."));
+        }
+        var row = el("div", "confirmrow");
+        var no = el("button", "cbtn gray", "Cancel");
+        var yes = el("button", "cbtn danger", "Train");
+        no.addEventListener("click", close);
+        yes.addEventListener("click", function () {
+          var worlds = [];
+          wbox.querySelectorAll("input:checked").forEach(function (c) { worlds.push(c.value); });
+          selWorlds = worlds;
+          close();
+          go();
         });
-      });
-      w.appendChild(withSettings(runCard({ job: "sl-run", title: "Run inference", noLog: true,
-                              extra: viz,
-                              gate: function (g) { return g.model; },
-                              gateReason: function () {
-                                return "model.onnx not found — run Train first";
-                              } }), SL_FIELDS, "sl", "sl-run", [modelSec]));
-      // attach only once the viewer (:5000) is really up — gates.myapp —
-      // so the "MyApp is not running" fallback never flashes
-      function frameOn() {
-        return runner.running && runner.job === "sl-run" &&
-               !!(runner.gates && runner.gates.myapp);
+        row.appendChild(no); row.appendChild(yes);
+        box.appendChild(row);
+        ov.appendChild(box);
+        document.body.appendChild(ov);
       }
-      var baseSl = runner.listeners["sl-run"];
-      runner.listeners["sl-run"] = function (state, exitCode) {
-        baseSl(state, exitCode);
-        setFrame(frameOn());
-      };
-      runner.gateHooks.push(function () { setFrame(frameOn()); });
-      setFrame(frameOn());
+      var viz = el("div", "trn-viz");
+      viz.innerHTML =
+        '<div class="trn-bar"><i id="rv-bar"></i></div>' +
+        '<div class="trn-phase" id="rv-phase"></div>' +
+        '<div class="trn-chart"><canvas id="rv-chart"></canvas></div>';
+      w.appendChild(withSettings(runCard({
+        job: "rl-train", title: "Train the model", noLog: true, extra: viz,
+        gate: function (g) { return g.sim; },
+        gateReason: function () { return "training runs in the simulator only"; },
+        preRun: trackModal,
+        runBody: function () { return { worlds: selWorlds || [] }; },
+      }), SL_FIELDS, "rl", "rl-train"));
+      initRlTrainView(viz);
       return w;
     },
 
-    "rl-training": function () { return rlPage("rl-training"); },
-    "rl-inference": function () { return rlPage("rl-inference"); },
+    "rl-inference": function () {
+      return racingInferencePage({
+        title: "Racing — Reinforcement Learning", tabs: RL_TABS,
+        active: "rl-inference", job: "rl-run", course: "rl",
+        modelKey: "rl_model",
+        gateReason: "model.onnx not found — run Training first",
+      });
+    },
 
     "line-tracing": function () {
       var w = el("div");
@@ -1356,9 +1443,7 @@
 
   /* ══════════ Deep Racing SL: training dashboard ══════════ */
   function initTrainView(viz) {
-    var vPhotos = viz.querySelector("#tv-photos"), vEpoch = viz.querySelector("#tv-epoch"),
-        vAcc = viz.querySelector("#tv-acc"), vBar = viz.querySelector("#tv-bar"),
-        canvas = viz.querySelector("#tv-chart");
+    var vBar = viz.querySelector("#tv-bar"), canvas = viz.querySelector("#tv-chart");
     var last = null;
 
     function draw(t) {
@@ -1369,9 +1454,18 @@
       var g = canvas.getContext("2d");
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, w, h);
-      var padL = 46, padR = 16, padT = 12, padB = 24;
+      var padL = 58, padR = 16, padT = 12, padB = 36;
       var iw = w - padL - padR, ih = h - padT - padB;
       g.font = "11px system-ui, sans-serif";
+      // axis titles — what the numbers mean
+      g.fillStyle = "#8a8aa0"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+      g.fillText("epoch", padL + iw / 2, h - 5);
+      g.save();
+      g.translate(11, padT + ih / 2);
+      g.rotate(-Math.PI / 2);
+      g.textBaseline = "middle";
+      g.fillText("accuracy", 0, 0);
+      g.restore();
       [0, 25, 50, 75, 100].forEach(function (p) {
         var y = padT + ih * (1 - p / 100);
         g.strokeStyle = "rgba(120,120,150,.18)"; g.lineWidth = 1;
@@ -1405,10 +1499,96 @@
       last = t;
       var hist = (t && t.history) || [];
       var ep = hist.length ? hist[hist.length - 1].epoch : 0;
-      vPhotos.textContent = t && t.photos ? t.photos : "–";
-      vEpoch.textContent = t && t.epochs ? ep + " / " + t.epochs : "–";
-      vAcc.textContent = hist.length ? (hist[hist.length - 1].accuracy * 100).toFixed(1) + "%" : "–";
+      if (t && t.epochs && runner.runStat && runner.runStat["sl-train"]) {
+        runner.runStat["sl-train"]("epoch " + ep + " / " + t.epochs);
+      }
       vBar.style.width = (t && t.epochs ? Math.round(100 * ep / t.epochs) : 0) + "%";
+      draw(t);
+    };
+    new ResizeObserver(function () { draw(last); }).observe(canvas);
+  }
+
+  // RL dashboard: reward per episode — the y scale adapts to whatever the
+  // reward function produces
+  function initRlTrainView(viz) {
+    var vBar = viz.querySelector("#rv-bar"), vPhase = viz.querySelector("#rv-phase"),
+        canvas = viz.querySelector("#rv-chart");
+    var last = null;
+
+    function draw(t) {
+      var dpr = window.devicePixelRatio || 1;
+      var w = canvas.clientWidth, h = canvas.clientHeight;
+      if (!w || !h) { return; }
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      var g = canvas.getContext("2d");
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      var padL = 58, padR = 16, padT = 12, padB = 36;
+      var iw = w - padL - padR, ih = h - padT - padB;
+      g.font = "11px system-ui, sans-serif";
+      // axis titles — what the numbers mean
+      g.fillStyle = "#8a8aa0"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+      g.fillText("episode", padL + iw / 2, h - 5);
+      g.save();
+      g.translate(11, padT + ih / 2);
+      g.rotate(-Math.PI / 2);
+      g.textBaseline = "middle";
+      g.fillText("reward", 0, 0);
+      g.restore();
+      var eps = (t && t.episodes) || [];
+      var lo = 0, hi = 1;
+      eps.forEach(function (e) {
+        lo = Math.min(lo, e.reward); hi = Math.max(hi, e.reward);
+      });
+      if (hi === lo) { hi = lo + 1; }
+      var span = hi - lo;
+      var dec = span >= 20 ? 0 : 1;
+      function yFor(v) { return padT + ih * (1 - (v - lo) / span); }
+      [0, 0.25, 0.5, 0.75, 1].forEach(function (p) {
+        var y = padT + ih * (1 - p);
+        g.strokeStyle = "rgba(120,120,150,.18)"; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+        g.fillStyle = "#8a8aa0"; g.textAlign = "right"; g.textBaseline = "middle";
+        g.fillText((lo + span * p).toFixed(dec), padL - 8, y);
+      });
+      var total = Math.max(eps.length, 1);
+      function xFor(i) { return padL + iw * i / total; }
+      var step = Math.max(1, Math.ceil(total / 10));
+      g.textAlign = "center"; g.textBaseline = "top"; g.fillStyle = "#8a8aa0";
+      for (var e = step; e <= total; e += step) { g.fillText(e, xFor(e), h - padB + 6); }
+      if (!eps.length) { return; }
+      g.strokeStyle = "#7e56c2"; g.lineWidth = 2.5; g.lineJoin = "round";
+      g.beginPath();
+      eps.forEach(function (p, i) {
+        var x = xFor(i + 1), y = yFor(p.reward);
+        if (i === 0) { g.moveTo(x, y); } else { g.lineTo(x, y); }
+      });
+      g.stroke();
+      if (eps.length <= 60) {
+        g.fillStyle = "#7e56c2";
+        eps.forEach(function (p, i) {
+          g.beginPath();
+          g.arc(xFor(i + 1), yFor(p.reward), 3, 0, Math.PI * 2);
+          g.fill();
+        });
+      }
+    }
+
+    var PHASE = { starting: "starting up…", collecting: "collecting experience…",
+                  updating: "updating the model…", done: "done" };
+    runner.onRlTrain = function (t) {
+      last = t;
+      if (t && t.total_steps && runner.runStat && runner.runStat["rl-train"]) {
+        runner.runStat["rl-train"]((t.steps || 0).toLocaleString() + " / " +
+                                   t.total_steps.toLocaleString() + " steps");
+      }
+      vBar.style.width = (t && t.total_steps
+        ? Math.min(100, Math.round(100 * (t.steps || 0) / t.total_steps)) : 0) + "%";
+      var ph = (t && PHASE[t.status]) || "";
+      if (t && t.status === "updating" && t.update_pct != null) {
+        ph = "updating the model… " + t.update_pct + "%";
+      }
+      vPhase.textContent = ph;
       draw(t);
     };
     new ResizeObserver(function () { draw(last); }).observe(canvas);
@@ -1621,7 +1801,7 @@
     { group: "Racing" },
     { id: "line-tracing", label: "Rule-Based", sub: true },
     { id: "sl-labeling", label: "Supervised", match: "sl-", sub: true },
-    { id: "rl-training", label: "Reinforcement", match: "rl-", soon: true, sub: true },
+    { id: "rl-training", label: "Reinforcement", match: "rl-", sub: true },
     { group: "More Projects" },
     { id: "object-following", label: "Object Detection", soon: true, sub: true },
     { id: "nav-slam", label: "Navigation", match: "nav-", soon: true, sub: true },
@@ -1668,6 +1848,9 @@
     });
     refreshSettings("rb").then(function (st) {
       if (_setPanel && _setPanel.course === "rb") { _setPanel.fill(st); }
+    });
+    refreshSettings("rl").then(function (st) {
+      if (_setPanel && _setPanel.course === "rl") { _setPanel.fill(st); }
     });
     if (lab.refresh) { lab.refresh(); }
     reloadSamples();
