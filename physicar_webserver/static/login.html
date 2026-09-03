@@ -6,7 +6,12 @@
      rendered (browser error pages never send this). No-op when not embedded. */
   try {
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: "physicar-app-ready" }, "*");
+      var physicarBeacon = function () {
+        try { window.parent.postMessage({ type: "physicar-app-ready" }, "*"); } catch (e) { /* ignore */ }
+      };
+      physicarBeacon();
+      /* re-send every 15s -- feeds the wrapper post-lock liveness watchdog (and keeps it locked here while the user signs in) */
+      setInterval(physicarBeacon, 15000);
     }
   } catch (e) { /* not embedded -- ignore */ }
 </script>

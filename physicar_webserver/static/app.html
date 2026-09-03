@@ -11,11 +11,16 @@
      until the page comes up healthy. No-op when not embedded. */
   window.addEventListener("load", function () {
     if (typeof detectMode !== "function") return;   // core.js missing → not healthy
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "physicar-app-ready" }, "*");
-      }
-    } catch (e) { /* not embedded -- ignore */ }
+    var embedded = false;
+    try { embedded = !!(window.parent && window.parent !== window); } catch (e) { /* cross-origin */ }
+    if (!embedded) return;
+    function beacon() {
+      try { window.parent.postMessage({ type: "physicar-app-ready" }, "*"); } catch (e) { /* ignore */ }
+    }
+    beacon();
+    /* re-send every 15s: the wrapper (physicar-ext) watches these beacons after
+       locking on, so a page that later dies brings its spinner/rotation back */
+    setInterval(beacon, 15000);
   });
 
   /* ── PhysiCar session token sharing (physicar-ext bridge) ──
