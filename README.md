@@ -46,9 +46,9 @@ Configured via the `.env` file (`/opt/physicar/userdata/.env`).
 
 | Name | Kind | Type | Description |
 |------|------|------|-------------|
-| `/camera/image_raw/compressed` | topic | [`CompressedImage`](https://docs.ros2.org/latest/api/sensor_msgs/msg/CompressedImage.html) | Camera image (JPEG) |
+| `/camera/image_raw` | topic | [`Image`](https://docs.ros2.org/latest/api/sensor_msgs/msg/Image.html) | Camera image (RGB, undistorted 480×360) |
 | `/battery_state` | topic | [`BatteryState`](https://docs.ros2.org/latest/api/sensor_msgs/msg/BatteryState.html) | Battery state (1 Hz) |
-| `/imu` | topic | [`Imu`](https://docs.ros2.org/latest/api/sensor_msgs/msg/Imu.html) | IMU (50 Hz) |
+| `/imu` | topic | [`Imu`](https://docs.ros2.org/latest/api/sensor_msgs/msg/Imu.html) | IMU (50 Hz) — orientation not provided (`orientation_covariance[0] = -1`) |
 | `/odom` | topic | [`Odometry`](https://docs.ros2.org/latest/api/nav_msgs/msg/Odometry.html) | Odometry |
 | `/scan` | topic | [`LaserScan`](https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html) | LiDAR scan (raw) |
 | `/scan_filtered` | topic | [`LaserScan`](https://docs.ros2.org/latest/api/sensor_msgs/msg/LaserScan.html) | LiDAR scan (filtered) |
@@ -78,9 +78,9 @@ Query endpoints support real-time streaming via `?stream=true` (camera uses MJPE
 | `GET` | `/steering` | Steering angle (rad) |
 | `GET` | `/odom` | Odometry |
 | `GET` | `/battery` | Battery state |
-| `GET` | `/imu` | IMU |
+| `GET` | `/imu` | IMU — acceleration + gyro (6-axis; `orientation` is not provided and reads all-zero) |
 | `GET` | `/lidar` | LiDAR scan |
-| `GET` | `/camera` | Camera image (JPEG, resize with `?width`/`?height`) |
+| `GET` | `/camera` | Camera image (JPEG, resize with `?width`/`?height`; `?format=ansi` draws it right in the terminal, `&stream=true` makes it a live terminal view) |
 | `GET` | `/camera/pan` | Camera pan angle |
 | `GET` | `/camera/tilt` | Camera tilt angle |
 
@@ -100,17 +100,54 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/audio` | List of currently playing items |
 | `POST` | `/audio/play` | Play one of `url` / `path` / `data` (base64 audio file). Options: `volume` (0–1), `loop`, `replace` |
 | `POST` | `/audio/stop` | Stop by `id`, or everything with `{"all": true}` |
 | `POST` | `/audio/volume` | Change volume of a playing item (`id`, `volume` 0–1) |
-| `GET` | `/audio` | List of currently playing items |
 | `WS` | `/audio/stream` | Realtime PCM16 playback stream (`?sample_rate=24000&channels=1&volume=1.0`), e.g. OpenAI Realtime API voice output. Binary frames = raw PCM16; close = stop |
+
+### Racing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/racing/run` | Start a job — `{"job": "rb-run" \| "sl-train" \| "rl-train" \| "ml-run", "model"?, "base"?, "steps"?, "worlds"?}`. Everything about a run rides on the request: `model` (ml-run; default newest), `base` (train jobs; continue from), `steps`/`worlds` (rl-train). Requesting `ml-run` while ml-run is already driving swaps the model LIVE — no restart |
+| `POST` | `/racing/stop` | Stop the running job |
+| `GET` | `/racing/status` | Lock, run gates, log tail, training progress |
+| `GET`/`POST` | `/racing/rb/settings` | Rule-Based settings, applied LIVE (`speed, gain, hue*, sat*, val*, crop, pan, tilt`; `{"reset": true}`) |
+| `GET`/`POST` | `/racing/ml/settings` | The ML profile SHARED by Supervised/Reinforcement, applied LIVE (`speed, left, right, pan, tilt, mode`) |
+| `GET` | `/racing/ml/models` | The model store (hash-named, never overwritten) |
+| `GET` | `/racing/code/{job}` | The executed script with current settings substituted |
+
+## MyApp
+
+- Your own robot web app.
+- Launch an app on port **5000** and it becomes accessible at `/myapp/`.
+- While a Racing course runs, it takes over port 5000 for its live view (the managed MyApp process is stopped first); the port is released when the course stops.
+- Path rules
+    - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
+    - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
+
+- Auto-start script
+    - `/opt/physicar/userdata/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
+        ```
+        python3 /home/physicar/physicar_ws/app.py
+        ```
+    - `/opt/physicar/userdata/myapp.log`: execution log of the auto-start script.
+
+## Racing
+
+- Guided driving courses in the PhysiCar panel's **Racing** tab: **Rule-Based** (HSV line tracing) and **Machine Learning** — one CNN taught two ways.
+- **Flow**: gather the teacher on the Train page (Supervised: button-labeled photos / Reinforcement: a reward function, simulator only) → `Train the model` → drive it on the Inference page. Both teachers train the SAME network into ONE model store; Inference is identical either way.
+- **Jobs** — one at a time, machine-wide: `rb-run`, `sl-train`, `rl-train`, `ml-run`, started with `POST /racing/run {"job", "model"?, "base"?, "steps"?, "worlds"?}`. Everything about a run rides on the request; nothing is stored. Requesting `ml-run` while it is already driving swaps the model LIVE (no restart).
+- **Runs are detached**: the runner spawns the course script under a lock in `/opt/physicar/userdata/racing/` — every window sees the same run, and any window (or `POST /racing/stop`) stops it. `GET /racing/status` returns the lock, run gates, log tail and training progress.
+- **Models**: training checkpoints continuously into `ml/checkpoint.pt`, and HOWEVER a run ends (finish, Stop, crash) the runner files the last checkpoint into `userdata/racing/ml/models/` as `<sha256(pt)[:8]>.pt` plus a derived deployable `.onnx`. The `.pt` is the interchange format — download/upload it, continue training from it (`base`), across teachers too (supervised pretrain → reinforcement finetune works).
+- **Settings apply live**: `/racing/{rb|ml}/settings` — a running script re-reads them within a frame.
+- **The code is the course**: scripts ship standalone in `physicar_webserver/racing_assets/`; `GET /racing/code/{job}` returns the exact executed script with the current settings substituted (what the panel's View Code shows).
+- A running course serves its live view on port 5000 (the MYAPP slot). The panel, the AI chat's `racing_*` tools and a student's curl all drive the same API.
 
 ## Tool Server (`physicar_tools`)
 
-FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, `tutorial.py` (tutorial courses: run/stop/status/settings), plus the user-editable `/opt/physicar/userdata/custom_tools.py`. Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
-
-Reachable through nginx at **`/physicar-ext/`** (loopback-only — requests from the network are denied):
+FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, `racing.py` (the Racing runner: status/run/models/stop/settings), plus the user-editable `/opt/physicar/userdata/custom_tools.py`. Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -123,38 +160,6 @@ Reachable through nginx at **`/physicar-ext/`** (loopback-only — requests from
 | `POST` | `/physicar-ext/reload` | Restart the interpreter — picks up newly installed libraries and replaced model weights |
 
 Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (`from pcwake import reserve, redeem`); they are one-shot and in-memory. See `physicar_tools/pcwake.py` for the contract.
-
-## Tutorial
-
-Guided web courses at **`/tutorial`** (the `tutorial.physicar` tab in VS Code) — every step runs from the page, no terminal: **Racing — Rule-Based** (HSV line following with a live mask view), **Racing — Supervised Learning** (Labeling → Train → Inference) and **Racing — Reinforcement Learning** (Training → Inference; PPO in the simulator, training is SIM-only — SL and RL share one model contract, so either model drives the same Inference viewer). A per-machine settings panel applies live to running scripts, "View Code" shows the executed script with current settings substituted, and a running course serves its live view on port 5000 (the MYAPP slot). APIs live under `/tutorial/api/*` (web job runner, per-course settings, dataset curation, model download/upload with ONNX validation, SSE sync across windows); the AI chat drives the same via the `tutorial_*` tools.
-
-## MyApp
-
-- Your own robot web app.
-- Launch an app on port **5000** and it becomes accessible at `/myapp/`.
-- While a tutorial course runs, it takes over port 5000 for its live view (the managed MyApp process is stopped first); the port is released when the course stops.
-- Path rules
-    - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
-    - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
-
-- Auto-start script
-    - `/opt/physicar/userdata/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
-        ```
-        python3 /home/physicar/physicar_ws/app.py
-        ```
-    - `/opt/physicar/userdata/myapp.log`: execution log of the auto-start script.
-- PhysiCar AI Services (chat, realtime)
-    - Call them **directly from the page's JS** — `physicarSession.token()` is auto-injected into every `/myapp/` HTML page by nginx (no setup code) and identifies the signed-in user.
-    - WebSocket services pass the token as a subprotocol, HTTP services as a Bearer header:
-        ```js
-        // Realtime voice agent — straight from the browser
-        const ws = new WebSocket("wss://api.physicar.ai/realtime",
-                                 ["token." + physicarSession.token()]);
-        // Chat services
-        fetch("https://api.physicar.ai/chat/models",
-              { headers: { "Authorization": "Bearer " + physicarSession.token() } });
-        ```
-    - Working example: `sample_projects/agent-realtime` — a MyApp page that runs the whole voice agent in the browser.
 
 ## License
 

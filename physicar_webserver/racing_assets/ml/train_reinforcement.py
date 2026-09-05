@@ -22,23 +22,25 @@ ACTIONS = {
 CAMERA_W, CAMERA_H = 160, 120   # model input resolution
 CAMERA_PAN, CAMERA_TILT = 0.0, -15.0   # camera angle (deg)
 
-TOTAL_STEPS = 10000     # total experience to train on
+TOTAL_STEPS = 20000     # total experience to train on
 N_STEPS = 1000          # experience collected per policy update
 BATCH_SIZE = 64
 LEARNING_RATE = 0.0003
 GAMMA = 0.99            # discount factor: weight of future rewards
 STEP_DT = 1 / 15        # one action per camera frame
 MAX_STEPS = 100         # episode length limit (~7 s at 15 Hz)
+# Continue training from this model — rides on the run request (empty = new)
+BASE_MODEL = os.environ.get("RACING_BASE", "")
 WORLDS = []             # tracks to rotate through (empty: the current world)
 WHEELBASE = 0.18        # robot dimensions, for the four wheel positions
 TRACK_OF_CAR = 0.16
 
 BASE_URL = "http://localhost"   # robot web API; simulator lives under /sim/api
 
-SETTINGS = "settings.json"
+SETTINGS = "ml/settings.json"   # the profile SHARED by the ML courses
 settings_mtime = None
 
-# The tutorial page's settings (gear) are saved per machine — apply overrides.
+# The Racing panel's settings (gear) are saved per machine — apply overrides.
 try:
     settings_mtime = os.path.getmtime(SETTINGS)
     with open(SETTINGS) as _f:
@@ -51,15 +53,18 @@ try:
     CAMERA_TILT = float(_cfg.get("tilt", CAMERA_TILT))
 except (OSError, ValueError):
     pass
+if BASE_MODEL and not os.path.exists(f"ml/models/{BASE_MODEL}.pt"):
+    print(f"base model {BASE_MODEL} has no checkpoint — starting from scratch")
+    BASE_MODEL = ""
 
-# The Train page picks this run's length and tracks (runner arguments).
+# The Train step picks this run's length and tracks (runner arguments).
 import sys
 if len(sys.argv) > 1:
     TOTAL_STEPS = int(sys.argv[1])
 if len(sys.argv) > 2:
     WORLDS = [w for w in sys.argv[2].split(",") if w]
 
-# The tutorial page's dashboard reads this file — rewritten as training runs.
+# The Racing panel's dashboard reads this file — rewritten as training runs.
 progress = {"total_steps": TOTAL_STEPS, "steps": 0, "status": "starting",
             "episodes": []}
 
@@ -68,34 +73,52 @@ def report(ep_reward=None, ep_length=None, **kv):
         progress["episodes"].append({"reward": round(ep_reward, 2),
                                      "length": ep_length})
     progress.update(kv)
-    with open("train_progress.json.tmp", "w") as f:
+    with open("ml/train_progress.json.tmp", "w") as f:
         json.dump(progress, f)
-    os.replace("train_progress.json.tmp", "train_progress.json")
+    os.replace("ml/train_progress.json.tmp", "ml/train_progress.json")
 
 
 # ── web API helpers ─────────────────────────────────────────────────────────
 
 def camera(width, height):
-    """Latest camera frame as a BGR image, resized by the server."""
-    jpg = requests.get(f"{BASE_URL}/camera",
-                       params={"width": width, "height": height},
-                       timeout=2).content
-    return cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+    """Latest camera frame as a BGR image, resized by the server.
+    Retries the brief windows without a valid frame (camera warming up,
+    server restarting) — one dropped frame must not kill the drive."""
+    for _ in range(30):
+        try:
+            jpg = requests.get(f"{BASE_URL}/camera",
+                               params={"width": width, "height": height},
+                               timeout=2).content
+        except requests.RequestException:
+            time.sleep(0.2)     # a busy machine can stall the API briefly
+            continue
+        img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+        if img is not None:
+            return img
+        time.sleep(0.1)
+    raise SystemExit("camera unavailable — is the robot stack running?")
 
 
 def drive(speed, steering):
-    """speed in m/s, steering in degrees (+ = left). The API wants radians."""
-    requests.post(f"{BASE_URL}/speed", json={"value": float(speed)}, timeout=2)
-    requests.post(f"{BASE_URL}/steering",
-                  json={"value": math.radians(steering)}, timeout=2)
+    """speed in m/s, steering in degrees (+ = left). The API wants radians.
+    A transient API stall must not kill the loop — skip the beat instead."""
+    try:
+        requests.post(f"{BASE_URL}/speed", json={"value": float(speed)}, timeout=2)
+        requests.post(f"{BASE_URL}/steering",
+                      json={"value": math.radians(steering)}, timeout=2)
+    except requests.RequestException:
+        pass
 
 
 def look(pan, tilt):
     """Point the camera (degrees)."""
-    requests.post(f"{BASE_URL}/camera/pan",
-                  json={"value": math.radians(pan)}, timeout=2)
-    requests.post(f"{BASE_URL}/camera/tilt",
-                  json={"value": math.radians(tilt)}, timeout=2)
+    try:
+        requests.post(f"{BASE_URL}/camera/pan",
+                      json={"value": math.radians(pan)}, timeout=2)
+        requests.post(f"{BASE_URL}/camera/tilt",
+                      json={"value": math.radians(tilt)}, timeout=2)
+    except requests.RequestException:
+        pass
 
 
 def sim_pose(retries=20):
@@ -176,17 +199,8 @@ class PhysicarNet(nn.Module):
 # ── the environment: the track IS the teacher ───────────────────────────────
 
 class PhysicarEnv(gym.Env):
-
-    def reward(self):
-        """Score for the step: 1.0 on the center line, 0.0 at the track
-        border, scaled by the track width at the nearest waypoint."""
-        x, y = self.state["x"], self.state["y"]
-        center = self.state["waypoints_center"]
-        d = Point(x, y).distance(LinearRing(center))
-        i = int(np.argmin(np.hypot(center[:, 0] - x, center[:, 1] - y)))
-        half_width = np.hypot(*(self.state["waypoints_outer"][i]
-                                - self.state["waypoints_inner"][i])) / 2
-        return float(1.0 - d / half_width)
+    # reward() is not defined here on purpose — it lives in reward.py (the
+    # Reward step's file) and is attached to this class right below.
 
     def on_reset(self):
         """Start the next episode on the center line, 2 m further along the
@@ -236,11 +250,20 @@ class PhysicarEnv(gym.Env):
 
     def _refresh(self):
         self.obs = camera(CAMERA_W, CAMERA_H).transpose(2, 0, 1).astype(np.float32)
-        pose = sim_pose()
-        odom = requests.get(f"{BASE_URL}/odom", timeout=2).json()
-        objects = sim_objects()
-        lights = requests.get(f"{BASE_URL}/sim/api/traffic_lights",
-                              timeout=2).json().get("lights", [])
+        # a busy machine (e.g. a model import converting on another core)
+        # can stall the API past the timeout — retry before giving up
+        for attempt in range(3):
+            try:
+                pose = sim_pose()
+                odom = requests.get(f"{BASE_URL}/odom", timeout=2).json()
+                objects = sim_objects()
+                lights = requests.get(f"{BASE_URL}/sim/api/traffic_lights",
+                                      timeout=2).json().get("lights", [])
+                break
+            except requests.RequestException:
+                if attempt == 2:
+                    raise
+                time.sleep(0.5)
         wheels = self._wheel_points(pose["x"], pose["y"], pose["yaw"])
         self._is_offtrack = not any(self._road.contains(w) for w in wheels)
         # crashed = a movable object moved since the episode started — only
@@ -281,7 +304,7 @@ class PhysicarEnv(gym.Env):
         return self.obs, {}
 
     def step(self, action):
-        # The tutorial page's settings (gear) apply LIVE, even mid-run —
+        # The Racing panel's settings (gear) apply LIVE, even mid-run —
         # one stat per step, re-read only when the file actually changed
         global settings_mtime, CAMERA_PAN, CAMERA_TILT
         try:
@@ -321,6 +344,20 @@ class PhysicarEnv(gym.Env):
     def close(self):
         drive(0, 0)
         overlay("")
+
+
+# reward.py (kept next to this run's data) IS the reward function — the
+# Reward step seeds and edits it. A broken file fails the run loudly.
+import importlib.util
+try:
+    _spec = importlib.util.spec_from_file_location("user_reward", "ml/reward.py")
+    _user = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_user)
+except FileNotFoundError:
+    raise SystemExit("ml/reward.py not found — open the Train page once "
+                     "(it seeds the default reward function)")
+PhysicarEnv.reward = _user.reward
+print("reward.py loaded")
 
 
 class Extractor:
@@ -372,6 +409,7 @@ def main():
 
         def _on_rollout_start(self):
             overlay("")     # clear the update banner — the car drives again
+            save_checkpoint()   # post-update weights: never lose an update
 
         def _on_step(self):
             for info in self.locals["infos"]:
@@ -402,29 +440,38 @@ def main():
                                "normalize_images": False,
                                "net_arch": []},
                 verbose=0)
+    if BASE_MODEL:
+        # warm start: the base model's weights fill the policy backbone AND
+        # its action layer — an SL-trained model works too (same network)
+        base = PhysicarNet()
+        base.load_state_dict(torch.load(f"ml/models/{BASE_MODEL}.pt",
+                                        map_location="cpu", weights_only=True))
+        model.policy.features_extractor.net.load_state_dict(base.state_dict())
+        with torch.no_grad():
+            model.policy.action_net.weight.copy_(base.head[2].weight)
+            model.policy.action_net.bias.copy_(base.head[2].bias)
+        print(f"continuing from model {BASE_MODEL}")
+
+    def save_checkpoint():
+        """The current policy as a plain PhysicarNet checkpoint — written
+        atomically, so the runner can always file the LAST one into the
+        model store, no matter how this run ends."""
+        net = PhysicarNet()
+        net.load_state_dict(model.policy.features_extractor.net.state_dict())
+        with torch.no_grad():   # PPO's action layer becomes the final layer
+            net.head[2].weight.copy_(model.policy.action_net.weight)
+            net.head[2].bias.copy_(model.policy.action_net.bias)
+        torch.save(net.state_dict(), "ml/checkpoint.pt.tmp")
+        os.replace("ml/checkpoint.pt.tmp", "ml/checkpoint.pt")
+
     try:
         model.learn(total_timesteps=TOTAL_STEPS, callback=Console())
     except KeyboardInterrupt:
-        pass                # Stop pressed: still export what was learned
+        pass                # Stop pressed: the checkpoint still counts
     env.close()
-
-    # Put the trained weights into a plain PhysicarNet and export it —
-    # to a temp name first, then swap in atomically (a crash mid-export
-    # must never destroy the previous good model).
-    net = PhysicarNet()
-    trained = model.policy.features_extractor.net
-    net.load_state_dict(trained.state_dict())
-    with torch.no_grad():   # PPO's action layer becomes the final layer
-        net.head[2].weight.copy_(model.policy.action_net.weight)
-        net.head[2].bias.copy_(model.policy.action_net.bias)
-    net.eval()
-    torch.onnx.export(
-        net, (torch.zeros(1, 3, CAMERA_H, CAMERA_W),),
-        "model.onnx.tmp", input_names=["camera"], output_names=["actions"],
-        opset_version=17, dynamo=False)
-    os.replace("model.onnx.tmp", "model.onnx")
+    save_checkpoint()       # the final weights
     report(status="done")
-    print("\nsaved -> model.onnx")
+    print("\ntraining ended — the runner files the checkpoint as a model")
 
 
 if __name__ == "__main__":

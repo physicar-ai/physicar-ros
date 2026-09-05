@@ -798,7 +798,7 @@ sudo -u physicar touch /opt/physicar/userdata/physicar.log
 # rewrites and bashrc all point at ~/physicar_ws, but nothing on a fresh
 # install created it: code-server then opened a nonexistent folder. In
 # Codespaces the workspace IS the physicar-for-codespaces checkout, so the
-# real mirrors that by seeding examples/ (tutorial notebooks + assets) from
+# real mirrors that by seeding examples/ (example notebooks + assets) from
 # the same repo (physicar branch). This is the ONLY time anything writes into
 # the student workspace — boot/update flows never touch it (app.physicar
 # excepted).

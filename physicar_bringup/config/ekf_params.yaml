@@ -30,15 +30,19 @@ ekf_filter_node:
                    false, false, false]
 
     # ── Sensor 1: IMU (/imu) ──
-    # IMU gyro is accurate for yaw orientation and yaw rate.
+    # The IMU publishes NO absolute orientation (the sim sensor has
+    # enable_orientation=false and the message carries an all-zero
+    # quaternion) — fusing yaw from it pins the heading to a constant and
+    # CRUSHES the fused yaw rate (real incident 2026-09-05: /odom angular
+    # read 0.02 rad/s while the car truly turned at 1.0). Fuse the yaw
+    # RATE only — the gyro is always valid; heading integrates from it.
     # Do NOT use accelerometer — double integration adds position noise.
     imu0: /imu
     imu0_config: [false, false, false,
-                  false, false, true,
+                  false, false, false,
                   false, false, false,
                   false, false, true,
                   false, false, false]
-    imu0_differential: true
     imu0_remove_gravitational_acceleration: true
 
     # Process noise covariance (Q matrix diagonal)

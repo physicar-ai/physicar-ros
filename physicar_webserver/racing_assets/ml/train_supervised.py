@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import cv2
@@ -8,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
-# The action table: class labels the model learns AND the data/<key>/ folders.
+# The action table: class labels the model learns AND ml/labeling_data/<key>/.
 ACTIONS = {
     "left": {"speed": 0.5, "steering": 20.0},
     "straight": {"speed": 0.5, "steering": 0.0},
@@ -21,9 +22,13 @@ BATCH_SIZE = 64
 LEARNING_RATE = 0.001
 MIN_PHOTOS = 100    # below this the model just memorizes — refuse to train
 
-# The tutorial page's settings (gear) are saved per machine — apply overrides.
+# Continue training from this model — rides on the run request (empty = new)
+BASE_MODEL = os.environ.get("RACING_BASE", "")
+
+# The Racing panel's settings (gear) are saved per machine and SHARED by the
+# supervised and reinforcement courses — apply the overrides.
 try:
-    with open("settings.json") as _f:
+    with open("ml/settings.json") as _f:
         _cfg = json.load(_f)
     for _a in ACTIONS.values():
         _a["speed"] = float(_cfg.get("speed", _a["speed"]))
@@ -31,6 +36,9 @@ try:
     ACTIONS["right"]["steering"] = -abs(float(_cfg.get("right", 20.0)))
 except (OSError, ValueError):
     pass
+if BASE_MODEL and not os.path.exists(f"ml/models/{BASE_MODEL}.pt"):
+    print(f"base model {BASE_MODEL} has no checkpoint — starting from scratch")
+    BASE_MODEL = ""
 
 
 class PhysicarNet(nn.Module):
@@ -59,10 +67,10 @@ class DrivingData(Dataset):
         self.augment = augment
         self.samples = []                       # (photo path, class index)
         for i, key in enumerate(ACTIONS):
-            for f in sorted(Path("data", key).glob("*.jpg")):
+            for f in sorted(Path("ml/labeling_data", key).glob("*.jpg")):
                 self.samples.append((f, i))
         if not self.samples:
-            raise SystemExit("data/ is empty — collect photos on the Labeling page first")
+            raise SystemExit("ml/labeling_data/ is empty — collect photos on the Labeling section first")
 
     def __len__(self):
         return len(self.samples)
@@ -86,36 +94,38 @@ def main():
     train_dl = DataLoader(data, BATCH_SIZE, shuffle=True)
     print(f"training on {len(data)} photos / {len(ACTIONS)} actions")
 
-    # training curve on disk, rewritten every epoch (the Train page charts it)
+    # training curve on disk, rewritten every epoch (the Train step charts it)
     progress = {"photos": len(data), "epochs": EPOCHS, "history": []}
-    Path("train_progress.json").write_text(json.dumps(progress))
+    Path("ml/train_progress.json").write_text(json.dumps(progress))
 
     net = PhysicarNet()
+    if BASE_MODEL:
+        net.load_state_dict(torch.load(f"ml/models/{BASE_MODEL}.pt",
+                                       map_location="cpu", weights_only=True))
+        print(f"continuing from model {BASE_MODEL}")
     opt = torch.optim.Adam(net.parameters(), lr=LEARNING_RATE)
 
-    for epoch in range(EPOCHS):
-        net.train()
-        correct = total = 0
-        for camera, y in train_dl:
-            out = net(camera)
-            loss = F.nll_loss(out.clamp_min(1e-8).log(), y)
-            opt.zero_grad(); loss.backward(); opt.step()
-            # accuracy: how many of this batch the net already gets right
-            correct += (out.argmax(1) == y).sum().item()
-            total += len(y)
-        print(f"epoch {epoch + 1:2d}/{EPOCHS}  accuracy {correct / total:.3f}")
-        progress["history"].append({"epoch": epoch + 1, "accuracy": correct / total})
-        Path("train_progress.json").write_text(json.dumps(progress))
-
-    net.eval()
-    # export to a temp name, then swap in atomically — a crash mid-export
-    # must never destroy the previous good model
-    torch.onnx.export(
-        net, (torch.zeros(1, 3, CAMERA_H, CAMERA_W),),
-        "model.onnx.tmp", input_names=["camera"], output_names=["actions"],
-        opset_version=17, dynamo=False)
-    Path("model.onnx.tmp").replace("model.onnx")
-    print("\nsaved -> model.onnx")
+    try:
+        for epoch in range(EPOCHS):
+            net.train()
+            correct = total = 0
+            for camera, y in train_dl:
+                out = net(camera)
+                loss = F.nll_loss(out.clamp_min(1e-8).log(), y)
+                opt.zero_grad(); loss.backward(); opt.step()
+                # accuracy: how many of this batch the net already gets right
+                correct += (out.argmax(1) == y).sum().item()
+                total += len(y)
+            print(f"epoch {epoch + 1:2d}/{EPOCHS}  accuracy {correct / total:.3f}")
+            progress["history"].append({"epoch": epoch + 1, "accuracy": correct / total})
+            Path("ml/train_progress.json").write_text(json.dumps(progress))
+            # checkpoint after EVERY epoch — a Stop or crash never loses more
+            # than the epoch in flight; when this process ends (any way at
+            # all) the runner files the last checkpoint into the model store
+            torch.save(net.state_dict(), "ml/checkpoint.pt.tmp")
+            Path("ml/checkpoint.pt.tmp").replace("ml/checkpoint.pt")
+    except KeyboardInterrupt:
+        print("\nstopped — the last finished epoch's checkpoint is kept")
 
 
 if __name__ == "__main__":

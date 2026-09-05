@@ -103,7 +103,7 @@ async def get_state_summary(
     """
     Get all robot states combined.
     
-    One-shot: Returns all available states (cmd, odom, battery, imu, lidar, joints, camera info).
+    One-shot: Returns all available states (cmd, odom, battery, imu, lidar, joints, camera info); ?include= narrows it to the listed keys.
     
     Streaming (?stream=true): Returns selected states continuously.
     - Default: cmd, odom, battery (lightweight)
@@ -112,19 +112,22 @@ async def get_state_summary(
     - Note: lidar excluded by default (heavy), use /lidar?stream=true instead
     """
     sm = get_state_manager()
-    
+
+    include_list = None
+    if include:
+        include_list = [k.strip() for k in include.split(",") if k.strip()]
+
     if _wants_stream(request, stream):
-        include_list = None
-        if include:
-            include_list = [k.strip() for k in include.split(",") if k.strip()]
-        
         return StreamingResponse(
             sm.stream_all_sse(include_list),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
-    
-    return sm.get_all_states()
+
+    data = sm.get_all_states()
+    if include_list:
+        data = {k: v for k, v in data.items() if k in include_list}
+    return data
 
 
 # =============================================================================
@@ -263,22 +266,70 @@ async def get_imu(
 # Camera
 # =============================================================================
 
+def _ansi_frame(jpg, cols):
+    """One camera frame as truecolor half-block art — a picture a terminal
+    can show. Two pixel rows per text row (the upper-half-block glyph)."""
+    import cv2
+    import numpy as np
+    img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    rows2 = max(2, round(img.shape[0] * cols / img.shape[1] * 0.5) * 2)
+    small = cv2.resize(img, (cols, rows2), interpolation=cv2.INTER_AREA)
+    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+    out = []
+    for y in range(0, rows2, 2):
+        line = "".join(
+            "\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm\u2580"
+            % (t[0], t[1], t[2], b[0], b[1], b[2])
+            for t, b in zip(rgb[y], rgb[y + 1]))
+        out.append(line + "\x1b[0m")
+    return "\n".join(out) + "\n"
+
+
 @router.get("/camera")
 async def get_camera(
     request: Request,
     stream: Optional[bool] = Query(None, description="Enable MJPEG streaming"),
     width: Optional[int] = Query(None, ge=16, le=1920, description="Image width"),
     height: Optional[int] = Query(None, ge=16, le=1080, description="Image height"),
+    format: Optional[str] = Query(None, description="'ansi' draws the frame right in the terminal"),
+    cols: int = Query(64, ge=16, le=160, description="ansi format: width in terminal columns"),
 ):
     """
     Get camera image.
     
     - Default: Single JPEG image
     - ?stream=true: MJPEG stream (continuous frames)
+    - ?format=ansi: the frame drawn as terminal art; with stream=true a
+      live terminal view (~5 fps, Ctrl+C to stop)
     
     Optionally resize with width/height parameters.
     """
     sm = get_state_manager()
+    
+    if format == "ansi":
+        loop = asyncio.get_event_loop()
+        if _wants_stream(request, stream):
+            async def _ansi_gen():
+                yield "\x1b[2J"
+                while True:
+                    jpg = await loop.run_in_executor(None, sm.get_camera_image, None, None)
+                    if jpg:
+                        art = await loop.run_in_executor(None, _ansi_frame, jpg, cols)
+                        if art:
+                            yield "\x1b[H" + art
+                    await asyncio.sleep(0.2)
+            return StreamingResponse(
+                _ansi_gen(), media_type="text/plain; charset=utf-8",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        jpg = await loop.run_in_executor(None, sm.get_camera_image, None, None)
+        art = _ansi_frame(jpg, cols) if jpg else None
+        if art is None:
+            return Response(content="Camera not available", status_code=503, media_type="text/plain")
+        return Response(content=art, media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
     
     if _wants_stream(request, stream):
         return StreamingResponse(

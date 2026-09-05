@@ -23,7 +23,6 @@
 set -uo pipefail
 
 APP_FILE="$HOME/physicar_ws/app.physicar"
-TUT_FILE="$HOME/physicar_ws/tutorial.physicar"
 LOG="/tmp/cloudflared.log"
 TOKEN_MAP="/tmp/pc-token.map"
 
@@ -47,12 +46,9 @@ write_file() {
   fi
 }
 
-# Publish $1 (the /app URLs) into app.physicar, and the SAME URLs with the
-# /tutorial path into tutorial.physicar — the two bookmarks always agree
-# (same domains, same tunnel token, only the path differs).
+# Publish $1 (the /app URLs) into app.physicar.
 write_bookmark() {
   write_file "$APP_FILE" "$1"
-  write_file "$TUT_FILE" "$(printf '%s\n' "$1" | sed 's#/app\([?/]\|$\)#/tutorial\1#')"
 }
 
 # Point the nginx access-token gate at $1 (the session token). The nginx config

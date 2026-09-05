@@ -64,7 +64,7 @@ SECTIONS = {
     "robot": {"path": os.path.join(HERE, "robot.py"), "enabled": lambda: True},
     "sim": {"path": os.path.join(HERE, "sim.py"), "enabled": lambda: PROFILE != "real"},
     "utils": {"path": os.path.join(HERE, "utils.py"), "enabled": lambda: True},
-    "tutorial": {"path": os.path.join(HERE, "tutorial.py"), "enabled": lambda: True},
+    "racing": {"path": os.path.join(HERE, "racing.py"), "enabled": lambda: True},
     "custom": {"path": CUSTOM_PATH, "enabled": lambda: True},
 }
 
