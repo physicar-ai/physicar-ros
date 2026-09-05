@@ -1141,6 +1141,14 @@ do_build() {
     ) 200>"$BUILD_LOCK"
     local exit_code=$?
 
+    # Stamp WHICH revision this install was built from — verify_install
+    # compares it to the source HEAD, so a checkout without a (successful)
+    # rebuild self-heals at the next boot instead of crash-looping on
+    # imports of not-yet-installed modules (real incident 2026-09-05).
+    if [ $exit_code -eq 0 ]; then
+        git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD > "$PHYSICAR_WS/install/.physicar-head" 2>/dev/null || true
+    fi
+
     source "$PHYSICAR_WS/install/setup.bash"
     return $exit_code
 }
@@ -1183,6 +1191,16 @@ verify_install() {
             missing=1
         fi
     done
+    # install must have been built from the CURRENT source revision — a
+    # checkout that never got its rebuild otherwise crash-loops on imports
+    # of modules that are not in install yet (see the do_build stamp)
+    local want have
+    want=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null)
+    have=$(cat "$PHYSICAR_WS/install/.physicar-head" 2>/dev/null)
+    if [ -n "$want" ] && [ "$want" != "$have" ]; then
+        echo "[physicar] install/ was built from a different revision (${have:-none})"
+        missing=1
+    fi
     return $missing
 }
 

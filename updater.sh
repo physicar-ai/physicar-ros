@@ -347,7 +347,9 @@ safe_build_locked() {
         colcon build --symlink-install \
             --base-paths src/physicar-ros \
             --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5); then
-        # Build succeeded — remove backup and pending marker
+        # Build succeeded — remove backup and pending marker, and stamp
+        # the revision this install was built from (boot self-heal checks it)
+        git -C "$REPO_DIR" rev-parse HEAD > "$install_dir/.physicar-head" 2>/dev/null || true
         rm -rf "$backup_dir" 2>/dev/null
         rm -f "$PENDING_BUILD_FILE"
         log "build successful"
@@ -496,6 +498,21 @@ if [[ "${1:-}" == "--boot" ]]; then
     exit 0
 fi
 
+# ── update_available ─────────────────────────────────────
+# Fetch tags and report whether a newer one exists — WITHOUT touching the
+# working tree. The live tree is only ever moved at boot (--boot).
+update_available() {
+    check_disk_space || return 1     # a fetch still downloads objects
+    check_repo_health || return 1
+    local pattern latest cur
+    pattern=$(detect_tag_pattern)
+    timeout 30 git -c gc.auto=0 -C "$REPO_DIR" fetch --tags --force 2>/dev/null || return 1
+    latest=$(git -C "$REPO_DIR" tag -l "$pattern" --sort=-version:refname | head -1)
+    [[ -n "$latest" ]] || return 1
+    cur=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)
+    [[ "$(git -C "$REPO_DIR" rev-parse "$latest^{}" 2>/dev/null)" != "$cur" ]]
+}
+
 # ── Main loop ────────────────────────────────────────────
 maybe_reexec "$@"
 
@@ -522,17 +539,17 @@ while true; do
         continue
     fi
 
-    if safe_update; then
-        # Build after update
-        if safe_build; then
-            log "update ready — will apply on next restart"
-        fi
-
-        # Re-exec self in case updater.sh was part of the update
-        maybe_reexec "$@"
+    # Fetch/notify ONLY — never checkout into the LIVE tree. A running
+    # webserver hot-reloads swapped sources immediately and imports of
+    # not-yet-built modules crash it, and safe_build parks install/ in
+    # install.bak for the whole build (real incident 2026-09-05: cloud sims
+    # crash-looped on "cannot import name 'racing'"). The checkout+build
+    # pair runs synchronously at boot (--boot), before anything launches —
+    # the sim repo follows the same boot-only rule.
+    if update_available; then
+        log "update available — applies at next boot"
     fi
 
-    safe_update_sim
     safe_pip_upgrade
 
     sleep "$INTERVAL"
