@@ -266,6 +266,30 @@ server {
         proxy_read_timeout 86400s;
     }
 
+    # ── code-server 정적 번들 직접 서빙 (무결성) ──
+    # code-server 는 정적 파일을 Content-Length/ETag 없이 chunked 로 서빙한다(실측 2026-09-06).
+    # 전송이 중간에 끊기면 브라우저가 잘린 파일을 완전한 것으로 오인해 max-age=1y 캐시에
+    # 박제 → 웹뷰 영구 백지 사고의 원천. nginx 파일 서빙은 Content-Length·ETag·Range 를
+    # 자동 부여해 잘린 다운로드를 브라우저가 스스로 폐기한다. 없는 경로는 code-server 로
+    # 폴백해 특수/신규 경로에도 동작이 변하지 않는다.
+    location ~ ^/stable-[a-f0-9]+/static/(?<cs_asset>.+)$ {
+        if ($auth_ok = 0) {
+            return 302 /login?next=$uri;
+        }
+        root /usr/lib/code-server/lib/vscode;
+        try_files /$cs_asset @cs_static_fb;
+        add_header Cache-Control "public, max-age=31536000" always;
+    }
+    location @cs_static_fb {
+        proxy_pass http://code_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
     location / {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
@@ -595,6 +619,30 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400s;
+    }
+
+    # ── code-server 정적 번들 직접 서빙 (무결성) ──
+    # code-server 는 정적 파일을 Content-Length/ETag 없이 chunked 로 서빙한다(실측 2026-09-06).
+    # 전송이 중간에 끊기면 브라우저가 잘린 파일을 완전한 것으로 오인해 max-age=1y 캐시에
+    # 박제 → 웹뷰 영구 백지 사고의 원천. nginx 파일 서빙은 Content-Length·ETag·Range 를
+    # 자동 부여해 잘린 다운로드를 브라우저가 스스로 폐기한다. 없는 경로는 code-server 로
+    # 폴백해 특수/신규 경로에도 동작이 변하지 않는다.
+    location ~ ^/stable-[a-f0-9]+/static/(?<cs_asset>.+)$ {
+        if ($auth_ok = 0) {
+            return 302 /login?next=$uri;
+        }
+        root /usr/lib/code-server/lib/vscode;
+        try_files /$cs_asset @cs_static_fb;
+        add_header Cache-Control "public, max-age=31536000" always;
+    }
+    location @cs_static_fb {
+        proxy_pass http://code_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
     }
 
     location / {
