@@ -37,11 +37,20 @@ BUILD_LOCK="/tmp/.physicar-build.lock"
 # Marker the updater keeps while its own build is in flight (see updater.sh)
 UPDATER_BUILDING="/tmp/.physicar-build-pending"
 
+# Boot progress for the nginx offline pages (served verbatim at /__boot):
+# updating -> building -> starting. Best-effort — must never break the boot.
+BOOT_STATUS="/tmp/.physicar-boot-status"
+boot_status() {
+    printf '{"phase":"%s","since":%s}' "$1" "$(date +%s)" > "${BOOT_STATUS}.tmp" 2>/dev/null \
+        && mv -f "${BOOT_STATUS}.tmp" "$BOOT_STATUS" 2>/dev/null || true
+}
+
 git config --global --add safe.directory "$PHYSICAR_ROS_DIR" 2>/dev/null || true
 git config --global --add safe.directory "$PHYSICAR_SIM_DIR" 2>/dev/null || true
 
 clean_build() {
     echo "[physicar] Running clean build..."
+    boot_status building
     rm -rf "$PHYSICAR_WS/build" "$PHYSICAR_WS/install" "$PHYSICAR_WS/log"
     cd "$PHYSICAR_WS" && colcon build --symlink-install 2>&1
 }
@@ -52,6 +61,7 @@ do_build() {
     touch "$PHYSICAR_ROS_DIR/physicar_lidar/COLCON_IGNORE" 2>/dev/null || true
 
     echo "[physicar] Building..."
+    boot_status building
     (
         # Serialize with the updater's safe_build (same lock file): two
         # concurrent colcon builds in one workspace corrupt each other.
@@ -78,6 +88,7 @@ do_build() {
 # Boot-time update: with internet, update to the latest before first run (updater.sh --boot).
 if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
     _pre_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
+    boot_status updating
     bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
     _post_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
     # 부팅 중 코드가 갱신됐으면, 이미 옛 코드로 한 번 돌아버린 부팅 시점 프로그램
@@ -148,6 +159,7 @@ cleanup_stray_nodes() {
 LAUNCH_PID=""
 trap 'kill -TERM -$$ 2>/dev/null; exit 0' TERM INT
 
+boot_status starting
 FAIL_STREAK=0
 while true; do
     if ! verify_install; then

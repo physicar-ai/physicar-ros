@@ -796,23 +796,12 @@ sudo -u physicar touch /opt/physicar/userdata/physicar.log
 
 # Student workspace — code-server (physicar-code.service), nginx /code
 # rewrites and bashrc all point at ~/physicar_ws, but nothing on a fresh
-# install created it: code-server then opened a nonexistent folder. In
-# Codespaces the workspace IS the physicar-for-codespaces checkout, so the
-# real mirrors that by seeding examples/ (example notebooks + assets) from
-# the same repo (physicar branch). This is the ONLY time anything writes into
-# the student workspace — boot/update flows never touch it (app.physicar
-# excepted).
+# install created it: code-server then opened a nonexistent folder. The
+# workspace starts empty — learning content (racing, agent, ...) now ships
+# inside physicar-ext, so nothing is seeded from physicar-for-codespaces
+# any more (2026-09-06). Boot/update flows never write into the student
+# workspace either (app.physicar excepted).
 mkdir -p /home/physicar/physicar_ws
-if [ ! -d /home/physicar/physicar_ws/examples ]; then
-  TMPD=$(mktemp -d)
-  if git clone --depth 1 --branch physicar \
-      https://github.com/physicar-ai/physicar-for-codespaces.git "$TMPD/pfc" 2>/dev/null; then
-    cp -rn "$TMPD/pfc/examples" /home/physicar/physicar_ws/ 2>/dev/null || true
-  else
-    echo "  WARNING: examples seed failed (network?) — re-run install to seed"
-  fi
-  rm -rf "$TMPD"
-fi
 chown -R physicar:physicar /home/physicar/physicar_ws
 
 # ── Seed ~/.bashrc for physicar user ──
