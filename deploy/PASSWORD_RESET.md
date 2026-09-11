@@ -1,6 +1,6 @@
 # Console Password Reset
 
-How to set a new login password on a real kit (Raspberry Pi 5) via its SD card when
+How to set a new login password on a real robot (Raspberry Pi 5) via its SD card when
 you don't know the current one. (The password is derived from the board serial, so
 it can't be read off the card — only reset.)
 

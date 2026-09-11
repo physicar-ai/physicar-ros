@@ -241,7 +241,7 @@ done
   # Boot-time scans race NM's own STA association: `iw scan` returns EBUSY
   # (silently swallowed) and the empty result used to degrade BOTH decisions
   # to their fallbacks — country=00 (UNII-3 lost) and channel=36 (every
-  # unlucky kit converging on one channel). Retry, then fall back to the
+  # unlucky robot converging on one channel). Retry, then fall back to the
   # kernel's cached results (`scan dump`), which NM's periodic scans keep
   # warm even while an active scan is refused.
   _survey=""
@@ -321,8 +321,8 @@ done
 
     # Scan interference and pick least congested channel (5GHz preferred)
     # 2.4GHz gets a penalty (+0.01 ≈ -20dBm equivalent) to prefer 5GHz
-    # Per-kit deterministic tie-break: nudge each candidate by a
-    # ghost-beacon-sized offset derived from serial+channel, so kits booted
+    # Per-robot deterministic tie-break: nudge each candidate by a
+    # ghost-beacon-sized offset derived from serial+channel, so robots booted
     # simultaneously (identical RF view) fan out across near-equal channels
     # instead of all picking the same one. A single real AP on a channel
     # (-70 dBm ≈ 1e-7) outweighs the largest nudge (≤ 1e-9 ≈ one -90 dBm
@@ -969,7 +969,7 @@ PYDND
 #   (user-changed keys win; new default keys keep propagating).
 # If settings.json is root-owned (install-time root cp legacy), code-server
 # (running as physicar) cannot save settings (EACCES) and the merge below
-# cannot write either — repair ownership first (heals polluted kits every
+# cannot write either — repair ownership first (heals polluted robots every
 # boot; same fix as sim entrypoint.sh).
 sudo chown physicar:physicar "$HOME/.local/share/code-server/User" \
   "$HOME/.local/share/code-server/User/settings.json" 2>/dev/null || true
@@ -1045,7 +1045,7 @@ fi
       sleep 10
     done
   fi
-  # Wait up to 10 min for the marketplace to become reachable — covers kits
+  # Wait up to 10 min for the marketplace to become reachable — covers robots
   # whose WiFi is configured minutes after power-on. Never blocks boot (background).
   _ext_online=false
   for i in $(seq 1 30); do

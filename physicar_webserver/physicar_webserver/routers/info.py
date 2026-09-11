@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Info router - Kit information endpoint.
+Info router - Robot information endpoint.
 """
 
 import hashlib
@@ -56,8 +56,8 @@ def _get_mode() -> str:
 _gen_key = os.environ.get("PHYSICAR_GENERATION", "physicar")
 _gen_num = int(_gen_key[8:]) if _gen_key.startswith("physicar") and _gen_key[8:].isdigit() else 1
 
-# Kit Information
-KIT_INFO = {
+# Robot Information
+ROBOT_INFO = {
     "name": "PhysiCar",
     "generation": _gen_num,
     "version": "1.0.0",
@@ -95,15 +95,15 @@ KIT_INFO = {
 @router.get("/info")
 async def get_info():
     """
-    Get kit information.
+    Get robot information.
     
     Returns hardware specs, software versions, physical parameters, and mode.
     """
     mode = _get_mode()
-    info = {**KIT_INFO, "mode": mode, "serial": _get_serial()}
+    info = {**ROBOT_INFO, "mode": mode, "serial": _get_serial()}
     if mode == "sim":
         info["hardware"] = {
-            **KIT_INFO["hardware"],
+            **ROBOT_INFO["hardware"],
             "sbc": "Simulation",
             "lidar": "Simulated LiDAR",
             "camera": "Simulated Camera",

@@ -27,7 +27,7 @@ export MESA_GL_VERSION_OVERRIDE=3.3
 source /opt/ros/jazzy/setup.bash
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
-# Same loopback-pinned CycloneDDS setup as the real kit (deploy/cyclonedds.xml)
+# Same loopback-pinned CycloneDDS setup as the real robot (deploy/cyclonedds.xml)
 # — identical middleware and transport behavior in SIM and on hardware.
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI="file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml"
