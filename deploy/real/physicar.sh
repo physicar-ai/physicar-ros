@@ -483,6 +483,32 @@ HOTSPOT_KF
     echo "[physicar] Hotspot already running: $REAL_HOSTNAME"
   fi
 
+  # Channel verify. On the shared-phy ap0 the firmware puts the AP on whatever
+  # channel wlan0 happens to be scanning at activation time (single-channel
+  # phy) and ignores the requested one — at boot the STA is mid-scan, so the
+  # hotspot lands on a 2.4 GHz channel even though 5 GHz was configured.
+  # Re-activating once the scan has quieted lands on the requested channel
+  # and stays there (measured: scan-race -> ch3, re-up -> ch36, later STA
+  # scans do not move it). Empty request = follow-STA branch, nothing to check.
+  _want_channel="${_ap_channel_kf#channel=}"
+  if [ -n "$_want_channel" ]; then
+    for _try in 1 2 3; do
+      _got_channel=$(iw dev "$_AP_IFACE" info 2>/dev/null | awk '/channel/ {print $2}')
+      [ "$_got_channel" = "$_want_channel" ] && break
+      sleep 4
+      sudo nmcli connection down physicar-hotspot &>/dev/null
+      sleep 1
+      sudo nmcli connection up physicar-hotspot &>/dev/null
+      sleep 3
+    done
+    _got_channel=$(iw dev "$_AP_IFACE" info 2>/dev/null | awk '/channel/ {print $2}')
+    if [ "$_got_channel" = "$_want_channel" ]; then
+      echo "[physicar] Hotspot channel verified: ${_got_channel}"
+    else
+      echo "[physicar] WARNING: Hotspot on channel ${_got_channel:-?} (requested ${_want_channel})" >&2
+    fi
+  fi
+
   # ── 8. Update avahi/mDNS to use correct AP interface ──
   sudo mkdir -p /etc/avahi
   if [ -f /etc/avahi/avahi-daemon.conf ]; then
