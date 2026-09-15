@@ -535,6 +535,22 @@ async def ap_info():
     }
 
 
+def _estimated_regdom() -> Optional[str]:
+    """Regulatory domain for the netplan fallback: the majority Country IE in the
+    kernel's cached scan — the same estimate the boot-time hotspot setup uses.
+    Never a hardcoded country: this robot ships abroad. None when nothing is in
+    range, which leaves the kernel's world default in place."""
+    try:
+        r = subprocess.run(["iw", "dev", "wlan0", "scan", "dump"],
+                           capture_output=True, text=True, timeout=5)
+    except Exception:
+        return None
+    codes = re.findall(r"Country: ([A-Z]{2})", r.stdout or "")
+    if not codes:
+        return None
+    return max(set(codes), key=codes.count)
+
+
 @router.post("/wifi/connect")
 async def wifi_connect(request: WifiConnectRequest):
     """
@@ -617,6 +633,8 @@ async def wifi_connect(request: WifiConnectRequest):
     # 2. Netplan fallback
     try:
         psk = request.password or ""
+        _cc = _estimated_regdom()
+        _regdom = f'      regulatory-domain: "{_cc}"\n' if _cc else ""
         if is_enterprise:
             netplan_config = f'''network:
   version: 2
@@ -624,8 +642,7 @@ async def wifi_connect(request: WifiConnectRequest):
     wlan0:
       optional: true
       dhcp4: true
-      regulatory-domain: "KR"
-      access-points:
+{_regdom}      access-points:
         "{request.ssid}":
           auth:
             key-management: "eap"
@@ -640,8 +657,7 @@ async def wifi_connect(request: WifiConnectRequest):
     wlan0:
       optional: true
       dhcp4: true
-      regulatory-domain: "KR"
-      access-points:
+{_regdom}      access-points:
         "{request.ssid}":
           auth:
             key-management: "psk"
