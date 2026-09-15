@@ -49,6 +49,7 @@ def _have_executable(package, executable):
     return os.access(os.path.join(prefix, 'lib', package, executable), os.X_OK)
 
 
+
 def generate_launch_description():
     # Package directories
     pkg_bringup = get_package_share_directory('physicar_bringup')
@@ -160,12 +161,28 @@ def generate_launch_description():
 
     # Camera Driver (Raspberry Pi Camera via physicar_camera/libcamera)
     # Compressed output is handled by undistort_node, so remapping is removed
+    #
+    # Tuning file: the sensor is a NoIR OV5647 (no IR-cut filter). libcamera
+    # cannot tell and would load the IR-cut tuning, whose AWB is pinned to a
+    # visible-light colour-temperature curve — under sunlight the IR leak moves
+    # the scene's grey point off that curve and the picture stays pink. This
+    # tuning keeps the Bayesian AWB (colour-temperature prior, so a single-colour
+    # scene such as a red track does not get neutralised away) but lets it leave
+    # the curve in the IR direction (transverse_pos 0.5) by as much as the scene
+    # evidence demands, on top of the NoIR-calibrated colour matrices. It also
+    # turns off the AGC "desaturate" probe (which drops the analogue gain and
+    # fills in with 2.5x digital gain for a few frames whenever highlights clip
+    # — on this sensor that flashed the shadows purple every time the exposure
+    # came down). All of it runs in the ISP: no CPU cost, no restart — it
+    # adapts frame by frame.
+    camera_tuning = os.path.join(pkg_bringup, 'config', 'ov5647_physicar.json')
     camera_driver = Node(
         package='physicar_camera',
         executable='camera_node',
         name='camera',
         output='screen',
         parameters=[driver_config],
+        additional_env={'LIBCAMERA_RPI_TUNING_FILE': camera_tuning},
         remappings=[
             ('~/image_raw', '/camera/image_raw'),
             ('~/camera_info', '/camera/camera_info'),

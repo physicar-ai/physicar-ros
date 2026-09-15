@@ -48,7 +48,8 @@ rplidar_node:
     scan_mode: "Standard"
 
 # Camera Configuration
-# Infrared camera without IR-cut — corrects reddish distortion via ColourGains
+# NoIR camera (no IR-cut filter). The IR colour cast is handled by the
+# tuning file real.launch.py hands to libcamera (config/ov5647_physicar.json).
 # 320x240: streaming-optimised (minimal overhead)
 # 640x480: when high resolution is needed
 camera:  # node name = 'camera'
