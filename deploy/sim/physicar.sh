@@ -98,6 +98,11 @@ if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
     if [ -n "$_post_head" ] && [ "$_pre_head" != "$_post_head" ]; then
         echo "[physicar] code updated during boot (${_pre_head:0:7} -> ${_post_head:0:7}) — re-running app_browser"
         supervisorctl -s unix:///tmp/supervisor.sock restart app_browser >/dev/null 2>&1 || true
+        # nginx reads its (symlinked) site config at start — before this update
+        # landed. Reload so a shipped config change counts from this boot too.
+        if sudo -n nginx -t >/dev/null 2>&1; then
+            sudo -n nginx -s reload >/dev/null 2>&1 || true
+        fi
     fi
 fi
 
@@ -158,6 +163,25 @@ cleanup_stray_nodes() {
 
 LAUNCH_PID=""
 trap 'kill -TERM -$$ 2>/dev/null; exit 0' TERM INT
+
+# ────────────────── Log housekeeping ──────────────────
+# Nothing in the image rotates these (no cron), and they grew without bound:
+# ~/.ros/log gets a folder per launch (592 folders / 162 MB) and nginx's
+# access/error logs are append-only (720 MB) — measured 2026-09-15. gz's own
+# console logs are pruned by sim_api at every gz start.
+log_housekeeping() {
+    find "$HOME/.ros/log" -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+    local f
+    for f in /var/log/nginx/access.log /var/log/nginx/error.log; do
+        [ -f "$f" ] || continue
+        if [ "$(stat -c %s "$f" 2>/dev/null || echo 0)" -gt 20971520 ]; then
+            # nginx appends (O_APPEND) — truncating in place is safe, no reopen needed
+            truncate -s 0 "$f" 2>/dev/null || sudo -n truncate -s 0 "$f" 2>/dev/null || true
+            echo "[physicar] truncated $f (was over 20 MB)"
+        fi
+    done
+}
+log_housekeeping
 
 boot_status starting
 FAIL_STREAK=0

@@ -1156,7 +1156,18 @@ do_build() {
 # Boot-time update: with internet, update to the latest before first run (updater.sh --boot).
 # Offline: proceed with the existing code after a short timeout.
 if [ "$DEV" != "true" ] && [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
+    _pre_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
     bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
+    _post_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
+    # nginx (systemd, started before us) read its symlinked site config before
+    # this update landed. Reload so a shipped config change counts from this
+    # boot, not the next one.
+    if [ -n "$_post_head" ] && [ "$_pre_head" != "$_post_head" ]; then
+        echo "[physicar] code updated during boot (${_pre_head:0:7} -> ${_post_head:0:7}) — reloading nginx"
+        if sudo -n nginx -t >/dev/null 2>&1; then
+            sudo -n systemctl reload nginx >/dev/null 2>&1 || true
+        fi
+    fi
 fi
 
 rm -f "$UPDATE_SIGNAL"
@@ -1233,6 +1244,24 @@ cleanup_stray_nodes() {
     find "$CACHE" -type d -empty -delete 2>/dev/null
   fi
 ) &
+
+# ────────────────── Log housekeeping ──────────────────
+# Nothing rotates these on the robot and the SD card is small: ~/.ros/log gets a
+# folder per launch, nginx's access/error logs are append-only (measured 720 MB
+# on a SIM machine 2026-09-15). journald is capped separately (install-real.sh).
+log_housekeeping() {
+    find "$HOME/.ros/log" -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+    local f
+    for f in /var/log/nginx/access.log /var/log/nginx/error.log; do
+        [ -f "$f" ] || continue
+        if [ "$(sudo -n stat -c %s "$f" 2>/dev/null || echo 0)" -gt 20971520 ]; then
+            # nginx appends (O_APPEND) — truncating in place is safe, no reopen needed
+            sudo -n truncate -s 0 "$f" 2>/dev/null || true
+            echo "[physicar] truncated $f (was over 20 MB)"
+        fi
+    done
+}
+log_housekeeping
 
 FAIL_STREAK=0
 while true; do

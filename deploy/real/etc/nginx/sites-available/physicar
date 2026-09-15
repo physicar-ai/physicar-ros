@@ -30,6 +30,9 @@
 # ─────────────────────────────────────────────────────────────────────────
 server {
     listen 80;
+    # Connectivity probes only (phones re-check every few seconds on the hotspot)
+    # — nothing worth logging. Nothing rotates nginx logs on the robot.
+    access_log off;
     server_name
         www.msftconnecttest.com msftconnecttest.com
         www.msftncsi.com msftncsi.com
@@ -150,6 +153,17 @@ server {
     listen 443 ssl http2 default_server sndbuf=524288;
     server_name _;
     absolute_redirect off;
+
+    # ── Access log: skip the polling traffic ──
+    # The panel polls /racing/status every second and the live views poll
+    # /steering /speed /camera several times a second — ~10k lines/hour of
+    # nothing, and nothing rotates this file on the robot (SD card). The boot
+    # script also caps it (physicar.sh log_housekeeping). Same as deploy/sim.
+    set $pc_log 1;
+    if ($request_uri ~ "^/(steering|speed|camera|health|generate_204|connecttest\.txt|ncsi\.txt|hotspot-detect\.html|success\.txt)(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/racing/status(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/myapp/?(\?|$)") { set $pc_log 0; }
+    access_log /var/log/nginx/access.log combined if=$pc_log;
 
     client_max_body_size 500M;
 

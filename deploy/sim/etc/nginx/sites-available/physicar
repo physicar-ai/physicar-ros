@@ -36,6 +36,18 @@ server {
     server_name _;
     absolute_redirect off;
 
+    # ── Access log: skip the polling traffic ──
+    # The panel polls /racing/status every second and the live views poll
+    # /steering /speed /camera several times a second — ~10k lines/hour of
+    # nothing. Nothing rotates this file (no cron in the image; 674 MB by
+    # 2026-09-15), so the boot script also caps it (physicar.sh log_housekeeping).
+    # server-level `if` + `set` is the sanctioned use of `if`.
+    set $pc_log 1;
+    if ($request_uri ~ "^/(steering|speed|camera|health|__boot)(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/racing/status(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/myapp/?(\?|$)") { set $pc_log 0; }
+    access_log /var/log/nginx/access.log combined if=$pc_log;
+
     client_max_body_size 500M;
 
     # ── Studio access-token gate ──
