@@ -56,6 +56,26 @@ router = APIRouter()
 
 _SELF = "http://127.0.0.1:8000"
 _HOME = "/opt/physicar/userdata/racing"
+
+
+# Warm the ML stack once per boot: after a cold start the first training run
+# otherwise spends its first ~10-30 s pulling ~1 GB of torch/cv2 from disk (and
+# compiling any missing .pyc) before it prints a single line. Idle I/O class +
+# nice so it never competes with the robot stack coming up; harmless where the
+# libraries are absent (the import just fails quietly).
+def _warm_ml_libs():
+    try:
+        subprocess.Popen(
+            ["ionice", "-c3", "nice", "-n", "19", "/usr/bin/python3", "-c",
+             "import torch, cv2, numpy, stable_baselines3, gymnasium, shapely"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env={**os.environ, "PYTHONPYCACHEPREFIX": "/opt/physicar/pycache"},
+            start_new_session=True)
+    except Exception:
+        pass
+
+
+_warm_ml_libs()
 _LOCK = os.path.join(_HOME, "runner.json")
 _LOG = os.path.join(_HOME, "runner.log")
 _ACTIONS = ["left", "straight", "right"]
