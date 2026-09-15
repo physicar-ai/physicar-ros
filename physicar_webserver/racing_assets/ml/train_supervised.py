@@ -2,6 +2,12 @@ import json
 import os
 from pathlib import Path
 
+# The dashboard reads ml/train_progress.json — stamp the loading phase BEFORE the
+# heavy imports so a cold start (torch alone is ~1 GB from disk) is not silence.
+Path("ml").mkdir(exist_ok=True)
+Path("ml/train_progress.json").write_text(json.dumps({"epochs": 0, "history": [], "phase": "loading libraries..."}))
+print("loading libraries...", flush=True)
+
 import cv2
 import numpy as np
 import torch

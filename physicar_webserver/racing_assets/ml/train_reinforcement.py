@@ -3,6 +3,13 @@ import math
 import os
 import time
 
+# The dashboard reads ml/train_progress.json — stamp the loading phase BEFORE the
+# heavy imports so a cold start (torch alone is ~1 GB from disk) is not silence.
+os.makedirs("ml", exist_ok=True)
+with open("ml/train_progress.json", "w") as _f:
+    json.dump({"total_steps": 0, "steps": 0, "status": "loading"}, _f)
+print("loading libraries...", flush=True)
+
 import cv2
 import gymnasium as gym
 import numpy as np
@@ -12,6 +19,28 @@ import torch.nn as nn
 from gymnasium import spaces
 from shapely.geometry import Point, Polygon
 from shapely.geometry.polygon import LinearRing
+import signal
+
+
+# Stop must not ride on KeyboardInterrupt: a SIGINT that lands inside a
+# finalizer (urllib3 pool cleanup during GC — seen in the field) is printed as
+# "Exception ignored" and never reaches learn(), so the run kept going until
+# the runner's SIGKILL 30 s later. A flag cannot be swallowed: the callback,
+# the optimizer step and every wait loop poll it and end the run cleanly
+# (the checkpoint is still saved and filed).
+STOP = {"asked": False}
+
+
+class StopTraining(Exception):
+    """Raised from inside learn() when Stop was asked — unwinds to main()."""
+
+
+def _ask_stop(signum, frame):
+    STOP["asked"] = True
+
+
+signal.signal(signal.SIGINT, _ask_stop)
+signal.signal(signal.SIGTERM, _ask_stop)
 
 # The action table: every step the agent picks one of these.
 ACTIONS = {
@@ -121,11 +150,32 @@ def look(pan, tilt):
         pass
 
 
+def _sim_call(method, path, deadline_s=90.0, **kw):
+    """Simulator API call that survives an API restart. The simulator service
+    is watched by a probe that kills and revives it when it hangs, and that
+    revival takes ~20 s (gz sim restarts too) — one timeout or 502 in that
+    window must not end a training run. Retry until the deadline."""
+    end = time.monotonic() + deadline_s
+    while True:
+        if STOP["asked"]:
+            raise StopTraining()
+        try:
+            r = requests.request(method, f"{BASE_URL}{path}", timeout=5, **kw)
+            if r.status_code < 500:
+                return r
+        except requests.RequestException:
+            pass
+        if time.monotonic() >= end:
+            raise SystemExit(f"simulator API not responding for {int(deadline_s)} s "
+                             f"({path}) — is the simulator running?")
+        time.sleep(2)
+
+
 def sim_pose(retries=20):
     """Vehicle pose {x, y, yaw(rad)} — retries the brief windows where the
     simulator has no pose yet (right after a teleport)."""
     for _ in range(retries):
-        d = requests.get(f"{BASE_URL}/sim/api/pose", timeout=5).json()
+        d = _sim_call("GET", "/sim/api/pose").json()
         if "x" in d:
             return d
         time.sleep(0.15)
@@ -134,19 +184,21 @@ def sim_pose(retries=20):
 
 def overlay(text, ttl=10):
     """Status line on the /sim screen (empty text clears it)."""
-    requests.post(f"{BASE_URL}/sim/api/overlay",
-                  json={"text": str(text), "ttl": ttl}, timeout=2)
+    try:
+        requests.post(f"{BASE_URL}/sim/api/overlay",
+                      json={"text": str(text), "ttl": ttl}, timeout=2)
+    except requests.RequestException:
+        pass   # cosmetic — never worth ending a run over
 
 
 def sim_status():
     """Simulator status: current world, running/switching flags."""
-    return requests.get(f"{BASE_URL}/sim/api/status", timeout=5).json()
+    return _sim_call("GET", "/sim/api/status").json()
 
 
 def sim_objects():
     """Objects placed in the world, with their live poses."""
-    return requests.get(f"{BASE_URL}/sim/api/objects",
-                        timeout=5).json().get("objects", [])
+    return _sim_call("GET", "/sim/api/objects").json().get("objects", [])
 
 
 def respawn(world=None, start_m=0.0):
@@ -161,16 +213,14 @@ def respawn(world=None, start_m=0.0):
                     and not st.get("switching")):
                 break
             if not st.get("switching"):
-                requests.post(f"{BASE_URL}/sim/api/switch",
-                              json={"world": f"{world}.world"}, timeout=5)
+                _sim_call("POST", "/sim/api/switch", json={"world": f"{world}.world"})
             time.sleep(2)
-    wp = requests.get(f"{BASE_URL}/sim/api/route", timeout=5).json()["waypoints"]
+    wp = _sim_call("GET", "/sim/api/route").json()["waypoints"]
     pts = np.asarray(wp, float)
     dist = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(pts, axis=0).T))])
     i = min(int(np.searchsorted(dist, start_m % dist[-1])), len(wp) - 2)
     yaw = math.atan2(wp[i + 1][1] - wp[i][1], wp[i + 1][0] - wp[i][0])
-    requests.post(f"{BASE_URL}/sim/api/pose",
-                  json={"x": wp[i][0], "y": wp[i][1], "yaw": yaw}, timeout=5)
+    _sim_call("POST", "/sim/api/pose", json={"x": wp[i][0], "y": wp[i][1], "yaw": yaw})
 
 
 # ── the model (identical to the supervised course — one CNN, two teachers) ──
@@ -224,7 +274,7 @@ class PhysicarEnv(gym.Env):
         current = sim_status().get("current")
         if current == self._track_world:
             return
-        r = requests.get(f"{BASE_URL}/sim/api/route", timeout=5).json()
+        r = _sim_call("GET", "/sim/api/route").json()
         if "waypoints" not in r:
             raise SystemExit("this world has no track route — switch to a "
                              "racing world first")
@@ -237,7 +287,7 @@ class PhysicarEnv(gym.Env):
         self._inner_pts = inner
         self._outer_pts = outer
         self._road = Polygon(r["outer"], [r["inner"]])
-        self._bounds = requests.get(f"{BASE_URL}/sim/api/bounds", timeout=5).json()
+        self._bounds = _sim_call("GET", "/sim/api/bounds").json()
         self._track_world = current
 
     def _wheel_points(self, x, y, yaw_rad):
@@ -257,8 +307,7 @@ class PhysicarEnv(gym.Env):
                 pose = sim_pose()
                 odom = requests.get(f"{BASE_URL}/odom", timeout=2).json()
                 objects = sim_objects()
-                lights = requests.get(f"{BASE_URL}/sim/api/traffic_lights",
-                                      timeout=2).json().get("lights", [])
+                lights = _sim_call("GET", "/sim/api/traffic_lights").json().get("lights", [])
                 break
             except requests.RequestException:
                 if attempt == 2:
@@ -399,6 +448,8 @@ def main():
             self._new_update = lambda: counter.update(n=0)
 
             def step(*args, **kwargs):
+                if STOP["asked"]:          # Stop during the update phase
+                    raise StopTraining()
                 counter["n"] += 1
                 pct = min(100, round(100 * counter["n"] / total))
                 if counter["n"] % 12 == 0 or counter["n"] == total:
@@ -412,6 +463,8 @@ def main():
             save_checkpoint()   # post-update weights: never lose an update
 
         def _on_step(self):
+            if STOP["asked"]:
+                return False               # SB3 ends learn() cleanly on False
             for info in self.locals["infos"]:
                 if "episode" in info:   # Monitor adds this when one ends
                     self.episodes += 1
@@ -466,7 +519,7 @@ def main():
 
     try:
         model.learn(total_timesteps=TOTAL_STEPS, callback=Console())
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, StopTraining):
         pass                # Stop pressed: the checkpoint still counts
     env.close()
     save_checkpoint()       # the final weights
