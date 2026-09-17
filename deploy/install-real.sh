@@ -824,6 +824,11 @@ systemctl enable physicar-myapp.service
 # Initial ROS 2 workspace build
 sudo -u physicar bash -c 'set +u; source /opt/ros/jazzy/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
 rm -rf "$PHYSICAR_WS/log"
+# Stamp the revision this install/ was built from — physicar.sh (verify_install)
+# compares it with the checkout at boot and rebuilds the whole workspace when
+# it differs or is missing, which cost every fresh install one extra ~2.5 min
+# build on first boot.
+sudo -u physicar git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD > "$PHYSICAR_WS/install/.physicar-head"
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  7. Cleanup (remove caches, logs, install artifacts)                       │
