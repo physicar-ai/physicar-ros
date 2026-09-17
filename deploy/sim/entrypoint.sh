@@ -361,18 +361,30 @@ sudo chown physicar:physicar /home/physicar/.local/share/code-server/User \
 # latest and apply it before code-server starts.
 # Failures (offline·open-vsx outage) are ignored — keep the baked version, never block boot.
 if [ -z "${CODESPACE_NAME:-}" ]; then
-  _ext_out=$(timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force 2>&1) || true
-  # The built-in baseline clone (install-sim.sh) makes code-server refuse
-  # updates of the same id ("Incompatible: ... built-in extension") — on that
-  # error, drop the clone, retry, and re-clone the fresh copy afterwards.
-  if echo "$_ext_out" | grep -q "Incompatible"; then
-    _cs_vscode=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
-    if [ -n "$_cs_vscode" ] && [ -d "$_cs_vscode/extensions/physicar-ext-builtin" ]; then
-      sudo rm -rf "$_cs_vscode/extensions/physicar-ext-builtin"
-      timeout 25 sudo -u physicar code-server --install-extension physicar.physicar-ext --force \
-        >/dev/null 2>&1 || true
-      _ext_dir=$(ls -d /home/physicar/.local/share/code-server/extensions/physicar.physicar-ext-* 2>/dev/null | sort -V | tail -1)
-      [ -n "$_ext_dir" ] && sudo cp -r "$_ext_dir" "$_cs_vscode/extensions/physicar-ext-builtin" 2>/dev/null || true
+  # The built-in baseline clone (install-sim.sh) makes code-server refuse a
+  # marketplace update of the same id. That refusal used to be matched on the
+  # text "Incompatible", but code-server 4.131 prints it as "Error while
+  # installing extension physicar.physicar-ext: [object Object]" — nothing to
+  # match, so every workspace silently stayed on its baked version (2026-09-17:
+  # sim fleet on 0.2.16 while 0.2.19 had been published for two days). Move the
+  # clone out of the way before installing — the update is then a plain user
+  # install — and re-clone the freshest user copy afterwards (or put the old
+  # clone back if that fails, so the Uninstall-proof copy never goes missing).
+  _cs_vscode=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
+  _ext_bi="${_cs_vscode:+$_cs_vscode/extensions/physicar-ext-builtin}"
+  if [ -n "$_ext_bi" ] && [ -d "$_ext_bi" ]; then
+    sudo rm -rf "${_ext_bi}.prev"; sudo mv "$_ext_bi" "${_ext_bi}.prev" 2>/dev/null || true
+  fi
+  _ext_out=$(timeout 60 sudo -u physicar code-server --install-extension physicar.physicar-ext --force 2>&1) || true
+  echo "$_ext_out" | grep -i "successfully installed\|already installed\|Error\|Failed" | head -3 | sed 's/^/[ext] /'
+  if [ -n "$_ext_bi" ]; then
+    _ext_dir=$(ls -d /home/physicar/.local/share/code-server/extensions/physicar.physicar-ext-* 2>/dev/null | sort -V | tail -1)
+    if [ -n "$_ext_dir" ] && sudo cp -r "$_ext_dir" "$_ext_bi" 2>/dev/null; then
+      basename "$_ext_dir" | sudo tee "$_ext_bi/.src" >/dev/null 2>&1 || true
+      sudo rm -rf "${_ext_bi}.prev"
+      echo "[ext] built-in baseline = $(basename "$_ext_dir")"
+    elif [ -d "${_ext_bi}.prev" ]; then
+      sudo mv "${_ext_bi}.prev" "$_ext_bi" 2>/dev/null || true
     fi
   fi
   # jupyter without --force — self-healing install only when missing

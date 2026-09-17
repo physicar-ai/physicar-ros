@@ -1082,14 +1082,18 @@ fi
   if $_ext_online; then
     _ext_cur=$(/usr/local/bin/code-server --list-extensions --show-versions 2>/dev/null \
                | grep '^physicar.physicar-ext@' | cut -d@ -f2)
+    # The built-in baseline clone below makes code-server refuse a marketplace
+    # update of the same id. That refusal used to be matched on the text
+    # "Incompatible", but code-server 4.131 prints it as "Error while installing
+    # extension physicar.physicar-ext: [object Object]" — nothing to match, so
+    # the update silently never happened (found on the sim fleet 2026-09-17,
+    # same code-server, same clone). Drop the clone first — the update is then a
+    # plain user install — and the clone step below re-creates it from the
+    # freshest user copy (the user copy always exists: install-real.sh installs
+    # it, and this very command reinstalls it if a student removed it).
+    [ -n "$CS_VSCODE" ] && sudo rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin" 2>/dev/null
     _ext_out=$(timeout 60 /usr/local/bin/code-server --install-extension physicar.physicar-ext --force 2>&1) || true
-    # The built-in baseline clone below makes code-server refuse updates of the
-    # same id ("Incompatible: ... built-in extension") — on that error, drop the
-    # clone, retry the update, and the clone step below restores it afterwards.
-    if echo "$_ext_out" | grep -q "Incompatible" && [ -n "$CS_VSCODE" ]; then
-      sudo rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin"
-      timeout 60 /usr/local/bin/code-server --install-extension physicar.physicar-ext --force &>/dev/null || true
-    fi
+    echo "$_ext_out" | grep -i "successfully installed\|already installed\|Error\|Failed" | head -3 | sed 's/^/[physicar] ext: /'
     _ext_new=$(/usr/local/bin/code-server --list-extensions --show-versions 2>/dev/null \
                | grep '^physicar.physicar-ext@' | cut -d@ -f2)
     # Restart only when the version actually changed AND nobody is connected
