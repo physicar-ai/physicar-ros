@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<script>
+  /* PhysiCar extension handshake: tells the wrapper webview this page actually
+     rendered. Sent only AFTER the window load event AND a sanity check that
+     core.js really executed — right after a (re)start nginx serves
+     /app while FastAPI is still booting, so the document can load with its
+     CSS/JS missing. A broken render must NOT be confirmed to the wrapper;
+     without the handshake it keeps its spinner and reloads the iframe (~8s)
+     until the page comes up healthy. No-op when not embedded. */
+  window.addEventListener("load", function () {
+    if (typeof detectMode !== "function") return;   // core.js missing → not healthy
+    var embedded = false;
+    try { embedded = !!(window.parent && window.parent !== window); } catch (e) { /* cross-origin */ }
+    if (!embedded) return;
+    function beacon() {
+      try { window.parent.postMessage({ type: "physicar-app-ready" }, "*"); } catch (e) { /* ignore */ }
+    }
+    beacon();
+    /* re-send every 15s: the wrapper (physicar-ext) watches these beacons after
+       locking on, so a page that later dies brings its spinner/rotation back */
+    setInterval(beacon, 15000);
+  });
+
+  /* ── PhysiCar session token sharing (physicar-ext bridge) ──
+     When the extension pushes the Chat-login session token (pushToken →
+     "physicar-token"), it is planted as the "physicar_session" COOKIE. Why a
+     cookie:
+      - It rides automatically on every same-origin request (new tabs, iframes,
+        WS handshakes), so student backends just read request.cookies —
+        zero-code token delivery, per browser = per user.
+      - localStorage written inside the webview iframe is storage-partitioned
+        away from top-level tabs, but cookies are shared (the nginx pc_token
+        gate proves this in practice).
+     In the iframe (third-party context, always an https tunnel) SameSite=None;
+     Secure is mandatory. Also mirrored to sessionStorage (NOT localStorage —
+     a persistent mirror would outlive the session cookie and leak the previous
+     user's token on shared PCs) as a fallback for JS in the same partition
+     (physicarSession helper). Sign-out (clear) propagates.
+     Outside the webview (plain tab) there is no parent — silently a no-op. */
+  (function () {
+    var SESSION_KEY = "physicar_session";
+    // Always a session cookie (no Max-Age — gone when the browser closes).
+    // Not persisted on purpose: on a shared PC a previous user's token
+    // lingering on /myapp for days outweighs the rare convenience of
+    // "reopen myapp directly after a browser restart". Opening the
+    // workspace/app makes the panel (bridge) replant the cookie anyway.
+    function setCookie(token) {
+      var attrs = "; Path=/"
+        + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
+      try { document.cookie = SESSION_KEY + "=" + encodeURIComponent(token) + attrs; } catch (_) {}
+    }
+    function clearCookie() {
+      var attrs = "; Path=/; Max-Age=0"
+        + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
+      try { document.cookie = SESSION_KEY + "=" + attrs; } catch (_) {}
+    }
+    window.addEventListener("message", function (e) {
+      var msg = e.data || {};
+      if (msg.type === "physicar-token" && typeof msg.token === "string" && msg.token) {
+        setCookie(msg.token);
+        try { sessionStorage.setItem(SESSION_KEY, msg.token); } catch (_) {}
+        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}  /* clear legacy persistent mirror */
+      } else if (msg.type === "physicar-token-clear") {
+        clearCookie();
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+      }
+    });
+    try {
+      if (window.parent !== window) {
+        // always request so a stored token gets refreshed (no reply if chat is closed)
+        window.parent.postMessage({ type: "physicar-token-request" }, "*");
+      }
+    } catch (_) {}
+
+    /* Cloud sim auto-login: on sim.physicar.ai the gateway's own cookie already
+       identifies the user — exchange it for an API session via same-origin
+       /__session when we hold no token (standalone tab; the extension bridge
+       covers the embedded case). Elsewhere the endpoint doesn't exist →
+       non-OK/throw → silently ignored. */
+    try {
+      var _have = null;
+      try {
+        _have = /(?:^|;\s*)physicar_session=/.test(document.cookie)
+          ? "cookie" : sessionStorage.getItem(SESSION_KEY);
+      } catch (_) {}
+      if (!_have) {
+        fetch("/__session", { method: "POST" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            if (d && d.token) {
+              setCookie(d.token);
+              try { sessionStorage.setItem(SESSION_KEY, d.token); } catch (_) {}
+            }
+          })
+          .catch(function () {});
+      }
+    } catch (_) {}
+  })();
+</script>
+<script>
+  /* Boot race guard: right after a (re)start, CSS/JS subresources can fail
+     while the document itself loads (nginx answers 503 for them while FastAPI
+     is still booting), leaving an unstyled page. If any stylesheet/script
+     fails to load, reload once the backend settles (max 5 attempts, backed
+     off; counter resets on success). */
+  (function () {
+    var KEY = 'pc-asset-reload';
+    window.addEventListener('error', function (e) {
+      var t = e.target || {};
+      if (t.tagName !== 'LINK' && t.tagName !== 'SCRIPT') return;
+      var n = +(sessionStorage.getItem(KEY) || 0);
+      if (n >= 5 || window.__pcReloading) return;
+      window.__pcReloading = true;
+      sessionStorage.setItem(KEY, String(n + 1));
+      setTimeout(function () { location.reload(); }, 2000 * (n + 1));
+    }, true);
+    window.addEventListener('load', function () {
+      if (!window.__pcReloading) sessionStorage.removeItem(KEY);
+    });
+  }());
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSICAR App</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/control.css">
+<style>
+/* ── /app layout — 3 columns (both dividers drag-resizable, session-only):
+   ┌────────┬───────────────────┬──────────────┐
+   │        │ CONTROL (pinned top)│              │
+   │ Status ├──── ↕ divider ────┤ Simulator    │
+   │ panel  │ App (My App/VNC   │ (/sim, sim   │
+   │        │  pill toggle)     │  mode only)  │
+   └────────┴───────────────────┴──────────────┘ */
+body{display:flex;flex-direction:row;height:100vh}
+
+/* main : sensors = 5 : 2 by default (drag-adjustable, session only) */
+.main{display:flex;flex-direction:column;min-width:0}
+
+/* Column: CONTROL pinned on top, MY APP / VNC accordion below. Sections keep
+   a 4:3 body, so the stack scrolls when they don't fit. */
+.stack{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;
+}
+/* No card chrome — CONTROL/APP are flat sections split by a horizontal divider */
+.stack-panel{
+  display:none;flex-direction:column;min-height:0;
+  background:#111;overflow:hidden;
+}
+.stack-panel.on{display:flex}
+/* CONTROL height follows its content (pads sized from column width) and
+   scrolls with the accordion like every other section. MY APP / VNC:
+   headers always visible, bodies collapsible, open bodies 4:3. */
+#panel-control{background:var(--bg);flex:0 0 auto}
+#panel-myapp,#panel-vnc{display:flex;flex:0 0 auto;border-top:1px solid var(--border)}
+#panel-myapp .sp-body,#panel-vnc .sp-body{flex:none;aspect-ratio:4/3;min-height:0}
+.stack-panel.collapsed .sp-body{display:none}
+.sp-caret{font-size:17px;color:var(--fg);width:14px;text-align:center;
+  display:inline-block;line-height:1;transition:transform .15s}
+.stack-panel.collapsed .sp-caret{transform:rotate(-90deg)}
+#panel-control.collapsed .ctrl-strip{display:none}
+
+/* ── Left sensor column headers — unified with the app card header strip;
+   sections keep only a slim content inset. Sections are accordion folds:
+   Camera/LiDAR stop their streams entirely while collapsed. ── */
+.right .panel-section{padding:0 6px 8px}
+.right .panel-title{height:24px;box-sizing:border-box;display:flex;align-items:center;gap:5px;
+  margin:0 -6px 6px;padding:0 10px 0 4px;font-size:10px;font-weight:700;
+  letter-spacing:.08em;color:var(--fg3);background:var(--bg2);
+  border-bottom:1px solid var(--border);text-transform:uppercase;
+  cursor:pointer;user-select:none}
+/* flush sections (Camera/LiDAR) — beat app.css's 3-class padding rule so
+   every sensor header shares the exact same caret indent */
+.right .panel-section.panel-section-flush .panel-title{padding:0 10px 0 4px}
+.right .panel-section.collapsed{padding-bottom:0}
+.right .panel-section.collapsed > :not(.panel-title){display:none}
+.right .panel-section.collapsed .panel-title{margin-bottom:0}
+.right .panel-section.collapsed .sp-caret{transform:rotate(-90deg)}
+
+/* Slim identity strip on every panel */
+.sp-head{
+  height:24px;flex-shrink:0;display:flex;align-items:center;gap:5px;
+  padding:0 10px 0 4px;font-size:10px;font-weight:700;letter-spacing:.08em;
+  color:var(--fg3);background:var(--bg2);border-bottom:1px solid var(--border);
+  cursor:pointer;user-select:none;
+}
+
+/* Panel body fills whatever height the card gets */
+.sp-body{position:relative;width:100%;flex:1;min-height:0}
+.sp-body iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+.sp-actions{margin-left:auto;margin-right:-6px;display:flex;gap:2px;align-items:center}  /* header buttons hug the edge (strip keeps 10px text padding) */
+.sp-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:5px;color:var(--fg2);
+}
+.sp-btn:hover{background:var(--bg3);color:var(--fg)}
+.sp-btn svg{width:13px;height:13px}
+
+/* Simulator column (sim mode only — real robots have no /sim). Own header
+   carries the current-world chip; the embedded /sim hides its toolbar copy. */
+#simcol{display:none;min-width:0;flex-shrink:0;background:#111}
+body.sim-mode #simcol{display:flex;flex-direction:column}
+body:not(.sim-mode) #divider2{display:none}
+#simcol .sim-body{position:relative;flex:1;min-height:0}
+#simcol iframe{position:absolute;inset:0;width:100%;height:100%;border:none;background:#111}
+/* World chip: must read as an interactive select at a glance — raised body
+   (gradient + shadow), visible border, bright caret, hover/press feedback.
+   No centering ghost — it starved the name of width. */
+/* SIMULATOR header is taller than the other strips on purpose — the world
+   chip needs room to read as a real select control. 3-column grid keeps the
+   chip TRUE-centered in the column; when width runs out the LABEL gives way
+   (ellipsis) before the world name does. */
+#simcol > .sp-head{height:32px;font-size:11px;display:grid;
+  grid-template-columns:1fr auto 1fr;align-items:center;gap:6px}
+#simcol > .sp-head > span{grid-column:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#simcol > .sp-head > .sp-actions{grid-column:3;justify-self:end}
+#sim-world-btn{grid-column:2;margin:0;padding:2px 32px 2px 16px;border-radius:999px;font-size:14px;
+  font-weight:700;color:#fff;
+  background:linear-gradient(#8d68d0, var(--accent));
+  border:1px solid var(--accent);
+  cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  min-width:90px;max-width:300px;position:relative;text-align:center;
+  box-shadow:0 1px 5px rgba(126,87,194,.45);
+  transition:filter .15s, box-shadow .15s}
+#sim-world-btn::after{content:'\25be';position:absolute;right:11px;top:50%;
+  transform:translateY(-50%);color:#fff;font-size:19px;line-height:1}
+#sim-world-btn:hover{filter:brightness(1.12);box-shadow:0 1px 9px rgba(126,87,194,.75)}
+#sim-world-btn:active{filter:brightness(.92);box-shadow:none}
+
+/* World modal — same full-cover treatment as the sensor zoom modal */
+#world-modal .sensor-modal{width:min(640px,92vw)}
+.wm-body{overflow-y:auto;flex:1;padding:4px 0;max-height:calc(95vh - 140px)}
+.wm-sec{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--fg3);padding:8px 14px 3px}
+.wm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:8px;padding:4px 14px 8px}
+.wm-card{border:1px solid var(--border);border-radius:8px;padding:7px;cursor:pointer;
+  display:flex;flex-direction:column;gap:3px;font-size:12px;background:var(--bg2)}
+.wm-card:hover{background:var(--bg3)}
+.wm-card.active{border-color:#4ade80}
+.wm-card.active .wm-name{color:#4ade80}
+.wm-thumbbox{width:100%;aspect-ratio:4/3;border-radius:5px;overflow:hidden;
+  background:linear-gradient(160deg,#333c4d,#232937);display:flex;align-items:center;justify-content:center}
+.wm-thumb{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
+.wm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+/* Two-line sub: size on its own line, then id + copy + delete. flex-wrap +
+   the size span's full flex-basis force the break, so the trash button can
+   never be pushed out past the card edge. */
+.wm-sub{display:flex;align-items:center;gap:3px 5px;font-size:10px;color:var(--fg3);
+  min-height:16px;flex-wrap:wrap}
+.wm-size{flex-basis:100%}
+.wm-id{font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wm-copy{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
+  font-size:10px;padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;flex-shrink:0}
+.wm-copy:hover{border-color:var(--accent);color:var(--accent)}
+.wm-del{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:4px;
+  padding:1px 4px;cursor:pointer;display:inline-flex;align-items:center;flex-shrink:0;margin-left:auto}
+.wm-del:hover{color:#f87171;background:rgba(248,113,113,.15)}
+.wm-card.wm-confirming{justify-content:center;cursor:default}
+.wm-cfm-q{font-size:11px;color:var(--fg2);text-align:center;line-height:1.5;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.wm-cfm-del{border:none;background:#b91c1c;color:#fff;border-radius:5px;padding:5px 0;
+  cursor:pointer;font-size:12px;font-weight:600;width:100%}
+.wm-cfm-del:hover{background:#991b1b}
+.wm-cfm-no{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:5px;
+  padding:4px 0;cursor:pointer;font-size:12px;width:100%}
+.wm-cfm-no:hover{background:var(--bg2)}
+.wm-empty{color:var(--fg3);font-size:11px;padding:2px 0;grid-column:1/-1}
+.wm-foot{border-top:1px solid var(--border);padding:8px 14px;display:flex;flex-direction:column;gap:5px}
+#wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
+.wm-linkrow{display:flex;gap:6px}
+.wm-linkrow input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;color:var(--fg);font-size:12px;padding:6px 8px}
+.wm-linkrow button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
+  border-radius:6px;font-size:12px;padding:6px 10px;cursor:pointer}
+.wm-linkrow button:hover{border-color:var(--accent);color:var(--accent)}
+#wm-status.error{color:#f87171}
+#wm-status.success{color:#4ade80}
+#wm-status.busy::before{content:'';display:inline-block;width:10px;height:10px;
+  border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;
+  margin-right:6px;vertical-align:-1px;animation:wm-spin 0.8s linear infinite}
+@keyframes wm-spin{to{transform:rotate(360deg)}}
+/* Install in progress: freeze every other world action (card switch/install,
+   delete, import) — only the header close button stays live */
+#world-modal.wm-busy .wm-body{pointer-events:none;opacity:.55}
+#world-modal.wm-busy .wm-linkrow input,
+#world-modal.wm-busy .wm-linkrow button{opacity:.5}
+
+/* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
+   nowrap by design — the pads shrink with BOTH the card height and the column
+   width, so the two groups can never stack vertically. Fixed side content is
+   kept minimal (tight paddings) so the pads get the space. */
+#page-control{
+  flex:0 0 auto;container-type:inline-size;overflow:hidden;
+  display:flex;flex-wrap:nowrap;justify-content:center;
+  align-items:center;padding:4px;
+}
+#page-control .cg{display:flex;align-items:center;gap:8px;padding:0 8px;flex-shrink:0}
+#page-control .cg+.cg{border-left:1px solid var(--border)}
+#page-control .ctrl-joystick-wrap{
+  width:clamp(56px, 50cqw - 96px, 240px);
+  height:clamp(56px, 50cqw - 96px, 240px);flex-shrink:0}
+#page-control .ctrl-vslider{height:clamp(56px, 50cqw - 96px, 240px);width:20px}
+/* Narrow column: collapse the readout columns and keep only the pads —
+   control surface survives with no overlap and no wrapping. */
+@container (max-width: 370px){
+  #page-control .cg{padding:0 4px;gap:6px}
+  #page-control .cg-side{display:none}
+  #page-control .ctrl-joystick-wrap{
+    width:clamp(56px, 50cqw - 40px, 240px);
+    height:clamp(56px, 50cqw - 40px, 240px)}
+  #page-control .ctrl-vslider{height:clamp(56px, 50cqw - 40px, 240px)}
+}
+.cg-side{display:flex;flex-direction:column;gap:6px;width:52px;flex-shrink:0}
+.cg-title{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--fg2)}
+.cg-read{font-size:10px;color:var(--fg3);line-height:1.3}
+.cg-read strong{display:block;font-size:13px;color:var(--fg);font-weight:600;
+  font-variant-numeric:tabular-nums}
+
+/* No visual "focused card" treatment — the shield below still gates
+   iframe interaction, it just doesn't repaint the card. */
+
+/* Click-to-interact shield: iframes swallow wheel events, so an inactive
+   card is covered by this transparent layer — wheel over it scrolls the
+   stack, a click hands focus (and the pointer) to the iframe below */
+.sp-shield{position:absolute;inset:0;z-index:4;cursor:pointer;transition:background .15s}
+.sp-shield:hover{background:rgba(255,255,255,.04)}
+.stack-panel.focused .sp-shield{display:none}
+
+
+/* ── Divider ── */
+.divider{
+  width:6px;cursor:col-resize;background:#3a3055;   /* dark purple — accent on hover */
+  flex-shrink:0;position:relative;z-index:10;transition:background .15s;
+}
+.divider:hover,.divider.dragging{background:var(--accent)}
+
+/* ── Right sensor column (inline panel, fixed type sizes). Headers are
+   unified with .sp-head (24px / 10px caps) — see the .panel-title rule
+   near the stack styles; don't restyle titles here. ── */
+.right{display:flex;flex-direction:column;min-width:0;flex-shrink:0;background:var(--bg2)}
+.right .panel{width:100%;min-width:0;flex:1;border-left:none}
+.right .panel-title select{font-size:11px;border-radius:5px;padding:1px 4px}
+.right .panel-row{font-size:11px;padding:4px 0}
+.right .panel-value{font-size:13px}
+.right .battery-bar{height:8px;border-radius:4px;margin-top:8px}
+.right .panel-restart{padding:6px !important}
+.right .btn-restart{font-size:12px;padding:4px 12px;border-radius:6px;white-space:nowrap;
+  color:#f87171;border-color:rgba(248,113,113,.55)}
+.right .btn-restart:hover{color:#fff}
+</style>
+</head>
+<body>
+
+<!-- Sensors — leftmost column -->
+<div class="right" id="right">
+  <div class="panel" id="sensor-panel">
+    <div class="panel-section panel-section-flush" id="sec-camera">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>Camera
+        <select id="cam-res" onchange="changeCameraRes()">
+          <option value="480">360p</option>
+          <option value="320" selected>240p</option>
+          <option value="160">120p</option>
+        </select>
+      </div>
+      <img class="panel-camera panel-zoomable" id="p-camera" alt="Camera" onclick="openSensorModal('camera')" title="Click to enlarge">
+    </div>
+    <div class="panel-section panel-section-flush" id="sec-lidar">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>LiDAR
+        <select id="lidar-range" onchange="changeLidarRange()">
+          <option value="2">2m</option>
+          <option value="4" selected>4m</option>
+          <option value="8">8m</option>
+          <option value="16">16m</option>
+        </select>
+      </div>
+      <canvas class="panel-lidar panel-zoomable" id="p-lidar" onclick="openSensorModal('lidar')" title="Click to enlarge"></canvas>
+    </div>
+    <div class="panel-section" id="sec-velocity">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>Velocity</div>
+      <div class="panel-row"><span class="panel-label">Linear</span><span class="panel-value" id="p-linear">0.0 m/s</span></div>
+      <div class="panel-row"><span class="panel-label">Angular</span><span class="panel-value" id="p-angular">0.0 rad/s</span></div>
+    </div>
+    <div class="panel-section" id="sec-battery">
+      <div class="panel-title"><span class="sp-caret">&#9662;</span>Battery
+      </div>
+      <div class="panel-row">
+        <span class="panel-value" id="p-battery">--%</span>
+        <span class="panel-value" id="p-voltage">--V</span>
+      </div>
+      <div class="battery-bar"><div class="battery-fill" id="p-battery-fill" style="width:0%"></div></div>
+    </div>
+    <div class="panel-section panel-restart">
+      <button class="btn-restart" id="btn-restart" onclick="restartContainer()">&#x21bb; Restart</button>
+    </div>
+  </div>
+</div>
+
+<div class="divider" id="divider"></div>
+
+<div class="main" id="main">
+  <div class="stack" id="stack">
+    <!-- SIMULATOR panel removed — on cloud sim the separate sim.physicar tab (standalone /sim view)
+         owns it. Same app composition (MYAPP/VNC/CONTROL) as the real car for a unified UI. -->
+
+    <!-- CONTROL card (control.js gates sending on #page-control.active) -->
+    <div class="stack-panel on" id="panel-control">
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>CONTROL
+        <div class="sp-actions" title="Keyboard: arrow keys drive"
+             style="gap:4px;font-size:10px;color:var(--fg3);font-weight:600">&#8593;&#8595;&#8592;&#8594;&nbsp;keys</div>
+      </div>
+      <div class="ctrl-strip" id="page-control">
+        <!-- Drive (speed / steering) -->
+        <div class="cg">
+          <div class="ctrl-vslider" title="Max speed (m/s)">
+            <span class="ctrl-vslider-val"><strong id="ctrl-max-speed-val">0.5</strong></span>
+            <input type="range" id="ctrl-max-speed" min="0.5" max="3.0" step="0.1" value="0.5" oninput="CTRL.setMaxSpeed(this.value)">
+            <span class="ctrl-vslider-label">Max</span>
+          </div>
+          <div class="ctrl-joystick-wrap" id="ctrl-drive-joy">
+            <canvas class="ctrl-joystick" id="ctrl-drive-canvas"></canvas>
+          </div>
+          <div class="cg-side">
+            <div class="cg-title">DRIVE</div>
+            <div class="cg-read">Speed<strong><span id="ctrl-speed">0.00</span> m/s</strong></div>
+            <div class="cg-read">Steer<strong><span id="ctrl-steer">0</span>°</strong></div>
+          </div>
+        </div>
+
+        <!-- Look (camera pan / tilt) -->
+        <div class="cg">
+          <div class="ctrl-joystick-wrap" id="ctrl-cam-joy">
+            <canvas class="ctrl-joystick" id="ctrl-cam-canvas"></canvas>
+          </div>
+          <div class="cg-side">
+            <div class="cg-title">LOOK</div>
+            <div class="cg-read">Pan<strong><span id="ctrl-pan">0</span>°</strong></div>
+            <div class="cg-read">Tilt<strong><span id="ctrl-tilt">0</span>°</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- VNC (accordion section: header click toggles the body) -->
+    <div class="stack-panel on" id="panel-vnc">
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>VNC
+        <div class="sp-actions">
+          <button class="sp-btn" id="btn-open-vnc" title="Open in new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
+    </div>
+
+    <!-- MYAPP (accordion section) -->
+    <div class="stack-panel on" id="panel-myapp">
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>MY APP
+        <div class="sp-actions">
+          <button class="sp-btn" id="btn-open-myapp" title="Open in new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="divider" id="divider2"></div>
+
+<!-- Simulator (sim mode only): own header with the current-world chip,
+     /sim embedded below it (its toolbar copy is hidden in embedded mode) -->
+<div id="simcol">
+  <div class="sp-head"><span>SIMULATOR</span>
+    <button id="sim-world-btn" title="Select world">&hellip;</button>
+    <div class="sp-actions">
+      <button class="sp-btn" id="btn-open-sim" title="Open in new tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      </button>
+    </div></div>
+  <div class="sim-body"><iframe id="frame-sim" title="Simulator" allow="autoplay"></iframe></div>
+</div>
+
+<!-- World modal: official/custom sections, inline delete confirm, cloud install -->
+<div class="sensor-modal-overlay" id="world-modal" style="display:none">
+  <div class="sensor-modal">
+    <div class="sensor-modal-header"><span>Worlds</span>
+      <button class="sensor-modal-close" id="wm-close">&times;</button></div>
+    <div class="wm-body">
+      <div class="wm-sec">OFFICIAL WORLD</div>
+      <div id="wm-official"></div>
+      <div class="wm-sec">CUSTOM WORLD</div>
+      <div id="wm-custom"></div>
+      <div class="wm-sec" id="wm-mine-sec" style="display:none">MY WORLDS</div>
+      <div id="wm-mine"></div>
+      <div class="wm-sec" id="wm-classroom-sec" style="display:none">CLASSROOM</div>
+      <div id="wm-classroom"></div>
+    </div>
+    <div class="wm-foot">
+      <div class="wm-sec" style="padding:0 0 2px">IMPORT BY WORLD ID</div>
+      <div class="wm-linkrow">
+        <input id="wm-link" placeholder="World ID" autocomplete="off" spellcheck="false">
+        <button id="wm-link-go">Import</button>
+      </div>
+      <div id="wm-status"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/core.js"></script>
+<script src="/static/js/control.js"></script>
+<script src="/static/js/sensors.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  /* ── Layout: [Control pinned + selected app] | status | simulator (sim only) ──
+     Control is always shown (pinned top); below it, the one app chosen via the select (My App/VNC).
+     The simulator is a fixed right column — embeds the standalone /sim view (own toolbar) as-is. */
+  const APPS = [
+    { id: 'myapp', label: 'My App', path: '/myapp/' },
+    { id: 'vnc',   label: 'VNC',    path: '/vnc/'   },
+  ];
+  const KEY = 'app-view';
+  let simMode = false;
+  // Accordion open-state — sections stay mounted; each header toggles its
+  // body. Sensors fold too (Camera/LiDAR stop streaming while collapsed).
+  // Everything starts expanded.
+  const open = { control: true, myapp: true, vnc: true,
+                 camera: true, lidar: true, velocity: true, battery: true };
+  const SENSOR_SECS = [['camera', 'sec-camera'], ['lidar', 'sec-lidar'],
+                       ['velocity', 'sec-velocity'], ['battery', 'sec-battery']];
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && s.open) {
+      Object.keys(open).forEach(k => { if (k in s.open) open[k] = !!s.open[k]; });
+    }
+    else if (s && APPS.some(x => x.id === s.app)) {   // migrate legacy single-select schema
+      APPS.forEach(x => { open[x.id] = x.id === s.app; });
+    } else if (s && Array.isArray(s.sel)) {   // migrate legacy multi-select schema
+      APPS.forEach(x => { open[x.id] = s.sel.includes(x.id); });
+    }
+  } catch(e){}
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify({ open: open })); }catch(e){} }
+
+  const main    = document.getElementById('main');
+  const right   = document.getElementById('right');
+  const divider = document.getElementById('divider');
+  const divider2= document.getElementById('divider2');
+  const simcol  = document.getElementById('simcol');
+  const ctrlCol = document.getElementById('page-control');
+  const panels = {};
+  const frames = {};
+  APPS.forEach(x => {
+    panels[x.id] = document.getElementById('panel-' + x.id);
+    frames[x.id] = document.getElementById('frame-' + x.id);
+  });
+  // Accordion headers: click toggles the section body (header buttons
+  // excluded). CONTROL folds too — its key driver stays armed regardless.
+  APPS.forEach(x => {
+    panels[x.id].querySelector('.sp-head').addEventListener('click', (e) => {
+      if (e.target.closest('.sp-actions')) return;
+      open[x.id] = !open[x.id];
+      save(); render();
+    });
+  });
+  document.querySelector('#panel-control .sp-head').addEventListener('click', (e) => {
+    if (e.target.closest('.sp-actions')) return;
+    open.control = !open.control;
+    save(); render();
+  });
+  // Sensor section headers fold too (their selects excluded from the toggle)
+  SENSOR_SECS.forEach(([k, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.querySelector('.panel-title').addEventListener('click', (e) => {
+      if (e.target.closest('select')) return;
+      open[k] = !open[k];
+      save(); render();
+    });
+  });
+
+  // Open a panel (MyApp / VNC / the standalone simulator view) in a full
+  // browser tab. Inside the VS Code webview the iframe sandbox blocks
+  // window.open (returns null) — relay to the extension instead, which opens
+  // the system browser via openExternal. The session token reaches the new
+  // tab via the physicar_session cookie (no URL exposure).
+  function openInTab(path){
+    const url = new URL(path, location.href).href;
+    let w = null;
+    try { w = window.open(url, '_blank', 'noopener'); } catch(e){}
+    if (!w && window.parent !== window) {
+      window.parent.postMessage({ type: 'physicar-open', url }, '*');
+    }
+  }
+  document.getElementById('btn-open-myapp').addEventListener('click', () => openInTab('/myapp/'));
+  document.getElementById('btn-open-vnc').addEventListener('click', () => openInTab('/vnc/'));
+  document.getElementById('btn-open-sim').addEventListener('click', () => openInTab('/sim/'));
+
+  // MyApp liveness: the offline placeholder polls itself back to life, but a
+  // RUNNING app that dies leaves its last page frozen in the iframe. The
+  // server watches the port (/proc, no HTTP into the app) and pushes state
+  // over the /states SSE stream — on the up -> down transition, reload the
+  // frame so the placeholder (and its auto-reload) takes over right away.
+  let myappWasUp = null;
+  document.addEventListener('myapp-status', (e) => {
+    const up = !!e.detail.up;
+    // Reload on BOTH transitions: death swaps the placeholder in right away,
+    // recovery replaces it without waiting out the placeholder's own backoff.
+    if (myappWasUp !== null && up !== myappWasUp && open.myapp) {
+      const f = document.getElementById('frame-myapp');
+      try { f.contentWindow.location.reload(); }
+      catch(err) { f.src = '/myapp/'; }
+    }
+    myappWasUp = up;
+  });
+
+  function render(){
+    ctrlCol.classList.add('active');   // CTRL send gate (keyboard driving stays even when collapsed)
+    document.getElementById('panel-control').classList.toggle('collapsed', !open.control);
+    SENSOR_SECS.forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('collapsed', !open[k]);
+    });
+    // Camera/LiDAR: collapsed = stream fully stopped (change-guarded in sensors.js)
+    if (typeof setCameraEnabled === 'function') setCameraEnabled(open.camera);
+    if (typeof setLidarEnabled === 'function') setLidarEnabled(open.lidar);
+    APPS.forEach(x => {
+      const on = !!open[x.id];
+      panels[x.id].classList.toggle('collapsed', !on);
+   // Load on expand, unload on collapse (reclaim hidden VNC stream resources — keep the existing profile)
+      const f = frames[x.id];
+      const src = f.getAttribute('src');
+      if (on) { if (src !== x.path) f.src = x.path; }
+      else if (src && src !== 'about:blank') f.src = 'about:blank';
+    });
+    const sf = document.getElementById('frame-sim');
+    if (simMode) { if (sf.getAttribute('src') !== '/sim/?embed') sf.src = '/sim/?embed'; }
+    else if (sf.getAttribute('src') && sf.getAttribute('src') !== 'about:blank') sf.src = 'about:blank';
+    updateFocus(true);
+  }
+
+  /* ── 3-column split: [status | app | sim] — both dividers draggable (session-only) ── */
+  let b1 = 0.2, b2 = 1;                // real default: sensors 1 : center 4 (no sim column)
+  function applyRatio(){
+    right.style.width = 'calc(' + (b1 * 100).toFixed(2) + '% - 4px)';
+    main.style.width  = 'calc(' + (((simMode ? b2 : 1) - b1) * 100).toFixed(2) + '% - 4px)';
+    if (simMode) simcol.style.width = 'calc(' + ((1 - b2) * 100).toFixed(2) + '% - 4px)';
+    main.style.flex = 'none'; right.style.flex = 'none';
+  }
+
+  function makeDrag(el, onMove){
+    let dragging = false;
+    function down(e){
+      e.preventDefault(); dragging = true;
+      el.classList.add('dragging');
+      document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = 'none');
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+      document.addEventListener('touchmove', move, {passive:false});
+      document.addEventListener('touchend', up);
+    }
+    function move(e){
+      if(!dragging) return;
+      e.preventDefault();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      onMove(cx, cy);
+    }
+    function up(){
+      dragging = false;
+      el.classList.remove('dragging');
+      document.querySelectorAll('iframe').forEach(f => f.style.pointerEvents = '');
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', up);
+      // ratios are session-only by design — not saved
+    }
+    el.addEventListener('mousedown', down);
+    el.addEventListener('touchstart', down, {passive:false});
+  }
+
+  // Divider 1: status | app — keep a minimum gap from divider 2
+  makeDrag(divider, (cx) => {
+    const hi = (simMode ? b2 : 1) - 0.2;
+    b1 = Math.max(0.1, Math.min(hi, cx / document.body.clientWidth));
+    applyRatio();
+  });
+  // Divider 2: app | simulator (sim mode only)
+  makeDrag(divider2, (cx) => {
+    b2 = Math.max(b1 + 0.2, Math.min(0.9, cx / document.body.clientWidth));
+    applyRatio();
+  });
+
+  /* ── Click-to-interact cards ──
+     .focused on a panel = it owns the pointer/keyboard. For iframe cards
+     that means shield hidden + accent border; when NO iframe is focused,
+     the keyboard goes to the parent document — i.e. the inline CONTROL
+     card — so that card glows instead. Tracked via an activeElement poll
+     (cross-origin safe): clicking anywhere in the parent document pulls
+     focus off the iframe, which re-arms its shield. */
+  /* VSCode tab activation: clicks landing inside nested iframes (sim/myapp/
+     vnc) never reach VSCode's focus tracking, so the app.physicar editor tab
+     stays inactive. Report any interaction to the wrapper webview — the
+     extension reveals the tab with preserveFocus so the click target keeps
+     the keyboard (arrow-key driving is not interrupted). No-op in a plain
+     browser tab. */
+  let lastInteractSent = 0;
+  function notifyInteract(){
+    const now = Date.now();
+    if (now - lastInteractSent < 1000) return;
+    lastInteractSent = now;
+    try {
+      if (window.parent !== window) window.parent.postMessage({ type: 'physicar-interact' }, '*');
+    } catch(e){}
+  }
+  document.addEventListener('pointerdown', notifyInteract, true);
+
+  /* The reveal that activates the tab takes focus (VSCode ties activation to
+     focus). The wrapper punts it back into this page; if the interaction was
+     inside an iframe (sim view), restore it the rest of the way so arrow-key
+     driving continues uninterrupted. */
+  let pendingRefocus = null;
+  window.addEventListener('focus', () => {
+    if (pendingRefocus && Date.now() < pendingRefocus.until) {
+      const el = pendingRefocus.el;
+      pendingRefocus = null;
+      setTimeout(() => { try { el.focus(); } catch(e){} }, 0);
+    }
+  });
+
+  /* Arrow keys relayed by the wrapper webview (focus parked on its document —
+     VSCode's harness does that in several flows). Re-dispatch on this document
+     so the CONTROL key driver hears them no matter which layer holds focus. */
+  window.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type === 'physicar-key' &&
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(m.key)) {
+      document.dispatchEvent(new KeyboardEvent(m.kind === 'keyup' ? 'keyup' : 'keydown', { key: m.key }));
+    }
+  });
+
+  let lastFocused = null;
+  // Focus moved → synthesize keyup for the arrows, but only after a grace
+  // period. Without any release, a key held across a focus change never
+  // delivers its real keyup to the CONTROL driver and the car drives on a
+  // latched key. But an INSTANT release breaks the opposite case: VSCode's
+  // webview focus dance (reveal/punt) wobbles activeElement for a few
+  // hundred ms while the arrows are still physically held — each wobble
+  // zeroed speed/steering for ~100 ms until the next auto-repeat keydown,
+  // making the car twitch straight/left at the wobble frequency (measured:
+  // steering 0.349→0→0.349 rad, yaw rate 1.0→0→1.0 every ~2 s). A held key
+  // keeps emitting auto-repeat keydowns, so any arrow keydown that reaches
+  // this document within the grace window cancels the release; a truly
+  // abandoned hold has no repeats and still stops ~0.4 s later (the WS
+  // dead-man and the 1 s driver watchdog remain the hard safety net).
+  let releaseTimer = null;
+  function releaseArrows(){
+    if (releaseTimer) return;
+    releaseTimer = setTimeout(() => {
+      releaseTimer = null;
+      ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].forEach(k =>
+        document.dispatchEvent(new KeyboardEvent('keyup', { key: k })));
+    }, 400);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!releaseTimer) return;
+    if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) return;
+    // Same guard as the CONTROL key driver: keys aimed at form fields are
+    // typing, not driving — they must not keep a stale hold alive.
+    const t = e.target.tagName;
+    if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
+    clearTimeout(releaseTimer);
+    releaseTimer = null;
+  }, true);
+  window.addEventListener('blur', releaseArrows);
+  function updateFocus(force){
+    const ae = document.activeElement;
+    const target = (ae && ae.tagName === 'IFRAME') ? ae : null;
+    // The compare key includes non-iframe activeElements too, so moving
+    // between header controls is also detected
+    const key = target || ae;
+    const changed = key !== lastFocused;
+    if (!force && !changed) return;
+    lastFocused = key;
+    if (changed) {
+      releaseArrows();
+      // Focus entered an iframe = the user clicked inside it (sim/myapp/vnc) —
+      // those clicks never bubble here, so this poll is where we learn of them
+      if (target) {
+        pendingRefocus = { el: target, until: Date.now() + 1500 };
+        notifyInteract();
+      }
+    }
+    document.querySelectorAll('.stack-panel.focused').forEach(el => el.classList.remove('focused'));
+    if (target) {
+      const holder = target.closest('.stack-panel');
+      if (holder) holder.classList.add('focused');
+    } else if (ae && ae.closest && ae.closest('.stack-panel')) {
+      // A panel-header control (app select, etc.) is in use — keep that panel lit
+      ae.closest('.stack-panel').classList.add('focused');
+    }
+  }
+  setInterval(() => updateFocus(false), 250);
+
+  document.querySelectorAll('.sp-shield').forEach(sh => {
+    sh.addEventListener('click', () => {
+      const f = document.getElementById(sh.dataset.frame);
+      if (f) f.focus();
+      updateFocus(true);   // immediate — don't wait for the poll tick
+    });
+  });
+
+  // (All stack-panel headers are accordion toggles now — bound above.)
+
+  /* Sim iframe keyboard passthrough: clicking the 3D view moves keyboard
+     focus INTO the same-origin sim frame, where this document's CONTROL key
+     driver can't hear it. Capture the arrows inside the frame, re-dispatch
+     them here, and stop them locally (capture phase — also keeps the
+     viewer's own arrow-pan from fighting the drive). Result: arrow driving
+     works wherever the user last clicked in app.physicar. MyApp/VNC frames
+     are deliberately NOT forwarded — focused there, the keyboard belongs to
+     the student's app. */
+  const simFrame = document.getElementById('frame-sim');
+
+  simFrame.addEventListener('load', () => {
+    let doc = null;
+    try { doc = simFrame.contentDocument; } catch (e) { return; }   // cross-origin guard
+    if (!doc) return;
+    ['keydown', 'keyup'].forEach(type => {
+      doc.addEventListener(type, (e) => {
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+        // Typing in a sim-page form field (evaluation card, etc.): arrows belong
+        // to the text cursor there, not to driving — don't hijack keydowns.
+        // Keyups are still mirrored (without preventDefault) so a key held
+        // while clicking into the field can't stay latched in the driver.
+        const t = e.target && e.target.tagName;
+        if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') {
+          if (type === 'keyup') {
+            document.dispatchEvent(new KeyboardEvent('keyup', { key: e.key, code: e.code }));
+          }
+          return;
+        }
+        e.preventDefault(); e.stopPropagation();
+        document.dispatchEvent(new KeyboardEvent(type, { key: e.key, code: e.code }));
+      }, true);
+    });
+  });
+
+  /* ── Control (inline) ── */
+  CTRL.init();
+  // Range sliders (max speed, etc.) must not hold keyboard focus after use —
+  // a focused slider swallows the arrow keys that should drive the car
+  document.querySelectorAll('.ctrl-strip input[type="range"]').forEach(el => {
+    const drop = () => el.blur();
+    el.addEventListener('pointerup', drop);
+    el.addEventListener('touchend', drop);
+    el.addEventListener('change', drop);
+  });
+  const redrawJoysticks = () => { CTRL._drawJoystick('drive'); CTRL._drawJoystick('cam'); };
+  requestAnimationFrame(redrawJoysticks);
+  // Redraw whenever the control column changes size (window resize, divider drag)
+  new ResizeObserver(() => requestAnimationFrame(redrawJoysticks))
+    .observe(document.getElementById('page-control'));
+
+  /* ── Sensors (inline) ── */
+  ['cam-res', 'lidar-range'].forEach(id => {
+    const v = localStorage.getItem(id);
+    // 'off' options were replaced by the accordion fold — ignore stale values
+    if (v && v !== 'off' && $(id)) $(id).value = v;
+  });
+  startStateStream();
+  startLidarStream();
+  startCameraStream();
+
+  /* ── World selector (sim mode): header chip + full-cover modal ── */
+  function initSimWorldUI(){
+    const btn = document.getElementById('sim-world-btn');
+    const modal = document.getElementById('world-modal');
+    const st = document.getElementById('wm-status');
+    const setSt = (m, c) => { st.textContent = m || ''; st.className = c || ''; };
+    let worlds = [], current = null;
+
+    const post = (path, body) => fetch('/sim/api' + path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body) }).then(r => r.json());
+
+    const TRASH_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+      + '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+    const COPY_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<rect x="9" y="9" width="13" height="13" rx="2"/>'
+      + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    function copyId(id, btnEl){
+      const done = (ok) => { btnEl.textContent = ok ? '\u2713' : '\u2715'; setTimeout(() => { btnEl.innerHTML = COPY_SVG; }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText)
+        navigator.clipboard.writeText(id).then(() => done(true), () => done(false));
+      else done(false);
+    }
+    // Card common part: thumbnail + name + (size · ID · copy) row
+    function makeCard(display, isCurrent){
+      const card = document.createElement('div');
+      card.className = 'wm-card' + (isCurrent ? ' active' : '');
+      const box = document.createElement('div');
+      box.className = 'wm-thumbbox';
+      const img = document.createElement('img');
+      img.className = 'wm-thumb'; img.alt = ''; img.loading = 'lazy';
+      box.appendChild(img);
+      const name = document.createElement('div');
+      name.className = 'wm-name';
+      name.textContent = (isCurrent ? '\u2713 ' : '') + display;
+      name.title = display;
+      const sub = document.createElement('div');
+      sub.className = 'wm-sub';
+      card.appendChild(box); card.appendChild(name); card.appendChild(sub);
+      return { card, img, sub };
+    }
+    function subInfo(sub, size, worldId){
+      if (size && size.length === 2) {
+        const sz = document.createElement('span');
+        sz.className = 'wm-size';
+        sz.textContent = size[0] + '\u00d7' + size[1] + 'm';
+        sub.appendChild(sz);
+      }
+      if (worldId) {
+        const isHex = /^[0-9a-f]{32}$/.test(worldId);
+        const idEl = document.createElement('span');
+        idEl.className = 'wm-id';
+        idEl.textContent = isHex ? worldId.slice(0, 8) + '\u2026' : worldId;
+        idEl.title = worldId;
+        sub.appendChild(idEl);
+        const cpy = document.createElement('button');
+        cpy.className = 'wm-copy'; cpy.innerHTML = COPY_SVG;
+        cpy.title = 'Copy world ID';
+        cpy.onclick = (e) => { e.stopPropagation(); copyId(worldId, cpy); };
+        sub.appendChild(cpy);
+      }
+    }
+    function renderRows(){
+      const official = document.getElementById('wm-official');
+      const custom = document.getElementById('wm-custom');
+      official.innerHTML = ''; custom.innerHTML = '';
+      official.className = 'wm-grid'; custom.className = 'wm-grid';
+      worlds.forEach(w => {
+        const isCurrent = w.name === current;
+        const { card, img, sub } = makeCard(w.display || w.name, isCurrent);
+        // Local track icon first; published worlds upgrade when the CDN thumbnail arrives
+        img.onerror = () => { img.style.display = 'none'; };
+        img.src = '/sim/track_iconography/' + w.name + '.png';
+        if (w.world_id) {
+          cloudMeta(w.world_id).then(meta => {
+            const u = thumbFromMeta(w.world_id, meta);
+            if (u) { img.style.display = ''; img.src = u; }
+          });
+        }
+        // Official worlds use their internal name (physicar_base, etc.) as the ID — used verbatim in WORLDS lists etc.
+        subInfo(sub, w.size, w.world_id || w.name);
+        card.onclick = () => {
+          if (isCurrent) return;
+          // Published worlds switch by world_id, built-in worlds by filename
+          switchWorld(w.world_id ? { world_id: w.world_id } : { world: w.file },
+                      w.display || w.name);
+        };
+        if (w.deletable) {
+          const del = document.createElement('button');
+          del.className = 'wm-del'; del.innerHTML = TRASH_SVG;
+          del.title = 'Delete ' + (w.display || w.name);
+          // Confirm flips the whole card into a confirm state — window.confirm is ignored in webviews
+          del.onclick = (e) => {
+            e.stopPropagation();
+            card.onclick = null;
+            card.classList.add('wm-confirming');
+            card.innerHTML = '';
+            const q = document.createElement('div');
+            q.className = 'wm-cfm-q';
+            q.textContent = 'Delete "' + (w.display || w.name) + '"?';
+            const yes = document.createElement('button');
+            yes.className = 'wm-cfm-del'; yes.textContent = 'Delete';
+            yes.onclick = (e2) => { e2.stopPropagation(); doDelete(w.name); };
+            const no = document.createElement('button');
+            no.className = 'wm-cfm-no'; no.textContent = 'Cancel';
+            no.onclick = (e2) => { e2.stopPropagation(); renderRows(); };
+            card.append(q, yes, no);
+          };
+          sub.appendChild(del);
+        }
+        const isCustom = w.official !== undefined ? !w.official : w.name.startsWith('custom_');
+        (isCustom ? custom : official).appendChild(card);
+      });
+      if (!custom.children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'wm-empty';
+        empty.textContent = 'No custom worlds installed yet.';
+        custom.appendChild(empty);
+      }
+    }
+
+    async function refresh(force){
+      // The periodic poll must not wipe an in-progress inline delete confirm;
+      // explicit refreshes (open/delete/switch) always re-render.
+      if (!force && modal.style.display !== 'none' && modal.querySelector('.wm-confirming')) return;
+      try {
+        const d = await (await fetch('/sim/api/worlds')).json();
+        worlds = d.worlds; current = d.current;
+        const cur = worlds.find(w => w.name === current);
+        btn.textContent = (cur && (cur.display || cur.name)) || current || '…';
+        renderRows();
+      } catch(e) {}
+    }
+
+    function switchWorld(sel, label){
+      if (installing) return;
+      const target = String(sel.world || '').replace(/\.world$/, '');
+      btn.textContent = label || target;
+      if (target) current = target;
+      close();
+      // The embedded /sim viewer follows the server switch via SSE — no reload.
+      post('/switch', sel).catch(() => {});
+      setTimeout(() => refresh(true), 5000);
+    }
+
+    async function doDelete(name){
+      if (installing) return;
+      setSt('Deleting ' + name + '...');
+      try {
+        const d = await (await fetch('/sim/api/worlds/' + name, { method: 'DELETE' })).json();
+        if (!d.ok) throw new Error(d.error || 'Delete failed');
+        setSt('Deleted ' + name + '.', 'success');
+      } catch(e) { setSt(e.message, 'error'); }
+      refresh(true);
+    }
+
+    /* ── Published worlds (worlds.physicar.ai) — my/classroom lists + one-click install ──
+       Lists are fetched by the browser itself with the api session (physicarSession — issued via /__session);
+       installs are downloaded by sim_api straight from R2 (no browser relay). */
+    const WAPI = 'https://api.physicar.ai';
+    function apiTok(){ return (window.physicarSession && physicarSession.token()) || null; }
+    let installedIds = {};   // world_id → local world file (for list matching)
+
+    const CDN = 'https://worlds.physicar.ai';
+    const metaCache = {};
+    function cloudMeta(id){
+      if (!metaCache[id]) {
+        metaCache[id] = fetch(CDN + '/worlds/' + id + '/meta.json')
+          .then(r => r.ok ? r.json() : null).catch(() => null);
+      }
+      return metaCache[id];
+    }
+    // Prefer meta.thumb (display only); old publishes fall back to track_iconography
+    function thumbFromMeta(id, meta){
+      if (!meta || !meta.rev) return null;
+      const files = (meta.files || []).filter(p => typeof p === 'string');
+      const pick = (typeof meta.thumb === 'string' && meta.thumb)
+        || files.find(p => p.indexOf('track_iconography/') === 0);
+      return pick ? CDN + '/worlds/' + id + '/' + meta.rev + '/' + pick : null;
+    }
+    function renderCloud(listEl, secEl, list){
+      listEl.innerHTML = '';
+      listEl.className = 'wm-grid';
+      secEl.style.display = list.length ? '' : 'none';
+      list.forEach(w => {
+        const local = installedIds[w.world_id];
+        const isCurrent = local && local.replace(/\.world$/, '') === current;
+        const { card, img, sub } = makeCard(w.name, isCurrent);
+        cloudMeta(w.world_id).then(meta => {
+          const u = thumbFromMeta(w.world_id, meta);
+          if (u) { img.style.display = ''; img.src = u; }
+          if (meta && meta.size && meta.size.length === 2 && !sub.querySelector('.wm-size')) {
+            const sz = document.createElement('span');
+            sz.className = 'wm-size';
+            sz.textContent = meta.size[0] + '\u00d7' + meta.size[1] + 'm';
+            sub.insertBefore(sz, sub.firstChild);
+          }
+        });
+        img.onerror = () => { img.style.display = 'none'; };
+        subInfo(sub, null, w.world_id);
+        card.onclick = () => { if (!isCurrent) installWorld(w.world_id, w.name); };
+        listEl.appendChild(card);
+      });
+    }
+
+    async function refreshCloud(){
+      const tok = apiTok();
+      const mineSec = document.getElementById('wm-mine-sec');
+      const clsSec = document.getElementById('wm-classroom-sec');
+      if (!tok) { mineSec.style.display = 'none'; clsSec.style.display = 'none'; return; }
+      installedIds = {};
+      worlds.forEach(w => { if (w.world_id) installedIds[w.world_id] = w.file; });
+      const get = (p) => fetch(WAPI + p, { headers: { 'Authorization': 'Bearer ' + tok } })
+        .then(r => r.ok ? r.json() : { worlds: [] }).catch(() => ({ worlds: [] }));
+      const [mine, cls] = await Promise.all([get('/worlds/mine'), get('/worlds/classroom')]);
+      renderCloud(document.getElementById('wm-mine'), mineSec, mine.worlds || []);
+      renderCloud(document.getElementById('wm-classroom'), clsSec, cls.worlds || []);
+    }
+
+    // Install lock: while a server-side install runs, every other modal
+    // action (second import, card switch/install, delete) is frozen — the
+    // CSS class blocks pointer paths, the flag blocks keyboard/programmatic
+    // ones. Only the close button stays usable.
+    let installing = false;
+    function setInstalling(on){
+      installing = on;
+      modal.classList.toggle('wm-busy', on);
+      linkIn.disabled = on;
+      linkGo.disabled = on;
+    }
+
+    async function installWorld(id, nm){
+      if (installing) return;
+      setInstalling(true);
+      setSt('Installing "' + nm + '"...', 'busy');
+      try {
+        const d = await post('/worlds/install', { world_id: id });
+        if (!d.ok) throw new Error(d.error || 'Install failed');
+        setSt((d.cached ? 'Ready: ' : 'Installed: ') + (d.name || nm), 'success');
+        await refresh(true);
+        setInstalling(false);   // unlock before the auto-switch (it is guarded)
+        switchWorld({ world: d.world }, d.name || nm);
+      } catch(e) {
+        setSt('Install failed: ' + e.message, 'error');
+      } finally { setInstalling(false); }
+    }
+
+    const linkIn = document.getElementById('wm-link');
+    const linkGo = document.getElementById('wm-link-go');
+    function loadFromLink(){
+      if (installing) return;
+      const m = (linkIn.value || '').trim().match(/^[0-9a-f]{32}$/);
+      if (!m) { setSt('Enter a valid world ID.', 'error'); return; }
+      linkIn.value = '';
+      installWorld(m[0], m[0]);
+    }
+    linkGo.addEventListener('click', loadFromLink);
+    linkIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); loadFromLink(); }
+      e.stopPropagation();   // avoid clashing with the arrow-key driving shortcuts
+    });
+
+    function open(){ setSt(''); refresh(true).then(refreshCloud); modal.style.display = 'flex'; }
+
+    // Share-link direct entry (sim.physicar.ai/app?world=<id>) — open the modal, auto-install and switch
+    (function autoInstallFromQuery(){
+      const m = location.search.match(/[?&]world=([0-9a-f]{32})(&|$)/);
+      if (!m) return;
+      history.replaceState(null, '', location.pathname + location.hash);
+      open();
+      installWorld(m[1], m[1]);
+    })();
+    function close(){ modal.style.display = 'none'; }
+    btn.addEventListener('click', open);
+    document.getElementById('wm-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.style.display !== 'none') close();
+    });
+
+    refresh();
+    // World state is pushed via SSE (/sim/api/events) — 10s polling removed (requests go through
+    // the gateway Worker, so polling is a direct cost at user scale). The list itself refreshes when the modal opens.
+    (() => {
+      let es;
+      try { es = new EventSource('/sim/api/events'); } catch (e) { return; }
+      let last = '';
+      // SSE frames are named events (event: state / run / ...) — subscribe to state only
+      es.addEventListener('state', (ev) => {
+        let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+        const key = (d.current || '') + '|' + (d.switching ? 1 : 0);
+        if (key !== last) { last = key; if (!document.hidden) refresh(); }
+      });
+    })();
+  }
+
+  /* ── Mode: the simulator column opens only in sim mode ── */
+  (async function(){
+    const mode = await detectMode();   // adds body.sim-mode when sim
+    if (mode === 'sim') {
+      simMode = true;
+      document.title = 'PHYSICAR App (SIM)';
+      b1 = 1/6; b2 = 0.5;              // sensors 1 : center 2 : sim 3
+      initSimWorldUI();
+    }
+    render(); applyRatio();
+  })();
+
+  render();
+  applyRatio();
+})();
+</script>
+</body>
+</html>

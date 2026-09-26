@@ -1,0 +1,189 @@
+/* Joystick settings panel — shared between / (settings modal, included
+ * via wifi.css overlay) and /kiosk (panel-settings).  Kept neutral so it
+ * works in both dark contexts. */
+
+.joy-live { display: flex; flex-direction: column; gap: 12px; padding: 8px 0; }
+.joy-live-empty { color: #888; font-size: 0.85rem; padding: 12px; text-align: center; }
+
+/* Two-column live view: Axes on the left (wider), Buttons on the right */
+.joy-live-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; }
+.joy-live-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.joy-live-col-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; }
+
+/* One axis = one inline row: [idx][role][gauge bar (flex)][val] */
+.joy-axes { display: flex; flex-direction: column; gap: 4px; }
+.joy-axis {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px; padding: 4px 8px; font-size: 0.75rem;
+}
+.joy-axis-idx { font-family: 'SF Mono', 'Consolas', monospace; color: #b388ff; width: 24px; text-align: right; flex-shrink: 0; }
+.joy-role { color: #aaa; font-size: 0.7rem; width: 80px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.joy-axis-val { font-family: 'SF Mono', 'Consolas', monospace; color: #ddd; width: 38px; text-align: right; flex-shrink: 0; }
+.joy-axis-track {
+    position: relative; flex: 1; min-width: 60px;
+    height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;
+}
+.joy-axis-fill { position: absolute; top: 0; bottom: 0; background: #b388ff; transition: left 0.05s linear, width 0.05s linear; }
+.joy-axis-mid { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255,255,255,0.25); }
+
+/* One button = one inline row: [idx][role][on/off pill] */
+.joy-buttons { display: flex; flex-direction: column; gap: 4px; }
+.joy-btn {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px; padding: 4px 8px; font-size: 0.75rem;
+    transition: background 0.05s, border-color 0.05s;
+}
+.joy-btn.pressed { background: rgba(179,136,255,0.2); border-color: #b388ff; }
+.joy-btn-idx { font-family: 'SF Mono', 'Consolas', monospace; font-weight: bold; color: #b388ff; width: 24px; text-align: right; flex-shrink: 0; }
+.joy-btn-role { color: #aaa; font-size: 0.7rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.joy-btn-state {
+    font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.65rem;
+    padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.08); color: #888;
+    width: 32px; flex-shrink: 0; text-align: center;
+}
+.joy-btn.pressed .joy-btn-state { background: #b388ff; color: white; }
+
+.joy-map-list { display: flex; flex-direction: column; gap: 4px; }
+.joy-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; transition: border-color 0.15s; }
+.joy-row.capturing { border-color: #b388ff; box-shadow: 0 0 0 1px #b388ff inset; }
+.joy-row-label { flex: 1; font-size: 0.85rem; color: #ddd; }
+.joy-row-val { font-family: 'SF Mono', 'Consolas', monospace; color: #b388ff; min-width: 36px; text-align: center; font-size: 0.85rem; }
+.btn-capture { padding: 4px 10px; font-size: 0.75rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #ddd; border-radius: 4px; cursor: pointer; }
+.btn-capture:hover { background: #b388ff; border-color: #b388ff; color: white; }
+.joy-row.capturing .btn-capture { background: #b388ff; color: white; border-color: #b388ff; }
+
+/* Mapping editor — two columns (Axes | Buttons), each a 2x2 grid of
+ * tap-to-capture cards.  Each card shows the role label and the
+ * currently-bound index (e.g. A2, B5, or — if unbound). */
+.joy-map-cols {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.joy-map-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.joy-map-col-title {
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #888;
+}
+.joy-map-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+}
+.joy-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 10px 8px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; color: #ddd; cursor: pointer;
+    font-family: inherit;
+    transition: background 0.1s, border-color 0.1s, box-shadow 0.1s;
+    min-height: 56px;
+}
+.joy-card:hover { background: rgba(179,136,255,0.1); border-color: rgba(179,136,255,0.4); }
+.joy-card.capturing {
+    border-color: #b388ff; box-shadow: 0 0 0 1px #b388ff inset;
+    background: rgba(179,136,255,0.15);
+    animation: joy-card-pulse 1.2s ease-in-out infinite;
+}
+@keyframes joy-card-pulse {
+    0%, 100% { box-shadow: 0 0 0 1px #b388ff inset; }
+    50%      { box-shadow: 0 0 0 2px #b388ff inset, 0 0 8px rgba(179,136,255,0.4); }
+}
+.joy-card-label {
+    font-size: 0.8rem; color: #ddd; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.joy-card-idx {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 0.95rem; font-weight: bold; color: #b388ff;
+}
+
+.joy-tune { display: flex; flex-direction: column; gap: 4px; }
+.joy-tune-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
+.joy-tune-label { flex: 1; font-size: 0.85rem; color: #ddd; }
+.joy-tune-input { width: 80px; padding: 4px 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #ddd; border-radius: 4px; font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.8rem; text-align: right; }
+
+/* Axis Tuning: 3-column rows — Name | Stepper | Invert toggle.
+ * Fixed column widths (name flexes, stepper/invert have explicit widths)
+ * so all five rows stack perfectly column-aligned even though the last
+ * row has no invert switch. */
+.joy-tune-row--pair,
+.joy-tune-row--solo {
+    display: grid; align-items: center;
+    grid-template-columns: minmax(0, 1fr) 180px 140px;
+    gap: 12px;
+}
+.joy-tune-name { font-size: 0.9rem; color: #ddd; }
+.joy-tune-unit { font-size: 0.75rem; color: #888; font-weight: normal; }
+.joy-tune-max { display: flex; align-items: center; justify-content: center; }
+.joy-tune-invert { display: flex; align-items: center; justify-content: flex-end; gap: 8px; cursor: pointer; }
+.joy-tune-invert-label { font-size: 0.8rem; color: #aaa; }
+.joy-tune-invert .cal-switch { vertical-align: middle; margin: 0; }
+
+/* Stepper (touch-friendly +/- like the Calibration panel) — all three
+ * children butt up against each other so the +/- and value form one
+ * unit, and consistent fixed widths keep the centre column-aligned. */
+.joy-step { display: inline-flex; align-items: center; gap: 4px; }
+.joy-step-btn {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+    color: #ddd; font-size: 1rem; line-height: 1; padding: 0; cursor: pointer;
+    flex: 0 0 auto;
+    transition: background 0.1s, transform 0.05s;
+}
+.joy-step-btn:hover { background: #b388ff; border-color: #b388ff; color: white; }
+.joy-step-btn:active { transform: scale(0.92); }
+.joy-step-val {
+    flex: 0 0 auto;
+    width: 60px; text-align: center;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 0.9rem; color: #b388ff; font-weight: bold;
+}
+
+/* Section title (reuse settings-section-title look if not already defined) */
+.settings-section-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin: 14px 0 6px; }
+
+/* Kiosk-sized overrides — bigger touch targets on 800×480 screen */
+#settab-joystick .joy-row,
+#settab-joystick .joy-tune-row { padding: 10px 12px; }
+#settab-joystick .joy-row-label,
+#settab-joystick .joy-tune-label { font-size: 0.95rem; }
+#settab-joystick .btn-capture { padding: 8px 14px; font-size: 0.85rem; }
+#settab-joystick .joy-tune-input { width: 100px; padding: 8px; font-size: 0.9rem; }
+
+/* Kiosk Mapping modal — big tap targets for cards */
+#joy-map-modal .joy-map-cols { gap: 16px; }
+#joy-map-modal .joy-map-col-title { font-size: 0.95rem; margin-bottom: 4px; }
+#joy-map-modal .joy-map-grid { gap: 10px; }
+#joy-map-modal .joy-card {
+    min-height: 150px;
+    padding: 5px;
+    gap: 20px;
+}
+#joy-map-modal .joy-card-label { font-size: 1.2rem; font-weight:600;}
+#joy-map-modal .joy-card-idx  { font-size: 1.4rem; }
+
+/* Kiosk Live Input modal — bigger glyphs/rows for 800×480 touch */
+#joy-live-modal .joy-live-col-title { font-size: 0.95rem; margin-bottom: 4px; }
+#joy-live-modal .joy-axis,
+#joy-live-modal .joy-btn {
+    box-sizing: border-box;
+    height: 35px;
+    flex: 0 0 35px;        /* prevent shrink when row count overflows the column */
+    padding: 0 12px;
+    font-size: 0.95rem;
+    gap: 10px;
+    line-height: 1.4;
+}
+#joy-live-modal .joy-axis-idx,
+#joy-live-modal .joy-btn-idx { width: 32px; font-size: 0.95rem; }
+#joy-live-modal .joy-role,
+#joy-live-modal .joy-btn-role { font-size: 1rem; width: 150px; }
+#joy-live-modal .joy-axis-val { font-size: 0.95rem; width: 48px; }
+#joy-live-modal .joy-axis-track { height: 10px; }
+#joy-live-modal .joy-btn-state {
+    box-sizing: border-box;
+    font-size: 0.8rem;
+    width: 44px;
+    height: 22px;
+    padding: 0;
+    line-height: 22px;
+}

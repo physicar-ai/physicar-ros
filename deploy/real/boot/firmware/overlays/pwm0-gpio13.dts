@@ -1,0 +1,40 @@
+/*
+ * Device-tree overlay: enable RP1 PWM0 on GPIO12 + GPIO13
+ *
+ * RPi5 (RP1) default device-tree ships with pwm@98000 disabled and its
+ * clock (clk_pwm0) uninitialised.  This overlay enables the peripheral
+ * and muxes two header pins for servo/ESC control:
+ *
+ *   GPIO12 (board pin 32) alt0 = PWM0 channel 0  → steering servo
+ *   GPIO13 (board pin 33) alt0 = PWM0 channel 1  → ESC speed
+ *
+ * sysfs paths: /sys/class/pwm/pwmchip<N>/pwm{0,1}/
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2712";
+
+    /* Mux GPIO12 & GPIO13 to alt0 (pwm0 ch0 & ch1) */
+    fragment@0 {
+        target = <&rp1_gpio>;
+        __overlay__ {
+            pwm0_pins: pwm0_pins {
+                pins = "gpio12", "gpio13";
+                function = "alt0";
+                bias-pull-down;
+            };
+        };
+    };
+
+    /* Enable PWM0 peripheral with the pinctrl above */
+    fragment@1 {
+        target = <&rp1_pwm0>;
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&pwm0_pins>;
+            status = "okay";
+        };
+    };
+};

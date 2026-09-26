@@ -1,0 +1,512 @@
+PhysiCar Community License
+Version 1.0
+
+Copyright (c) 2026 AICASTLE Inc. All rights reserved.
+
+1. DEFINITIONS
+
+"Licensor" means AICASTLE Inc.
+
+"Software" means the software made available by Licensor under this
+License, in source or object form, excluding Third-Party Components.
+"Modified Software" means any modification of, or work based on, the
+Software that You make. References in this License to the Software include
+Modified Software, but never include Third-Party Components themselves,
+even when combined with the Software.
+
+"Third-Party Components" means the specific files identified by path in
+the NOTICE file, or bearing a notice in the file itself, as licensed under
+terms other than this License, in each case only to the extent of the work
+of the third-party author. A directory-level or package-level entry in the
+NOTICE file identifies only files that originate from the named
+third-party work. All other files made available by Licensor, including
+model, world, mesh, image and asset files authored by Licensor, are
+Software even if they are located in the same directory or package as a
+Third-Party Component.
+
+"Your Works" means applications, tools, models, worlds, curricula,
+notebooks, scripts and similar works that You create for use with Genuine
+PhysiCar Products or the PhysiCar Platform, even if they use the Software's
+interfaces, templates or examples or include incidental portions of the
+Software that Licensor provides for that purpose. Your Works are not
+Software.
+
+"Genuine PhysiCar Product" means a physical robot, vehicle, controller
+board or other hardware device that is manufactured by or for Licensor and
+is sold or supplied as a PhysiCar product by Licensor or by a distributor
+authorized in writing by Licensor, as identified by a serial number,
+purchase record, the list of Genuine PhysiCar Products published at
+physicar.ai/legal, or other means Licensor uses to identify genuine units.
+A Genuine PhysiCar Product does not cease to be genuine because its owner
+repairs it or replaces failed or worn parts with equivalent parts.
+Authorization of a distributor does not by itself make any product a
+Genuine PhysiCar Product. Software images, factory-reset or recovery
+images, installers, containers, virtual machines and development
+environments (including hosted or cloud development environments), and the
+PhysiCar Platform, are not Genuine PhysiCar Products; to the extent they
+contain the Software they are Software and are subject to this License.
+
+"Non-Genuine Hardware" means any robot, vehicle, drone, controller board,
+single-board computer or other device that runs the Software to operate or
+control physical motors, actuators or sensors, or that is intended or
+advertised to do so, and that is not a Genuine PhysiCar Product. A
+general-purpose computer, virtual machine, container or cloud environment
+that runs the Software only for simulation, development, testing, study or
+teaching, and that does not control a physical robot other than a Genuine
+PhysiCar Product, is not Non-Genuine Hardware.
+
+"PhysiCar Platform" means the PhysiCar AI online services operated by
+Licensor at physicar.ai and its subdomains, or any successor services.
+
+"Permitted Purpose" means each of the following:
+  (a) use, study, research, evaluation and experimentation, by an
+      individual or by a school, university or other non-profit
+      institution, that is not for direct or indirect commercial
+      advantage, on any computer or server under Your control. Receiving
+      a public research grant, or publishing results, is not by itself a
+      commercial advantage;
+  (b) education, instruction, training and competitions, whether or not a
+      fee is charged to participants, in which each participant uses the
+      Software on a Genuine PhysiCar Product or through the PhysiCar
+      Platform. In connection with such an activity the Software
+      (including any simulator) may also be installed and run on
+      computers and servers under the control of the organizer, the
+      instructors and the participants, for preparation, for the activity
+      itself and for follow-up work, where that running is ancillary to
+      the use of Genuine PhysiCar Products or the PhysiCar Platform and
+      not a substitute for it;
+  (c) installing, running, modifying, extending, repairing and operating
+      the Software on a Genuine PhysiCar Product that You own or lawfully
+      control, on the PhysiCar Platform, or on any computer or server
+      under Your control for a purpose described in (a), (b), (d) or (e);
+  (d) developing, testing and sharing Your Works and Modified Software
+      that are designed for use with Genuine PhysiCar Products or the
+      PhysiCar Platform and not for operating, controlling or simulating
+      Non-Genuine Hardware;
+  (e) evaluation by any person or entity, on computers under its control,
+      for the purpose of deciding whether to acquire Genuine PhysiCar
+      Products or PhysiCar Platform services; and
+  (f) submitting Contributions to Licensor.
+An act described in Section 3 is not a Permitted Purpose. No Permitted
+Purpose includes installing or running the Software on, or using it to
+operate or control, Non-Genuine Hardware.
+
+"Competing Offering" means a product or service that is marketed, offered
+or provided as an alternative to, or that performs substantially the same
+function as, a Genuine PhysiCar Product or the PhysiCar Platform, including
+an educational or hobby robot, a robot kit or board, a robot software image
+for Non-Genuine Hardware, a robotics simulator, or a hosted robotics or AI
+simulation, training or education platform. A Competing Offering does not
+include (i) education, instruction, training or competitions that You
+provide within Permitted Purpose (b), whether or not a fee is charged,
+merely because participants could obtain similar instruction or tools from
+the PhysiCar Platform; (ii) hosting permitted by Section 3(b); or (iii)
+Your Works and Modified Software that You Distribute in compliance with
+Section 2 solely for use on Genuine PhysiCar Products or with the PhysiCar
+Platform. These exclusions do not extend to any robot, kit, board, software
+image, simulator or online platform that You provide as a substitute for a
+Genuine PhysiCar Product or the PhysiCar Platform, even if it is used in
+education.
+
+"Distribute" means to make the Software available to any third party, in
+source or object form, by any means, including sale, gift, lease,
+download, network transfer or pre-installation on hardware. Providing
+access to a running instance of the Software over a network is not
+Distribution; it is governed by Section 3(b).
+
+"Contribution" means any work of authorship that You intentionally submit
+to Licensor for inclusion in the Software.
+
+"You" means the individual or legal entity exercising rights under this
+License. If You are a legal entity, You are responsible for ensuring that
+entities You control comply with this License with respect to Software
+they receive through You, and an act by such an entity in connection with
+that Software is treated as Your act.
+
+2. LICENSE GRANT
+
+By using, reproducing, modifying or Distributing the Software You accept
+this License. The license granted in this Section is limited to the
+Permitted Purposes and is conditioned on Your compliance with Section 3;
+any use outside the Permitted Purposes or in breach of Section 3 is
+outside the scope of the license granted.
+
+Subject to the terms of this License, Licensor grants You a worldwide,
+non-exclusive, non-transferable, royalty-free license, for the term of the
+applicable copyright, to:
+
+  (a) use, reproduce and modify the Software, and create Modified
+      Software, for any Permitted Purpose;
+
+  (b) Distribute the Software, including Modified Software, in source form
+      to others, who receive it under this License, provided that each
+      copy is accompanied by this License, the NOTICE file and the license
+      texts of any Third-Party Components included in the copy, and that
+      Your modifications are identified as modifications together with
+      their dates. Making the source publicly available under this
+      License, for example in a public repository, is a permitted
+      Distribution. You are not in breach of this License merely because a
+      recipient uses the Software outside the Permitted Purposes, unless
+      You Distribute or promote the Software for such a use. A
+      version-control history or changelog that accompanies the copy and
+      identifies Your changes and their dates satisfies the marking
+      requirement in this paragraph; and
+
+  (c) Distribute the Software, including Modified Software, in object form
+      (including as a disk image, container image, package or other build
+      artifact) only:
+        (i)   pre-installed on, or for installation on, a Genuine PhysiCar
+              Product; a transfer of a Genuine PhysiCar Product together
+              with the Software installed on it is permitted without the
+              conditions of Section 2(b);
+        (ii)  as part of Your Works designed for use with a Genuine
+              PhysiCar Product or the PhysiCar Platform, where Your Works
+              do not use the Software to operate, control or simulate
+              Non-Genuine Hardware;
+        (iii) as an unmodified copy of a software image published by
+              Licensor, supplied to a recipient solely for installation on
+              a Genuine PhysiCar Product that the recipient owns or
+              lawfully controls; or
+        (iv)  for installation on general-purpose computers, virtual
+              machines or containers for the recipients' Permitted
+              Purposes;
+      in each case accompanied by this License and the NOTICE file, and,
+      under (ii) and (iv), by the source code of the Software as included
+      (including Your modifications marked as required by Section 2(b)) or
+      by a URL from which that source code can be obtained free of charge
+      for as long as the object form is Distributed. This obligation does
+      not extend to Your Works that only interface with the Software.
+
+Your Works are not Software, and You may use, license and share Your Works
+under any terms You choose.
+
+Each person to whom the Software or a Genuine PhysiCar Product is
+Distributed in compliance with this License receives a license directly
+from Licensor on the terms of this License. "Non-transferable" means that
+You may not assign Your own license; it does not prevent a subsequent
+owner or lawful controller of a Genuine PhysiCar Product from receiving
+their own license under this Section.
+
+Nothing in this Section 2, and no Permitted Purpose, authorizes any act
+described in Section 3. In particular, the right to Distribute under
+Section 2(b) or 2(c) does not permit Distribution for use on or with
+Non-Genuine Hardware.
+
+3. RESTRICTIONS
+
+The license granted in Section 2 is subject to the following
+restrictions. These restrictions apply notwithstanding Section 2 and
+regardless of whether an act would otherwise fall within a Permitted
+Purpose. Unless You hold a separate written commercial license from
+Licensor, You may not:
+
+  (a) Distribute, sell, lease or otherwise provide the Software, or any
+      product, kit, board, software image, container or environment
+      containing the Software, for use on or with Non-Genuine Hardware, or
+      install or run the Software on Non-Genuine Hardware;
+
+  (b) provide the Software, or any of its functionality, to third parties
+      as a hosted, managed, cloud or network service, or as
+      software-as-a-service; except that You may run the Software on
+      infrastructure You control and make it available over a network to
+      persons taking part in an activity that You conduct within a
+      Permitted Purpose (including Your students, employees, members,
+      trainees, competition or hackathon participants, and visitors to an
+      event), provided that (i) access is limited to those persons and is
+      not offered to the general public, (ii) the hosted Software is not
+      offered, marketed or priced as a separate product or service
+      (tuition, course, event or participation fees are not fees for the
+      Software), and (iii) You do not host the Software for, or on behalf
+      of, another organization's business;
+
+  (c) copy, adapt or incorporate the Software, in whole or in part, into a
+      Competing Offering; use the Software to design, develop, operate or
+      provide a Competing Offering; or use the Software or its outputs to
+      train a machine-learning model for a Competing Offering;
+
+  (d) remove, alter or obscure any copyright, license, trademark or
+      attribution notice contained in the Software;
+
+  (e) sublicense the Software, or Distribute the Software under any terms
+      other than this License (this does not apply to Your Works);
+
+  (f) use the Software to (i) gain unauthorized access to the PhysiCar
+      Platform, or to a Genuine PhysiCar Product that You do not own or
+      lawfully control; (ii) evade, falsify or interfere with the fees,
+      credits, quotas, license verification or genuine-product
+      verification of the PhysiCar Platform; (iii) cause a device that is
+      not a Genuine PhysiCar Product to identify itself to the PhysiCar
+      Platform as a Genuine PhysiCar Product; or (iv) access the PhysiCar
+      Platform other than through its documented interfaces or through the
+      Software as provided by Licensor; or
+
+  (g) make, market, sell, supply or Distribute any hardware, kit, board,
+      disk image, installer, script, configuration or instructions that
+      are designed, adapted or advertised for installing or running the
+      Software on Non-Genuine Hardware, or knowingly induce, encourage or
+      assist any other person to do anything described in Section 3(a) or
+      this Section 3(g).
+
+Section 3(c) does not prohibit (i) evaluating, reviewing, testing or
+comparing the Software or Genuine PhysiCar Products with other products or
+services, and publishing or reporting the results, where this is done for
+a Permitted Purpose and not for the purpose of designing, developing,
+training or improving a Competing Offering; or (ii) using the general
+knowledge, skills and experience that You gain from using the Software,
+provided that the Software's source code, architecture or specific
+implementation is not used, reproduced or adapted for a Competing
+Offering.
+
+The following are not breaches of Section 3(f) when done to a Genuine
+PhysiCar Product that You own or lawfully control, for a Permitted
+Purpose: configuring, pinning, delaying, disabling or redirecting its
+update mechanism (including to a mirror You operate); changing or
+resetting its local passwords or access controls; and modifying its
+parameters or software. You remain responsible for safe operation as
+stated in Section 10.
+
+4. THIRD-PARTY COMPONENTS
+
+Third-Party Components are licensed under their own terms, which are
+identified by path in the NOTICE file or in the relevant files. Nothing in
+this License limits Your rights under those terms with respect to those
+components. This License, not the third-party terms, applies to
+Licensor-authored files that are not Third-Party Components. This License
+applies to the Software and, to the extent permitted by the applicable
+third-party licenses, to the combination of the Software with Third-Party
+Components. Nothing in this License, or in the terms of sale of any
+Genuine PhysiCar Product, prohibits any act that the license of a
+Third-Party Component requires to be permitted, including modification
+and reverse engineering of that component to the extent so required.
+
+5. CONTRIBUTIONS
+
+  (a) Inbound license. By submitting a Contribution, You agree that the
+      Contribution is licensed to Licensor and to every recipient of the
+      Software under this License, and You additionally grant Licensor a
+      perpetual, worldwide, irrevocable, royalty-free, sublicensable
+      license to use, reproduce, modify, distribute, sublicense and
+      relicense the Contribution under any terms, including commercial
+      terms. Licensor accepts Contributions only on the terms of this
+      Section 5. A Contribution offered subject to any other license,
+      notice or condition is not accepted and will not be included in the
+      Software unless Licensor expressly agrees to those terms in a signed
+      writing. If You are unable or unwilling to agree to this Section, do
+      not submit the Contribution.
+
+  (b) Patent license. You grant Licensor and every recipient of the
+      Software a perpetual, worldwide, irrevocable, royalty-free patent
+      license under any patent claims owned or controlled by You or
+      entities You control that are necessarily infringed by Your
+      Contribution alone or by the combination of Your Contribution with
+      the Software to which it was submitted, to make, have made, use,
+      sell, offer for sale, import and otherwise exploit the Software.
+
+  (c) Moral rights. To the fullest extent permitted by applicable law, You
+      agree not to assert or exercise moral rights in the Contribution
+      (including the rights of disclosure, attribution and integrity)
+      against Licensor, its sublicensees or any recipient with respect to
+      the modification, publication, distribution, attribution or
+      non-attribution of the Contribution. Licensor may attribute You in
+      the NOTICE file or in the version history.
+
+  (d) Representations. You represent that (i) You authored the
+      Contribution or otherwise have the right to grant the licenses in
+      this Section; (ii) the Contribution contains no code, model, data or
+      other material licensed under terms other than this License, except
+      material that You clearly identify, together with its license, in
+      the submission; and (iii) if Your employer or another party holds
+      rights in the Contribution, You have that party's permission to
+      submit it on these terms.
+
+  (e) You retain all of Your rights in the Contribution, including the
+      right to use it for any purpose. Licensor is under no obligation to
+      accept, merge or retain any Contribution.
+
+6. TRADEMARKS
+
+This License does not grant any right to use the names, logos or
+trademarks of Licensor, including "PhysiCar", "PHYSICAR AI" and "AI
+CASTLE" and their transliterations, except for truthful references that
+are necessary to identify the Software or Licensor's products and that do
+not use those marks in the name of any product, service, repository
+organization or domain of Yours, and are not used to market Non-Genuine
+Hardware or to present Non-Genuine Hardware as compatible with, or
+intended to run, the Software. Use of Licensor's trademarks is further
+governed by any trademark policy that Licensor publishes at physicar.ai;
+until such a policy is published, this Section governs.
+
+For clarity, each of the following is a truthful reference permitted by
+this Section: (i) keeping the original repository, package, module or
+file names of the Software in a fork or modified copy that is identifiable
+as Yours (for example, by a hosting service's fork attribution or by the
+modification notice required by Section 2(b)); and (ii) naming a course,
+class, curriculum, event, competition or project to truthfully state that
+it uses Genuine PhysiCar Products or the PhysiCar Platform (for example,
+"PhysiCar robotics class"). In each case You must not state or imply that
+Licensor makes, endorses, certifies, sponsors or authorizes Your modified
+version, course or project. Renaming Your modified version to avoid such
+an implication does not violate Section 3(d).
+
+7. PATENTS
+
+  (a) Patent license. Subject to this License and to Your continued
+      compliance with it, Licensor grants You a non-exclusive, worldwide,
+      royalty-free, non-transferable license under Licensed Patent Claims
+      to make, use, modify and Distribute the Software, including Modified
+      Software, for Permitted Purposes only. "Licensed Patent Claims"
+      means patent claims owned by Licensor, or licensable by Licensor
+      without payment to a third party, now or in the future, that are
+      necessarily infringed by the Software as provided by Licensor, alone
+      or in combination with a Genuine PhysiCar Product or the PhysiCar
+      Platform.
+
+  (b) Non-assertion. In addition, Licensor will not assert any patent
+      claim owned by or licensable by Licensor against You on the basis of
+      (i) Your use of a Genuine PhysiCar Product that You own or lawfully
+      control, or of the PhysiCar Platform through its documented
+      interfaces, in accordance with this License and the applicable
+      terms of sale or service; (ii) Your development, use and sharing of
+      Your Works and Modified Software for a Permitted Purpose; or (iii)
+      Your hosting of the Software as permitted by Section 3(b). This
+      commitment is personal to You, does not extend to any Competing
+      Offering, to Non-Genuine Hardware, or to any provision of the
+      Software as a service beyond Section 3(b), and ends when Your rights
+      under this License end.
+
+  (c) Limits. No patent license or other patent right is granted, by
+      implication, estoppel or otherwise, except as stated in this
+      Section. This Section does not extend any right to any person other
+      than You.
+
+  (d) Defensive termination. If You, or an entity that controls, is
+      controlled by, or is under common control with You, institutes
+      patent litigation against any person or entity (including a
+      cross-claim or counterclaim) alleging that the Software, a Genuine
+      PhysiCar Product or the PhysiCar Platform, or any part of them,
+      infringes a patent, all licenses and commitments granted to You
+      under this License terminate as of the date such litigation is
+      filed. Such termination is not subject to reinstatement under
+      Section 9.
+
+8. COMMERCIAL LICENSING
+
+Any use outside the Permitted Purposes, including bundling the Software
+with other hardware, providing it as a service beyond Section 3(b), or
+developing a Competing Offering, requires a separate written commercial
+license from Licensor. Contact: support@physicar.ai.
+
+9. TERMINATION
+
+  (a) This License terminates automatically as to any person or legal
+      entity that breaches any of its terms (the "Breaching Party"). Where
+      more than one legal entity is comprised in "You", termination
+      applies only to the legal entity that committed the breach and to
+      persons acting on its behalf; the rights of the other entities are
+      not terminated unless they knowingly participated in, directed or
+      benefited from the breach.
+
+  (b) If the Breaching Party ceases the breach and cures it, its rights
+      under this License are reinstated (i) provisionally, unless and
+      until Licensor expressly and finally terminates them by written
+      notice, and (ii) permanently, if Licensor does not notify the
+      Breaching Party of the breach by reasonable means within 60 days
+      after the breach has been cured. To cure a breach the Breaching
+      Party must cease it, remedy its effects to the extent reasonably
+      practicable (including withdrawing any copies Distributed in breach
+      that remain under its control), and confirm the cure to Licensor in
+      writing on request.
+
+  (c) The Breaching Party's rights are also reinstated permanently if
+      Licensor notifies it of the breach, the Breaching Party cures the
+      breach within 30 days after receiving that notice, and it has not
+      received any earlier notice of breach of this License from Licensor
+      within the preceding 12 months.
+
+  (d) Paragraphs (b) and (c) do not apply to a wilful breach of Section
+      3(a), (b), (c), (f) or (g), to a repeated breach of the same kind,
+      or to a termination under Section 7(d).
+
+  (e) Termination does not affect the right of a consumer to continue
+      running, on a Genuine PhysiCar Product that the consumer owns, the
+      Software as installed on it by Licensor, except in the case of a
+      wilful and uncured breach of Section 3(a), (b) or (c).
+
+  (f) Sections 1, 3, 4, 5, 6, 7(d), 9, 10, 11 and 12 survive termination.
+      After termination, Section 3 continues to apply to every copy,
+      modification, model, benchmark result and other material that the
+      Breaching Party obtained or made from the Software under this
+      License. Termination does not limit any other right or remedy of
+      Licensor, including damages and injunctive relief. Termination of
+      the Breaching Party's rights does not terminate the rights of others
+      who received the Software from it in compliance with this License.
+
+10. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. Robots and
+simulators may behave unexpectedly; You are responsible for their safe
+use. Warranty for Genuine PhysiCar Products is governed separately by the
+terms of sale of those products (see Section 12(e)). Where You received
+the Software as part of a Genuine PhysiCar Product that You purchased as a
+consumer, Your statutory rights as a consumer are not affected by this
+Section.
+
+11. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR SHALL NOT BE
+LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE
+DAMAGES, OR FOR LOSS OF DATA, PROFITS OR USE, ARISING OUT OF OR RELATING
+TO THE SOFTWARE OR THIS LICENSE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES. Nothing in this License excludes or limits liability that
+cannot be excluded or limited under applicable law, including liability
+for death or personal injury, liability under product liability law, and
+liability for wilful misconduct or gross negligence.
+
+12. GENERAL
+
+  (a) Governing law and venue. This License is governed by the laws of the
+      Republic of Korea, without regard to its choice-of-law rules. If You
+      are a consumer, jurisdiction is determined by the applicable rules
+      of civil procedure and consumer-protection law. Otherwise the courts
+      of the Republic of Korea have exclusive jurisdiction, and the Seoul
+      Central District Court is the court of first instance, to the extent
+      permitted by mandatory law.
+
+  (b) Versions. Licensor may publish revised versions
+      of this License. Each release of the Software identifies the
+      applicable version of this License in its LICENSE file. Software
+      that You received under a given version remains licensed under that
+      version. This License applies only to Software that Licensor makes
+      available under this License. If a revised version of this License
+      would impose
+      additional restrictions, Licensor will announce it in the release
+      notes at least 30 days before it is delivered through automatic
+      updates, and You may decline that update and continue using the
+      version You have.
+
+  (c) Severability; no waiver. If any provision of this License is held
+      unenforceable, the remaining provisions remain in effect. A failure
+      to enforce any provision is not a waiver of it.
+
+  (d) Language. This License is written in English. Any translation is
+      provided for convenience only and has no legal effect; the English
+      text governs.
+
+  (e) Relationship to product and platform terms. The Software may be
+      pre-installed on or delivered with a Genuine PhysiCar Product that
+      is sold under separate terms of sale, warranty terms or
+      documentation, and the PhysiCar Platform is provided under its own
+      terms of service. Those documents continue to govern the hardware,
+      its warranty and safe use, Platform accounts and services, and any
+      software that is not the Software (including software provided
+      under a separate end-user license agreement). With respect to the
+      Software only, Licensor agrees that this License governs and that
+      Licensor will not rely on any provision of its terms of sale,
+      warranty terms or documentation, in any version and whenever issued,
+      to prohibit or restrict an act that this License permits. This
+      Section 12(e) does not enlarge the rights granted in Section 2 and
+      does not affect Section 3(f) or Section 10.
+
+END OF LICENSE

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# NetworkManager dispatcher: poke the physicar.sh cert fetcher whenever a
+# network interface comes up.
+#
+# NetworkManager refuses dispatcher scripts that are not root-owned, so this
+# repo copy cannot be symlinked into /etc — the installer and every boot
+# (physicar.sh) install it with root ownership when the content differs.
+
+iface="$1"
+action="$2"
+
+case "$action" in
+    up|dhcp4-change|dhcp6-change|connectivity-change) ;;
+    *) exit 0 ;;
+esac
+[ "$iface" = "ap0" ] && exit 0
+[ "$iface" = "lo" ]  && exit 0
+
+PID_FILE="/run/physicar/cert-fetcher.pid"
+[ -r "$PID_FILE" ] || exit 0
+pid=$(cat "$PID_FILE" 2>/dev/null)
+[ -n "$pid" ] || exit 0
+kill -0 "$pid" 2>/dev/null && kill -USR1 "$pid" 2>/dev/null
+exit 0

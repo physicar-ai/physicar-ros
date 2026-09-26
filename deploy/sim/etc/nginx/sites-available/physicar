@@ -1,0 +1,345 @@
+# PhysiCar Nginx Configuration (SIM)
+#
+# `/` is served by code-server (see the include near the bottom of the
+# server block).
+
+upstream fastapi_backend {
+    server 127.0.0.1:8000;
+    keepalive 32;
+}
+
+upstream code_web {
+    server 127.0.0.1:8080;
+}
+
+upstream novnc_backend {
+    server 127.0.0.1:6080;
+}
+
+upstream myapp_backend {
+    server 127.0.0.1:5000;
+}
+
+# Simulator upstreams — the simulator (virtual hardware) runs in its own
+# container at a fixed address on the docker network "physicar": simulation
+# API :9003, 3D scene websocket :9002, viewer files :9005 (its own nginx sets
+# the cache headers).
+upstream sim_api_backend    { server 172.30.0.3:9003; }
+upstream sim_ws_backend     { server 172.30.0.3:9002; }
+upstream sim_static_backend { server 172.30.0.3:9005; }
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ""      close;
+}
+
+server {
+    # sndbuf: cap the kernel send buffer so a congested client link cannot
+    # queue seconds of stale camera/lidar frames for in-order replay — the
+    # webserver's latest-frame-only logic gets backpressure quickly instead.
+    # (Cloudflare sits between instance and student, so this only bounds the
+    # instance-side share of the backlog.) Same fix as deploy/real.
+    listen 80 sndbuf=524288;
+    server_name _;
+    absolute_redirect off;
+
+    # ── Access log: skip the polling traffic ──
+    # The panel polls /racing/status every second and the live views poll
+    # /steering /speed /camera several times a second — ~10k lines/hour of
+    # nothing. Nothing rotates this file (no cron in the image; 674 MB by
+    # 2026-09-15), so the boot script also caps it (physicar.sh log_housekeeping).
+    # server-level `if` + `set` is the sanctioned use of `if`.
+    set $pc_log 1;
+    if ($request_uri ~ "^/(steering|speed|camera|health|__boot)(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/racing/status(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/myapp/?(\?|$)") { set $pc_log 0; }
+    access_log /var/log/nginx/access.log combined if=$pc_log;
+
+    client_max_body_size 500M;
+
+    # ── Origin gate ── (see conf.d/pc-gate.conf) — block gateway-bypassing access.
+    # "deny" only on cloud instances where a secret is provisioned; "pass" elsewhere.
+    if ($pc_origin_gate = "deny") { return 403; }
+
+    # ── Simulation 3D Viewer (/sim) ──
+
+    location = /sim {
+        return 302 /sim/;
+    }
+
+    # Viewer files, served by the simulator container
+    location /sim/ {
+        proxy_pass http://sim_static_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_connect_timeout 5s;
+    }
+
+    # Evaluation runner (webserver routers/evaluation.py): the simulator's evaluation
+    # session starts student runs here so student code executes in this container.
+    # Reachable ONLY from the simulator (.3). The host address (.1) must NOT be
+    # allowed: the host port mapping (docker-proxy) delivers browser traffic from
+    # the gate with 172.30.0.1 as source, so allowing .1 would expose the runner to
+    # the internet. The judge starts runs through the simulator's /evaluation/start
+    # (judge mode lets non-workspace sources through) or with docker exec.
+    location /evaluation/ {
+        allow 172.30.0.3;
+        deny all;
+        proxy_pass http://fastapi_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+    }
+
+    # Sim API (world list, status, switch, pose, route, reset)
+    location /sim/api/ {
+        proxy_pass http://sim_api_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+    }
+
+    # ── PhysiCar extension services (tool server :9004) ──
+    # Whole server, loopback-only: on-machine callers (the extension, the AI's
+    # terminal, student scripts) get clean localhost URLs — /physicar-ext/tools,
+    # /physicar-ext/wake, /physicar-ext/wake/status — while anything from the
+    # network is denied, so the login gate cannot be bypassed.
+    location /physicar-ext/ {
+        allow 127.0.0.1;
+        allow ::1;
+        deny all;
+        proxy_pass http://127.0.0.1:9004/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+    }
+
+    # Simulation WebSocket (3D scene streaming)
+    location /sim/ws {
+        proxy_pass http://sim_ws_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        # strip permessage-deflate offers: CF edge (h2 WS) mangles compressed
+        # frames -> "Invalid frame header" in browsers; payloads are tiny anyway
+        proxy_set_header Sec-WebSocket-Extensions "";
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400s;
+    }
+
+    # ── noVNC (/vnc) ──
+
+    location = /vnc {
+        return 302 /vnc/?path=vnc/websockify&autoconnect=true&scale=true;
+    }
+
+    location ~ ^/vnc/(.+\.html)$ {
+        set $vnc_page $1;
+        if ($arg_path = "") {
+            return 302 $uri?path=vnc/websockify&autoconnect=true&scale=true;
+        }
+        proxy_pass http://novnc_backend/$vnc_page$is_args$args;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</head>' '<style>#top_bar,.noVNC_button,.noVNC_panel{display:none!important}html,body,#screen{overflow:hidden!important}</style></head>';
+        sub_filter_once on;
+    }
+
+    location = /vnc/ {
+        if ($arg_path = "") {
+            return 302 /vnc/?path=vnc/websockify&autoconnect=true&scale=true;
+        }
+        proxy_pass http://novnc_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Accept-Encoding "";
+        sub_filter '</head>' '<style>#top_bar,.noVNC_button,.noVNC_panel{display:none!important}html,body,#screen{overflow:hidden!important}</style></head>';
+        sub_filter_once on;
+    }
+
+    location /vnc/ {
+        proxy_pass http://novnc_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        # strip permessage-deflate offers: CF edge (h2 WS) mangles compressed
+        # frames -> "Invalid frame header" in browsers; payloads are tiny anyway
+        proxy_set_header Sec-WebSocket-Extensions "";
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400s;
+    }
+
+    # ── MyApp (:5000) ──
+
+    location = /myapp { return 302 /myapp/; }
+
+    location /myapp/ {
+        proxy_pass http://myapp_backend/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        # strip permessage-deflate offers: CF edge (h2 WS) mangles compressed
+        # frames -> "Invalid frame header" in browsers; payloads are tiny anyway
+        proxy_set_header Sec-WebSocket-Extensions "";
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_set_header If-Modified-Since "";
+        proxy_set_header If-None-Match "";
+
+        # ── PhysiCar session helper auto-injection ──
+        # Student pages need zero setup: injects window.physicarSession.token()
+        # (reads the physicar_session cookie). Only HTML is rewritten
+        # (sub_filter_types defaults to text/html) — SSE/MJPEG pass untouched.
+        proxy_set_header Accept-Encoding "";
+        sub_filter_once on;
+        sub_filter '<head>' '<head><script src="/static/js/physicar-session.js"></script>';
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+        chunked_transfer_encoding off;
+        gzip off;
+
+        add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        add_header X-Accel-Buffering "no" always;
+
+        proxy_connect_timeout 5s;
+        # No send/read limits: student apps may hold quiet WebSocket/SSE
+        # connections open indefinitely (connect stays 5s for the offline page)
+        proxy_send_timeout 86400s;
+        proxy_read_timeout 86400s;
+        error_page 502 503 504 = @myapp_offline;
+    }
+
+    # Boot progress (written by physicar.sh) — read by both offline pages
+    location = /__boot {
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        alias /tmp/.physicar-boot-status;
+    }
+
+    location @myapp_offline {
+        default_type text/html;
+        charset utf-8;
+        add_header Cache-Control "no-store" always;
+        add_header X-MyApp-Status "offline" always;
+        return 200 '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyApp</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d10;color:#aaa;font-family:system-ui,sans-serif}body{display:flex;align-items:center;justify-content:center;text-align:center;font-size:4vw}h2{font-size:6.5vw}code{background:#222;padding:.4vw 1.2vw;border-radius:.8vw;color:#b388ff}.box{padding:5vw}.spin{display:inline-block;width:3.2vw;height:3.2vw;border:.45vw solid #333;border-top-color:#7e57c2;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle;margin-right:1.6vw}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div class="box"><h2>MyApp is not running</h2><p>It will auto-start on port <code>5000</code>.</p><p style="color:#666"><span class="spin"></span>Auto-reloading…</p><p id="bst" style="color:#666;font-size:3vw;min-height:3.6vw;margin:0"></p></div><script>(function(){var n=0,t=null;function arm(ms){t=setTimeout(chk,ms)}async function chk(){t=null;if(document.hidden)return;try{var r=await fetch(location.pathname+(location.pathname.endsWith("/")?"":"/")+"?_t="+Date.now(),{cache:"no-store"});if(r.headers.get("X-MyApp-Status")!=="offline"){location.reload();return}}catch(e){}n++;arm(n<15?2000:15000)}document.addEventListener("visibilitychange",function(){if(!document.hidden&&!t)chk()});arm(2000)})();</script><script>(function(){var M={updating:"Applying update…",building:"Building update — this can take a few minutes…",starting:"Starting…"};async function q(){try{var r=await fetch("/__boot?_t="+Date.now(),{cache:"no-store"});if(!r.ok)return;var j=await r.json();var m=M[j.phase];if(!m)return;var s=Math.max(0,Math.floor(Date.now()/1e3-j.since));document.getElementById("bst").textContent=s>900?"This is taking longer than usual — try restarting the simulator.":m+" ("+(s>=60?Math.floor(s/60)+"m ":"")+(s%60)+"s)"}catch(e){}}setInterval(q,3000);q()})();</script></body></html>';
+    }
+
+    # Legacy path (pre-rename bookmarks). /app itself is served by FastAPI
+    # (with cache-busted asset URLs) via the explicit-prefix location below.
+    location = /studio { return 302 /app; }
+
+    # ── Streaming drive control (WebSocket write streams) ──
+    # Regex locations are order-sensitive — this must precede the FastAPI catch-all
+    location ~ ^/(speed|steering)/stream$ {
+        proxy_pass http://fastapi_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        # strip permessage-deflate offers: CF edge (h2 WS) mangles compressed
+        # frames -> "Invalid frame header" in browsers; payloads are tiny anyway
+        proxy_set_header Sec-WebSocket-Extensions "";
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+    }
+
+    # ── Audio realtime PCM16 stream (WebSocket) ──
+    location = /audio/stream {
+        proxy_pass http://fastapi_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        # strip permessage-deflate offers: CF edge (h2 WS) mangles compressed
+        # frames -> "Invalid frame header" in browsers; payloads are tiny anyway
+        proxy_set_header Sec-WebSocket-Extensions "";
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+    }
+
+    # ── code-server static bundles served directly (integrity) ──
+    # code-server serves static files chunked, without Content-Length/ETag (measured 2026-09-06).
+    # If a transfer is cut off midway, the browser mistakes the truncated file for a complete one
+    # and pins it in the max-age=1y cache → the source of permanently blank webviews. nginx file
+    # serving adds Content-Length/ETag/Range automatically, so the browser discards a truncated
+    # download on its own. It reads the same files the boot patch (entrypoint.sh's in-place bundle
+    # edits) modifies, so the patches carry through as-is; missing paths fall back to code-server,
+    # so special/new paths behave as before.
+    location ~ ^/stable-[a-f0-9]+/static/(?<cs_asset>.+)$ {
+        root /usr/lib/code-server/lib/vscode;
+        try_files /$cs_asset @cs_static_fb;
+        add_header Cache-Control "public, max-age=31536000" always;
+    }
+    location @cs_static_fb {
+        proxy_pass http://code_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    # ── PhysiCar app (FastAPI :8000) — pages + APIs ──
+    # `/` belongs to code-server, so every FastAPI
+    # route is listed here explicitly: pages (/app), assets
+    # (/static /favicon.ico /docs /redoc /openapi.json)
+    # and APIs. Add new top-level FastAPI prefixes to this list.
+    location ~ ^/(app|racing|static|docs|redoc|openapi\.json|favicon\.ico|health|info|auth|network|calibration|teleop|settings|kiosk|states|speed|steering|camera|lidar|audio|battery|imu|odom|log|api)(/|$) {
+        proxy_pass http://fastapi_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding off;
+        gzip off;
+        add_header X-Accel-Buffering no always;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+
+        error_page 502 503 504 = @fastapi_offline;
+    }
+
+    # ── Root (/) ──
+    # entrypoint.sh copies the deploy snippet root-code.conf (code-server
+    # proxy + legacy /code) to /tmp/pc-root.conf BEFORE nginx starts (same
+    # runtime-file pattern as /tmp/pc-gate.map).
+    include /tmp/pc-root.conf;
+
+    location @fastapi_offline {
+        default_type text/html;
+        charset utf-8;
+        add_header Cache-Control "no-store" always;
+        # Subresources (CSS/JS/fetch) must FAIL, not receive this HTML with a
+        # 200 — a stylesheet that "loads" as HTML fires no error event, so the
+        # pages' boot-race reload guard never kicks in and the page stays
+        # broken. Only document navigations get the spinner page.
+        if ($http_accept !~* "text/html") { return 503; }
+        return 200 '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PhysiCar</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d10;color:#888;font-family:system-ui,sans-serif}body{display:flex;flex-direction:column;align-items:center;justify-content:center}.spin{width:42px;height:42px;border:4px solid #2a2a33;border-top-color:#7e57c2;border-radius:50%;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div class="spin"></div><p id="bst" style="margin-top:18px;font-size:14px;color:#666;min-height:17px"></p><script>(function(){var n=0,t=null;function arm(ms){t=setTimeout(chk,ms)}async function chk(){t=null;if(document.hidden)return;try{var r=await fetch("/health?t="+Date.now(),{cache:"no-store"});if(r.ok){location.reload();return}}catch(e){}n++;arm(n<15?2000:15000)}document.addEventListener("visibilitychange",function(){if(!document.hidden&&!t)chk()});arm(2000)})();</script><script>(function(){var M={updating:"Applying update…",building:"Building update — this can take a few minutes…",starting:"Starting…"};async function q(){try{var r=await fetch("/__boot?_t="+Date.now(),{cache:"no-store"});if(!r.ok)return;var j=await r.json();var m=M[j.phase];if(!m)return;var s=Math.max(0,Math.floor(Date.now()/1e3-j.since));document.getElementById("bst").textContent=s>900?"This is taking longer than usual — try restarting the simulator.":m+" ("+(s>=60?Math.floor(s/60)+"m ":"")+(s%60)+"s)"}catch(e){}}setInterval(q,3000);q()})();</script></body></html>';
+    }
+}

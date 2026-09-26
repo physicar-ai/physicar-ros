@@ -1,0 +1,16 @@
+PhysiCar ROS 2
+Copyright 2026 AICASTLE Inc.
+
+Licensed under the PhysiCar Community License 1.0 (see LICENSE).
+"PhysiCar" is a trademark of AICASTLE Inc.
+
+Third-party components, identified by path (each under its own license;
+the license text is in the LICENSE file of that directory):
+
+  physicar_camera/**   camera_ros by Christian Rauch - MIT License,
+                       as modified by AICASTLE Inc. under the same license
+  physicar_lidar/**    rplidar_ros by Slamtec - BSD-2-Clause License,
+                       as modified by AICASTLE Inc. under the same license
+
+All other files in this repository are Software of AICASTLE Inc. under the
+PhysiCar Community License 1.0.

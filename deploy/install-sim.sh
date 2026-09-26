@@ -1,0 +1,478 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Physicar SIM Installer — Ubuntu 24.04
+#  Mirrors deploy/install-real.sh pattern but for simulation environment.
+#  Works on any Ubuntu 24.04 host (local VM, cloud, etc.)
+#
+#  Usage:
+#    sudo bash /opt/physicar/src/physicar-ros/deploy/install-sim.sh
+# ═══════════════════════════════════════════════════════════════════════════════
+
+echo "========== Physicar SIM Setup =========="
+
+export DEBIAN_FRONTEND=noninteractive
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PHYSICAR_ROS_DIR="$(dirname "$SCRIPT_DIR")"
+PHYSICAR_WS="$(dirname "$(dirname "$PHYSICAR_ROS_DIR")")"
+DEPLOY_DIR="$SCRIPT_DIR/sim"
+
+# ── Helper: wait for apt/dpkg lock ──
+wait_for_apt() {
+  local max_wait=300 waited=0
+  while fuser /var/lib/dpkg/lock-frontend &>/dev/null 2>&1; do
+    if [ $waited -ge $max_wait ]; then
+      echo "ERROR: dpkg lock held for over ${max_wait}s, aborting."
+      exit 1
+    fi
+    echo "  waiting for dpkg lock (${waited}s)..."
+    sleep 5
+    waited=$((waited + 5))
+  done
+}
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  1. System Packages                                                        │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[1/7] Installing system packages..."
+
+wait_for_apt
+apt-get update -y
+
+wait_for_apt
+apt-get install -y \
+  curl gnupg2 lsb-release software-properties-common apt-transport-https ca-certificates locales \
+  xvfb x11vnc novnc websockify xterm supervisor net-tools \
+  jq python3-pip ffmpeg gh mpv \
+  python3-fastapi python3-uvicorn \
+  nginx openbox tint2 alsa-utils python3-dev \
+  fonts-noto fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji
+
+# Python bytecode cache -> /opt/physicar/pycache (keeps __pycache__ out of the
+# student workspace; persistent so the prebuild image ships it pre-warmed)
+echo 'export PYTHONPYCACHEPREFIX=/opt/physicar/pycache' > /etc/profile.d/pycache.sh
+
+
+# Non-login shells skip profile.d — /etc/environment covers PAM sessions too
+grep -q PYTHONPYCACHEPREFIX /etc/environment 2>/dev/null || \
+  echo 'PYTHONPYCACHEPREFIX=/opt/physicar/pycache' >> /etc/environment
+
+# noVNC symlink + auto-reconnect patch
+[ -d /usr/share/novnc ] && ln -sf vnc_lite.html /usr/share/novnc/index.html
+sed -i 's|status("Something went wrong, connection is closed");|status("Reconnecting..."); setTimeout(function(){location.reload();},2000); return;|' /usr/share/novnc/vnc_lite.html 2>/dev/null || true
+sed -i 's|status("Disconnected");|status("Reconnecting..."); setTimeout(function(){location.reload();},2000); return;|' /usr/share/novnc/vnc_lite.html 2>/dev/null || true
+
+# code-server — serves `/` on the sim. Installed into the image; supervisord
+# starts it on boot.
+# deploy/code-server-version is the single source of truth — bake it here;
+# entrypoint.sh converges already-installed sims to the same pin every boot.
+CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
+if ! command -v code-server &>/dev/null; then
+  echo "  Installing code-server ${CS_PIN:-latest}..."
+  curl -fsSL https://code-server.dev/install.sh | sh -s -- ${CS_PIN:+--version="$CS_PIN"}
+fi
+
+# ── Webview microphone/camera patch ──
+# VS Code's webview iframes don't delegate mic/cam permission, which blocks
+# getUserMedia in every webview below them (extension panels, app.physicar).
+# Append 'microphone; camera' to the webview iframe allow-list in the served
+# workbench bundle. Idempotent; re-applied at boot too (entrypoint.sh) since
+# a code-server update restores the bundle. localhost is a secure context,
+# so getUserMedia works on the local-sim http://localhost access path.
+patch_codeserver_webview_media() {
+  local cs_bin cs_vscode
+  cs_bin=$(readlink -f "$(command -v code-server)" 2>/dev/null) || return 0
+  cs_vscode=$(dirname "$cs_bin")/../lib/vscode
+  [ -d "$cs_vscode/out" ] || cs_vscode=/usr/lib/code-server/lib/vscode
+  [ -d "$cs_vscode/out" ] || { echo "[media-patch] vscode bundle not found"; return 0; }
+
+  # Allow-list patterns per code-server generation (each patched idempotently):
+  #  A) legacy literal allow string
+  #  B) 4.12x workbench JS — allow list built as a JS array
+  #  C) 4.12x inner webview iframe (pre/index.html) — allowRules array
+  local A_OLD='clipboard-read; clipboard-write'
+  local A_NEW='clipboard-read; clipboard-write; microphone; camera'
+  local B_OLD='"cross-origin-isolated","autoplay","local-network-access"'
+  local B_NEW='"cross-origin-isolated","autoplay","local-network-access","microphone","camera"'
+  local C_OLD="'cross-origin-isolated;', 'autoplay;', 'local-network-access;'"
+  local C_NEW="'cross-origin-isolated;', 'autoplay;', 'local-network-access;', 'microphone;', 'camera;'"
+
+  local n=0 f changed
+  while IFS= read -r f; do
+    changed=0
+    if grep -qF "$A_OLD" "$f" && ! grep -qF "$A_NEW" "$f"; then
+      sed -i "s/$A_OLD/$A_NEW/g" "$f" && changed=1
+    fi
+    if grep -qF "$B_OLD" "$f" && ! grep -qF "$B_NEW" "$f"; then
+      sed -i "s/$B_OLD/$B_NEW/g" "$f" && changed=1
+    fi
+    if grep -qF "$C_OLD" "$f" && ! grep -qF "$C_NEW" "$f"; then
+      sed -i "s|$C_OLD|$C_NEW|g" "$f" && changed=1
+    fi
+    [ "$changed" = "1" ] && n=$((n+1))
+  done < <(grep -rlF -e "$A_OLD" -e "$B_OLD" -e "$C_OLD" "$cs_vscode/out" 2>/dev/null)
+  echo "[media-patch] patched $n file(s) under $cs_vscode/out"
+
+  # Silent-failure guard: after patching, at least one file must carry one of
+  # the patched allow-lists. If none do, a code-server update changed the
+  # pattern shape (it happened at 4.12x already) — warn loudly so it shows up
+  # in the boot log instead of mic/cam just silently breaking.
+  if ! grep -rqF -e "$A_NEW" -e "$B_NEW" -e "$C_NEW" "$cs_vscode/out" 2>/dev/null; then
+    echo "[media-patch] WARNING: no known allow-list pattern found in this code-server version — webview mic/cam will stay blocked until the patterns in this function are updated"
+  fi
+}
+patch_codeserver_webview_media || true
+
+# ── code-server extensions / settings / branding (local & cloud sim) ──
+# Mirror the real flow (physicar.sh / install-real.sh) so the sim gets the
+# same IDE out of the box.
+echo "  Installing code-server extensions..."
+for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy ms-toolsai.jupyter redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
+  sudo -u physicar code-server --install-extension "$EXT_ID" \
+    || echo "  [ext] WARNING: $EXT_ID install failed (open-vsx unreachable?)"
+done
+
+# Also clone physicar-ext as a built-in — built-in extensions have no Uninstall
+# button in the UI, making a baseline students cannot remove (Disable cannot be blocked by VS Code's design).
+# The same-ID extension in the user directory always overrides this copy (boot --force freshness),
+# so release freshness is unchanged; this layer activates only in sessions where the user copy was removed.
+# A code-server update replaces lib/vscode and drops the copy — a rebake restores it.
+CS_VSCODE=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode' -maxdepth 5 -type d 2>/dev/null | head -1)
+EXT_USER_DIR=$(ls -d /home/physicar/.local/share/code-server/extensions/physicar.physicar-ext-* 2>/dev/null | sort | tail -1)
+if [ -n "$CS_VSCODE" ] && [ -n "$EXT_USER_DIR" ]; then
+  rm -rf "$CS_VSCODE/extensions/physicar-ext-builtin"
+  cp -r "$EXT_USER_DIR" "$CS_VSCODE/extensions/physicar-ext-builtin"
+  echo "  [ext] physicar-ext staged as built-in ($(basename "$EXT_USER_DIR"))"
+else
+  echo "  [ext] WARNING: built-in staging skipped (vscode dir or ext missing)"
+fi
+
+# Guard extension (deploy/ext-guard) as a second built-in — re-enables physicar-ext
+# in-session when a student clicks Disable (built-ins cannot be uninstalled, and
+# VS Code has no "cannot disable" flag). Image-only, never published. Its own id,
+# so it never blocks the marketplace update of physicar-ext (entrypoint.sh, which
+# also refreshes this copy on a ros tag update).
+if [ -n "$CS_VSCODE" ]; then
+  rm -rf "$CS_VSCODE/extensions/physicar-ext-guard"
+  mkdir -p "$CS_VSCODE/extensions/physicar-ext-guard"
+  cp "$SCRIPT_DIR/ext-guard/package.json" "$SCRIPT_DIR/ext-guard/extension.js" \
+     "$CS_VSCODE/extensions/physicar-ext-guard/"
+  echo "  [ext] physicar-ext-guard staged as built-in"
+else
+  echo "  [ext] WARNING: physicar-ext-guard staging skipped (vscode dir missing)"
+fi
+
+# `code <file>` in the integrated terminal. code-server ships its terminal CLI only under
+# its own name (lib/vscode/bin/remote-cli/code-server, prepended to every terminal's
+# PATH); VS Code itself also ships it as `code`, and the base image's /usr/local/bin/code
+# is a shim that only looks for another `code` in PATH. A code-server update replaces
+# lib/vscode and drops the link — a rebake restores it.
+if [ -n "$CS_VSCODE" ] && [ -f "$CS_VSCODE/bin/remote-cli/code-server" ]; then
+  ln -sf code-server "$CS_VSCODE/bin/remote-cli/code"
+fi
+
+# user settings — symlink to the repo copy (real pattern: future updates
+# take effect without re-running install)
+CS_USER_DIR="/home/physicar/.local/share/code-server/User"
+sudo -u physicar mkdir -p "$CS_USER_DIR"
+# No symlink: user settings saves must work (default updates are handled by the boot merge — entrypoint.sh)
+[ -f "$CS_USER_DIR/settings.json" ] && [ ! -L "$CS_USER_DIR/settings.json" ] || {
+  rm -f "$CS_USER_DIR/settings.json"
+  cp "$DEPLOY_DIR/home/physicar/.local/share/code-server/User/settings.json" "$CS_USER_DIR/settings.json"
+  # cp runs as root, so hand ownership to the user — if baked root-owned,
+  # code-server (physicar) fails to save settings with EACCES
+  chown physicar:physicar "$CS_USER_DIR/settings.json"
+}
+
+# branding — same assets/logic as install-real.sh, but the sim installs
+# code-server from the deb (/usr/lib), not standalone (/usr/local/lib)
+CS_RES=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/resources/server' -type d 2>/dev/null | head -1)
+if [ -n "$CS_RES" ]; then
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/favicon.ico" "$CS_RES/favicon.ico"
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png" "$CS_RES/code-192.png"
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_RES/code-512.png"
+fi
+CS_MEDIA=$(find /usr/lib /usr/local/lib -path '*code-server*/src/browser/media' -type d 2>/dev/null | head -1)
+if [ -n "$CS_MEDIA" ]; then
+  cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/favicon.ico" "$CS_MEDIA/favicon.ico"
+  _B64=$(base64 -w0 "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png")
+  for _svg in favicon.svg favicon-dark-support.svg; do
+    printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$_B64" > "$CS_MEDIA/$_svg"
+  done
+  for _png in pwa-icon-192.png pwa-icon-maskable-192.png; do
+    [ -f "$CS_MEDIA/$_png" ] && cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png" "$CS_MEDIA/$_png"
+  done
+  for _png in pwa-icon-512.png pwa-icon-maskable-512.png; do
+    [ -f "$CS_MEDIA/$_png" ] && cp "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-512.png" "$CS_MEDIA/$_png"
+  done
+fi
+# Workbench titlebar icon (.window-appicon) — CSS points at out/media/code-icon.svg
+CS_OUT_MEDIA=$(find /usr/lib /usr/local/lib -path '*code-server*/lib/vscode/out/media' -type d 2>/dev/null | head -1)
+if [ -n "$CS_OUT_MEDIA" ] && [ -f "$CS_OUT_MEDIA/code-icon.svg" ]; then
+  _B64=$(base64 -w0 "$PHYSICAR_ROS_DIR/physicar_webserver/static/img/code-192.png")
+  printf '<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192"><image width="192" height="192" href="data:image/png;base64,%s"/></svg>' "$_B64" > "$CS_OUT_MEDIA/code-icon.svg"
+fi
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  2. ROS 2 Jazzy                                                           │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[2/7] Installing ROS 2 Jazzy..."
+
+# ROS 2 Jazzy
+if [ ! -f /opt/ros/jazzy/setup.bash ]; then
+  curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o /usr/share/keyrings/ros-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
+    | tee /etc/apt/sources.list.d/ros2.list > /dev/null
+  wait_for_apt
+  apt-get update -y
+  wait_for_apt
+  apt-get install -y --no-install-recommends \
+    ros-jazzy-ros-base \
+    ros-jazzy-rmw-cyclonedds-cpp \
+    ros-jazzy-rviz2 \
+    ros-jazzy-rqt \
+    ros-jazzy-rqt-common-plugins \
+    ros-jazzy-image-transport \
+    ros-jazzy-image-transport-plugins \
+    ros-jazzy-cv-bridge \
+    ros-jazzy-teleop-twist-keyboard \
+    ros-jazzy-tf2-tools \
+    ros-jazzy-xacro \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    ros-jazzy-rosbridge-server \
+    ros-jazzy-ros2-control \
+    ros-jazzy-ros2-controllers
+fi
+
+# SLAM/Nav2
+wait_for_apt
+apt-get install -y --no-install-recommends \
+  ros-jazzy-slam-toolbox \
+  ros-jazzy-cartographer-ros \
+  ros-jazzy-navigation2 \
+  ros-jazzy-nav2-bringup \
+  ros-jazzy-nav2-rviz-plugins \
+  ros-jazzy-rqt-tf-tree \
+  ros-jazzy-rqt-graph \
+  ros-jazzy-joy \
+  ros-jazzy-camera-info-manager
+
+set +u; source /opt/ros/jazzy/setup.bash; set -u
+rosdep init 2>/dev/null || true
+sudo -u physicar rosdep update --rosdistro jazzy 2>/dev/null || true
+
+# Patch nav2: disable docking_server & route_server
+NAV2_LAUNCH=/opt/ros/jazzy/share/nav2_bringup/launch/navigation_launch.py
+if grep -q "'route_server'," "$NAV2_LAUNCH" 2>/dev/null; then
+  python3 -c "
+import re
+with open('$NAV2_LAUNCH') as f: c = f.read()
+for old, new in [
+    (\"        'route_server',\\n\", \"        # 'route_server',  # disabled for physicar\\n\"),
+    (\"        'docking_server',\\n\", \"        # 'docking_server',  # disabled for physicar\\n\"),
+]:
+    c = c.replace(old, new)
+for pkg, exe, plugin in [
+    ('nav2_route', 'route_server', 'nav2_route::RouteServer'),
+    ('opennav_docking', 'opennav_docking', 'opennav_docking::DockingServer'),
+]:
+    c = re.sub(
+        r\"(            )(Node\\(\\n\\s+package='\" + pkg + r\"'.*?remappings=remappings,\\n\\s+\\),)\",
+        lambda m: m.group(1) + '# ' + m.group(2).replace('\\n', '\\n' + m.group(1) + '# '),
+        c, count=1, flags=re.DOTALL)
+    c = re.sub(
+        r\"(                    )(ComposableNode\\(\\n\\s+package='\" + pkg + r\"'.*?remappings=remappings,\\n\\s+\\),)\",
+        lambda m: m.group(1) + '# ' + m.group(2).replace('\\n', '\\n' + m.group(1) + '# '),
+        c, count=1, flags=re.DOTALL)
+with open('$NAV2_LAUNCH', 'w') as f: f.write(c)
+print('nav2 navigation_launch.py patched')
+"
+fi
+
+# Lock package versions
+apt-mark hold $(dpkg -l | grep -E '^ii  (ros-jazzy|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  3. Python Packages                                                        │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[3/7] Installing Python packages..."
+
+runuser -u physicar -- python3 -m pip config set global.break-system-packages true 2>/dev/null || true
+
+# Pin numpy<2
+mkdir -p /etc/pip
+ln -sf "$DEPLOY_DIR/etc/pip/constraints.txt" /etc/pip/constraints.txt
+ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip/pip.conf
+grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
+  echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
+export PIP_CONSTRAINT=/etc/pip/constraints.txt
+
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'physicar~=1.0' \
+  'flask~=3.1' \
+  'flask-cors~=4.0' \
+  'flask-sock~=0.7' \
+  'requests~=2.32' \
+  'ultralytics~=8.4' \
+  'numpy<2' \
+  opencv-python-headless==4.9.0.80 \
+  websockets aiohttp \
+  'ddgs~=9.14' \
+  python-multipart watchdog pydantic starlette \
+  setuptools==70.0.0
+
+# ── Deep learning stack (deeplearning workspace: PyTorch training + ONNX) ──
+# CPU-only torch wheel (no CUDA on sim hosts).
+echo "  Installing deep learning stack (torch/onnx/gymnasium/sb3)..."
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'onnx~=1.17' \
+  'onnxruntime~=1.20' \
+  'gymnasium~=1.0' \
+  'stable-baselines3~=2.7' \
+  'tqdm~=4.69' \
+  'rich~=13.7' \
+  'shapely~=2.0' \
+  'ncnn~=1.0' \
+  'ipykernel~=7.3' \
+  'ipywidgets~=8.1' \
+  'matplotlib~=3.10'
+
+# ── Jupyter kernel (PhysiCar AI) ──
+# VSCode/code-server spawns Jupyter kernels without a login shell, so the
+# stock python3 kernel can't see ROS (no PYTHONPATH; LD_LIBRARY_PATH is
+# unfixable from inside a cell — the dynamic linker reads it at process
+# start). Register a kernelspec that boots the kernel through `bash -ic`,
+# inheriting the exact terminal environment (~/.bashrc).
+# The name must NOT look like a default spec: VSCode's Jupyter extension
+# hides any spec named /^python\d*/ as "auto-generated" (isDefaultKernelSpec).
+# Notebooks auto-bind via metadata kernelspec name = 'physicar-ai'; the raw
+# interpreter kernel is hidden via jupyter.kernels.excludePythonEnvironments
+# in the deployed code-server settings.json.
+KSPEC_DIR=/home/physicar/.local/share/jupyter/kernels/physicar-ai
+sudo -u physicar mkdir -p "$KSPEC_DIR"
+sudo -u physicar cp "$SCRIPT_DIR/jupyter-kernel.json" "$KSPEC_DIR/kernel.json"
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  4. Config Deployment (symlinks)                                           │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[4/7] Deploying config files..."
+
+# Openbox / tint2
+mkdir -p /etc/xdg/openbox /home/physicar/.config/tint2
+ln -sf "$DEPLOY_DIR/etc/xdg/openbox/rc.xml" /etc/xdg/openbox/rc.xml
+ln -sf "$DEPLOY_DIR/home/physicar/.config/tint2/tint2rc" /home/physicar/.config/tint2/tint2rc
+chown -R physicar:physicar /home/physicar/.config
+ln -sf "$DEPLOY_DIR/usr/share/applications/xterm.desktop" /usr/share/applications/xterm.desktop
+
+# Nginx
+rm -f /etc/nginx/sites-enabled/default
+ln -sf "$DEPLOY_DIR/etc/nginx/sites-available/physicar" /etc/nginx/sites-available/physicar
+ln -sf /etc/nginx/sites-available/physicar /etc/nginx/sites-enabled/physicar
+# Origin gate include (static; `include`s /tmp/pc-gate.map, which entrypoint.sh
+# fills from $PHYSICAR_ORIGIN_GATE_SECRET on boot — blocks gateway-bypass access).
+# Drop the pre-rename symlink first — leaving both makes nginx fail with
+# "map_hash_bucket_size directive is duplicate" (upgrade-in-place images).
+rm -f /etc/nginx/conf.d/pc-gate.conf
+ln -sf "$DEPLOY_DIR/etc/nginx/conf.d/zz-pc-gate.conf" /etc/nginx/conf.d/zz-pc-gate.conf
+# Inactive gate map so nginx can load now (entrypoint.sh recreates it on boot).
+printf 'default "pass";\n' > /tmp/pc-gate.map
+# Root (/) snippet so nginx can load now — entrypoint.sh rewrites it on boot
+# (root-code.conf). Copied, not symlinked: fs.protected_symlinks blocks
+# cross-owner symlinks in sticky /tmp.
+cp -f "$DEPLOY_DIR/etc/nginx/root-code.conf" /tmp/pc-root.conf
+
+# supervisord log directory
+mkdir -p /var/log/supervisor
+chown -R physicar:physicar /var/log/supervisor
+
+# Script permissions
+chmod +x "$DEPLOY_DIR/physicar.sh"
+chmod +x "$DEPLOY_DIR/app-browser.sh" 2>/dev/null || true
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  5. Workspace Setup                                                        │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[5/7] Workspace setup..."
+
+# /opt/physicar/userdata .env (same path as real)
+mkdir -p "$PHYSICAR_WS/userdata"
+echo "SIM=true" | tee "$PHYSICAR_WS/userdata/.env" > /dev/null
+# Own the whole userdata dir (not just .env) — supervisord runs the `physicar`
+# program as the physicar user and writes physicar.log here; a root-owned dir
+# causes EACCES and the program fails to spawn (FATAL).
+chown -R physicar:physicar "$PHYSICAR_WS/userdata"
+
+# COLCON_IGNORE for real-only packages
+touch "$PHYSICAR_ROS_DIR/physicar_camera/COLCON_IGNORE" 2>/dev/null || true
+touch "$PHYSICAR_ROS_DIR/physicar_lidar/COLCON_IGNORE" 2>/dev/null || true
+
+# Symlink ~/physicar-ros for convenience
+sudo -u physicar ln -sfn "$PHYSICAR_ROS_DIR" /home/physicar/physicar-ros
+
+# git safe directories
+sudo -u physicar git config --global --add safe.directory "$PHYSICAR_ROS_DIR"
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  6. Bashrc + Build                                                         │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[6/7] Bashrc + initial build..."
+
+# Append bashrc (idempotent)
+# Source the repo file directly (not a copy): env changes shipped in future
+# updates take effect on the next shell without re-running install.
+if ! grep -qF "deploy/sim/bashrc-append" /home/physicar/.bashrc 2>/dev/null; then
+  cat >> /home/physicar/.bashrc <<'__BASHRC_HOOK__'
+
+# physicar-ros environment
+. /opt/physicar/src/physicar-ros/deploy/sim/bashrc-append
+__BASHRC_HOOK__
+fi
+
+# Allow nginx (www-data) to traverse /home/physicar
+chmod o+x /home/physicar
+
+# sudoers
+echo 'physicar ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/physicar
+chmod 440 /etc/sudoers.d/physicar
+
+# Initial colcon build
+sudo -u physicar bash -c 'set +u; source /opt/ros/jazzy/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
+rm -rf "$PHYSICAR_WS/log"
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │  7. Cleanup                                                                │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+echo "[7/7] Cleanup..."
+
+# Pre-warm the Python bytecode cache into the image so first boot doesn't pay
+# the compile cost (webserver import stacks). Errors are non-fatal —
+# anything skipped just compiles lazily at runtime as before.
+export PYTHONPYCACHEPREFIX=/opt/physicar/pycache
+python3 -m compileall -qq -j0 \
+  /opt/ros/jazzy/lib/python3.12/site-packages \
+  /usr/lib/python3/dist-packages \
+  /usr/local/lib/python3.12/dist-packages \
+  /opt/physicar/src 2>/dev/null || true
+chown -R physicar:physicar /opt/physicar/pycache 2>/dev/null || true
+
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+echo ""
+echo "=========================================="
+echo "      Physicar SIM Setup Complete        "
+echo "=========================================="
+echo ""

@@ -1,0 +1,75 @@
+/* ===== Control card (embedded in the /app panel stack) =====
+ * Drive and Look cards side by side, equal widths (flex-basis 0).
+ * Joystick-only (continuous) control. DESIGN RULE: nothing wraps and
+ * nothing scales with the container — every row is a fixed-height,
+ * nowrap line. Only the joystick flexes, fitting the largest square via
+ * geometry-only container units. Truly tiny panels fall back to a
+ * scrollbar rather than overlapping.
+ */
+
+.ctrl-col {
+  display: flex; flex-direction: column;
+  gap: 8px; padding: 8px;
+  min-width: 0; min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Card (top: drive, bottom: look) — equal heights ── */
+.cc {
+  flex: 1 1 0;
+  min-height: 165px;   /* scroll fallback below this — content never overlaps */
+  display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Header: single fixed-height line, never wraps */
+.cc-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600; color: var(--fg);
+  flex-shrink: 0; white-space: nowrap; min-width: 0;
+}
+
+/* ── Joystick / D-pad: the only flexible element ── */
+/* Drive card: joystick + vertical max-speed slider side by side */
+.ctrl-area-row {
+  flex: 1 1 auto; min-height: 60px;
+  display: flex; gap: 6px; min-width: 0;
+}
+.ctrl-area {
+  flex: 1 1 auto; min-height: 60px;
+  container-type: size;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Largest square that fits the area (geometry-only container units) */
+.ctrl-joystick-wrap {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+}
+.ctrl-joystick { width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+
+/* ── Readouts: fixed 2-column grid, one line each, never wraps ── */
+.ctrl-info {
+  display: grid; grid-template-columns: 1fr 1fr;
+  font-size: 12px; color: var(--fg2); flex-shrink: 0;
+  text-align: center; white-space: nowrap;
+}
+.ctrl-info span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ctrl-info strong { color: var(--fg); font-weight: 600; }
+
+/* ── Max-speed slider (drive card only): vertical, left of the joystick ── */
+.ctrl-vslider {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px; flex-shrink: 0; width: 20px; padding: 2px 0;
+  font-size: 10px; color: var(--fg2); white-space: nowrap;
+}
+.ctrl-vslider-val strong { color: var(--fg); font-weight: 600; font-size: 11px; }
+.ctrl-vslider-label { color: var(--fg3); }
+.ctrl-vslider input[type="range"] {
+  flex: 1; min-height: 40px;
+  writing-mode: vertical-lr; direction: rtl;   /* bottom→top vertical slider */
+  accent-color: var(--accent);
+}

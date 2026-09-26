@@ -1,0 +1,22 @@
+# PhysiCar udev rules
+# Copy this file to /etc/udev/rules.d/99-physicar.rules
+# Then run: sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# Yahboom ROS Robot Expansion Board (STM32 USB Serial)
+# Creates symlink /dev/yahboom
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="yahboom", MODE="0666"
+
+# Alternative: STM32 Virtual COM Port
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", SYMLINK+="yahboom", MODE="0666"
+
+# RPLidar C1
+# Creates symlink /dev/rplidar
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="rplidar", MODE="0666"
+
+# Alternative RPLidar USB
+SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", SYMLINK+="rplidar", MODE="0666"
+
+# Raspberry Pi Camera (no udev needed - uses CSI interface)
+
+# USB Audio Device (any USB audio)
+SUBSYSTEM=="sound", MODE="0666"

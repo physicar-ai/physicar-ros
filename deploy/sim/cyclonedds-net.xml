@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CycloneDDS config for the workspace container. The simulator (172.30.0.3 on the
+  docker network "physicar") is the robot's virtual hardware: its ROS topics must
+  reach this container over its 172.30.0.2 interface, so DDS is not pinned to lo
+  here. The real robot keeps deploy/cyclonedds.xml (loopback only).
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface address="172.30.0.2"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer address="172.30.0.3"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

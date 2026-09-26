@@ -1,0 +1,14 @@
+# SetCalibration.srv
+# Set calibration values for a specific servo channel and save to file
+
+# Request
+string channel          # 'steering', 'speed', 'pan', 'tilt', 'reverse', 'speed_gain', or 'all'
+float64 max_value       # max limit (degrees or m/s for speed), ignored if channel='all' or 'reverse'
+float64 center_value    # center offset (degrees), ignored if channel='all', 'speed', or 'reverse'
+bool bool_value         # for reverse_direction
+bool save_to_file       # true: save to /opt/physicar/calibration.json after applying
+---
+# Response
+bool success
+string message
+string current_calibration_json   # Current calibration state as JSON string

@@ -1,0 +1,35 @@
+name: Release
+
+# A release is a bump of the VERSION file on main. On every push to main this
+# workflow reads VERSION and, if the tag v<VERSION> does not exist yet, creates
+# a lightweight tag on that commit. Robots and cloud workspaces update from
+# version tags (see updater.sh), so nothing else is needed. Pushing a commit
+# that does not change VERSION is a no-op here.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  tag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag v<VERSION> if missing
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must be MAJOR.MINOR.PATCH (got '$VERSION')"; exit 1
+          fi
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists - nothing to do"; exit 0
+          fi
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          echo "tagged $TAG"

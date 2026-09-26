@@ -1,0 +1,678 @@
+#!/usr/bin/env python3
+#
+# SPDX-License-Identifier: LicenseRef-PhysiCar-Community-1.0
+# Copyright (c) 2026 AICASTLE Inc.
+# Licensed under the PhysiCar Community License 1.0 (see LICENSE).
+
+"""
+State & Control Router - Unified read/write endpoints for robot hardware.
+
+GET  /speed, /steering, /camera, /lidar, ...  → read sensor/state
+POST /speed, /steering, /camera/pan, ... → write control command
+
+All GET endpoints support:
+- One-shot reads (default)
+- SSE streaming via ?stream=true or Accept: text/event-stream header
+"""
+
+import asyncio
+import base64
+import json
+from typing import Optional
+
+from fastapi import APIRouter, Query, Request, HTTPException, WebSocket
+from fastapi.responses import StreamingResponse, Response, JSONResponse
+from pydantic import BaseModel, Field
+
+from physicar_webserver.ros_bridge import get_ros_bridge
+from physicar_webserver.state_manager import get_state_manager
+
+router = APIRouter(tags=["hw"])
+
+
+# =============================================================================
+# Request / Response Models (from control)
+# =============================================================================
+
+class SpeedRequest(BaseModel):
+    """Speed control request."""
+    value: float = Field(..., description="Speed in m/s. Positive=forward, Negative=backward")
+    duration: Optional[float] = Field(
+        None, gt=0.0, le=600.0,
+        description="Seconds to hold this speed (kept alive by the server), then auto-stop. "
+                    "The response returns after the drive finishes ('stopped') or when a "
+                    "newer speed command supersedes it. Without duration the command "
+                    "expires after the driver's cmd_timeout (~1 s) unless renewed.")
+
+
+class SteeringRequest(BaseModel):
+    """Steering control request."""
+    value: float = Field(..., description="Steering angle in radians. Positive=left, Negative=right")
+
+
+class PanRequest(BaseModel):
+    """Camera pan control request."""
+    value: float = Field(..., description="Pan angle in radians. 0=center, Positive=left, Negative=right")
+
+
+class TiltRequest(BaseModel):
+    """Camera tilt control request."""
+    value: float = Field(..., description="Tilt angle in radians. 0=level, Positive=up, Negative=down")
+
+
+class ControlResponse(BaseModel):
+    """Standard control response."""
+    success: bool
+    value: Optional[float] = None
+    message: Optional[str] = None
+
+
+# =============================================================================
+# Helper: Check if SSE stream requested
+# =============================================================================
+
+def _wants_stream(request: Request, stream: Optional[bool]) -> bool:
+    """Check if client wants SSE stream."""
+    if stream:
+        return True
+    accept = request.headers.get("accept", "")
+    return "text/event-stream" in accept
+
+
+# =============================================================================
+# Summary Endpoint
+# =============================================================================
+
+@router.get("/states")
+async def get_state_summary(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+    include: Optional[str] = Query(None, description="Comma-separated keys to include in stream (e.g., 'odom,battery,imu'). Default: cmd,odom,battery"),
+):
+    """
+    Get all robot states combined.
+    
+    One-shot: Returns all available states (cmd, odom, battery, imu, lidar, joints, camera info); ?include= narrows it to the listed keys.
+    
+    Streaming (?stream=true): Returns selected states continuously.
+    - Default: cmd, odom, battery (lightweight)
+    - Use ?include=odom,battery,imu to customize
+    - Available: cmd, odom, battery, imu, joints, camera_pan, camera_tilt
+    - Note: lidar excluded by default (heavy), use /lidar?stream=true instead
+    """
+    sm = get_state_manager()
+
+    include_list = None
+    if include:
+        include_list = [k.strip() for k in include.split(",") if k.strip()]
+
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_all_sse(include_list),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    data = sm.get_all_states()
+    if include_list:
+        data = {k: v for k, v in data.items() if k in include_list}
+    return data
+
+
+# =============================================================================
+# Speed / Steering
+# =============================================================================
+
+@router.get("/speed")
+async def get_speed(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """Get current speed (m/s)."""
+    sm = get_state_manager()
+
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_cmd_state_sse("speed"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # Prefer measured (odom) — prevents stale command values from showing
+    # "driving" after the driver watchdog stopped the car. Fall back to the command value until odom exists.
+    data = sm.get_once("odom")
+    if data is None:
+        return sm.get_cmd_state()["speed"]
+    return data.get("velocity", {}).get("linear", 0.0)
+
+
+@router.get("/steering")
+async def get_steering(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """Get current steering angle (radians)."""
+    sm = get_state_manager()
+
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_cmd_state_sse("steering"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    return sm.get_cmd_state()["steering"]
+
+
+# =============================================================================
+# Odometry
+# =============================================================================
+
+@router.get("/odom")
+async def get_odom(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """
+    Get odometry data (position, orientation, velocity).
+    
+    Use ?stream=true for continuous updates.
+    """
+    sm = get_state_manager()
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_sse("odom"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    data = sm.get_once("odom")
+    if data is None:
+        return JSONResponse({"error": "No odometry data", "status": "waiting"}, status_code=503)
+    return data
+
+
+# =============================================================================
+# Battery
+# =============================================================================
+
+@router.get("/battery")
+async def get_battery(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """
+    Get battery state (voltage, percentage, charging).
+    
+    Use ?stream=true for continuous updates.
+    """
+    sm = get_state_manager()
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_sse("battery"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    data = sm.get_once("battery")
+    if data is None:
+        return JSONResponse({"error": "No battery data", "status": "waiting"}, status_code=503)
+    return data
+
+
+# =============================================================================
+# IMU
+# =============================================================================
+
+@router.get("/imu")
+async def get_imu(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """
+    Get IMU data (acceleration, gyro, orientation).
+    
+    Use ?stream=true for continuous updates.
+    """
+    sm = get_state_manager()
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_sse("imu"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    data = sm.get_once("imu")
+    if data is None:
+        return JSONResponse({"error": "No IMU data", "status": "waiting"}, status_code=503)
+    return data
+
+
+# =============================================================================
+# Camera
+# =============================================================================
+
+def _ansi_frame(jpg, cols):
+    """One camera frame as truecolor half-block art — a picture a terminal
+    can show. Two pixel rows per text row (the upper-half-block glyph)."""
+    import cv2
+    import numpy as np
+    img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    rows2 = max(2, round(img.shape[0] * cols / img.shape[1] * 0.5) * 2)
+    small = cv2.resize(img, (cols, rows2), interpolation=cv2.INTER_AREA)
+    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+    out = []
+    for y in range(0, rows2, 2):
+        line = "".join(
+            "\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm\u2580"
+            % (t[0], t[1], t[2], b[0], b[1], b[2])
+            for t, b in zip(rgb[y], rgb[y + 1]))
+        out.append(line + "\x1b[0m")
+    return "\n".join(out) + "\n"
+
+
+@router.get("/camera")
+async def get_camera(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable MJPEG streaming"),
+    width: Optional[int] = Query(None, ge=16, le=1920, description="Image width"),
+    height: Optional[int] = Query(None, ge=16, le=1080, description="Image height"),
+    format: Optional[str] = Query(None, description="'ansi' draws the frame right in the terminal"),
+    cols: int = Query(64, ge=16, le=160, description="ansi format: width in terminal columns"),
+):
+    """
+    Get camera image.
+    
+    - Default: Single JPEG image
+    - ?stream=true: MJPEG stream (continuous frames)
+    - ?format=ansi: the frame drawn as terminal art; with stream=true a
+      live terminal view (~5 fps, Ctrl+C to stop)
+    
+    Optionally resize with width/height parameters.
+    """
+    sm = get_state_manager()
+    
+    if format == "ansi":
+        loop = asyncio.get_event_loop()
+        if _wants_stream(request, stream):
+            async def _ansi_gen():
+                yield "\x1b[2J"
+                while True:
+                    jpg = await loop.run_in_executor(None, sm.get_camera_image, None, None)
+                    if jpg:
+                        art = await loop.run_in_executor(None, _ansi_frame, jpg, cols)
+                        if art:
+                            yield "\x1b[H" + art
+                    await asyncio.sleep(0.2)
+            return StreamingResponse(
+                _ansi_gen(), media_type="text/plain; charset=utf-8",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        jpg = await loop.run_in_executor(None, sm.get_camera_image, None, None)
+        art = _ansi_frame(jpg, cols) if jpg else None
+        if art is None:
+            return Response(content="Camera not available", status_code=503, media_type="text/plain")
+        return Response(content=art, media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_camera_mjpeg(width, height),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    loop = asyncio.get_event_loop()
+    frame = await loop.run_in_executor(None, sm.get_camera_image, width, height)
+    
+    if frame is None:
+        return Response(content="Camera not available", status_code=503, media_type="text/plain")
+    
+    return Response(
+        content=frame,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@router.get("/camera/pan")
+async def get_camera_pan(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """
+    Get current camera pan angle (radians).
+    
+    Use ?stream=true for continuous updates.
+    """
+    sm = get_state_manager()
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_cmd_state_sse("pan"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    return sm.get_cmd_state()["pan"]
+
+
+@router.get("/camera/tilt")
+async def get_camera_tilt(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+):
+    """
+    Get current camera tilt angle (radians).
+    
+    Use ?stream=true for continuous updates.
+    """
+    sm = get_state_manager()
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_cmd_state_sse("tilt"),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    return sm.get_cmd_state()["tilt"]
+
+
+# =============================================================================
+# Lidar
+# =============================================================================
+
+@router.get("/lidar")
+async def get_lidar(
+    request: Request,
+    stream: Optional[bool] = Query(None, description="Enable SSE streaming"),
+    step: float = Query(1.0, ge=0.5, le=30, description="Angle step (degrees)"),
+):
+    """
+    Get lidar scan data.
+    
+    - step=1: 1° intervals (~360 points)
+    - step=10: 10° intervals (~36 points)
+    
+    Use ?stream=true for continuous updates.
+    
+    Orientation: 0°=front, +90°=left, -90°=right, ±180°=rear
+    """
+    sm = get_state_manager()
+    
+    if _wants_stream(request, stream):
+        return StreamingResponse(
+            sm.stream_sse("lidar", step=step),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    
+    data = sm.get_once("lidar", step=step)
+    if data is None:
+        return JSONResponse({"error": "No scan data", "status": "waiting"}, status_code=503)
+    return data
+
+
+# =============================================================================
+# POST — Speed Control
+# =============================================================================
+
+# Paired with the driver/adapter cmd_timeout (default 1s) watchdog:
+# - A one-shot POST expires after ~1s (sustained driving re-calls in a loop — the samples already use this pattern)
+# - With duration, keep the drive alive by republishing at 5Hz, then publish 0;
+#   the response blocks until driving ends ('stopped') or returns at once when a new command appears ('superseded')
+# - The generation counter (_speed_gen) is bumped by POSTs, WS frames and the WS dead-man 0 publish alike —
+#   any new command/stop instantly supersedes an in-flight hold (same event loop, so atomic)
+# - If the webserver dies, republishing stops and the driver watchdog stops the car (end-to-end guarantee)
+_speed_gen = 0
+_speed_tasks: set = set()   # strong refs to hold/mirror tasks (prevent GC)
+_KEEPALIVE_PERIOD = 0.2   # 5Hz — comfortably denser than cmd_timeout (1.0s)
+
+# WS dead-man grace: a tunnel/proxy blip closes a control stream even though
+# the browser is alive and resumes commands within ~0.4 s (stream reconnect or
+# the POST fallback). Zeroing at the instant of close made every blip snap the
+# steering straight mid-drive — the "periodic left-right twitch" (the camera/
+# lidar streams freezing at the same moment are the same tunnel blip). The
+# zero is therefore deferred briefly and cancelled when any newer command for
+# that axis arrives; a genuinely dead client still stops _DEADMAN_GRACE later
+# (the driver watchdog remains the final backstop).
+_DEADMAN_GRACE = 0.7
+_drive_gen = {"speed": 0, "steering": 0}
+
+
+def _bump_speed_gen() -> int:
+    global _speed_gen
+    _speed_gen += 1
+    return _speed_gen
+
+
+def _track_task(task):
+    _speed_tasks.add(task)
+    task.add_done_callback(_speed_tasks.discard)
+    return task
+
+
+async def _speed_hold(gen: int, value: float, duration: float) -> str:
+    loop = asyncio.get_event_loop()
+    end = loop.time() + duration
+    while True:
+        if gen != _speed_gen:
+            return "superseded"
+        remain = end - loop.time()
+        if remain <= 0:
+            break
+        bridge = get_ros_bridge()
+        if bridge.is_ready:
+            bridge.publish_speed(value)
+        await asyncio.sleep(min(_KEEPALIVE_PERIOD, remain))
+    if gen != _speed_gen:
+        return "superseded"
+    bridge = get_ros_bridge()
+    if bridge.is_ready:
+        bridge.publish_speed(0.0)
+        get_state_manager().update_cmd_state(speed=0.0)
+    return "stopped"
+
+
+async def _cmd_mirror_expire(gen: int, timeout: float = 1.2):
+    """Display mirror for a one-shot (non-duration) command — keeps cmd_state from
+    showing a stale speed after the driver watchdog stopped the car (display only, no publish)."""
+    await asyncio.sleep(timeout)
+    if gen == _speed_gen:
+        get_state_manager().update_cmd_state(speed=0.0)
+
+
+@router.post("/speed", response_model=ControlResponse)
+async def set_speed(request: SpeedRequest):
+    """
+    Set robot speed (m/s).
+
+    Publishes directly to /speed topic.
+    No Ackermann conversion - raw speed value.
+
+    - Positive = forward
+    - Negative = backward
+    - 0 = stop
+    - Without duration: expires after the driver's cmd_timeout (~1 s) unless renewed.
+    - With duration (seconds): kept alive for that long, then auto-stop; the
+      response returns after the drive finishes ('stopped') or 'superseded'.
+    """
+    bridge = get_ros_bridge()
+    if not bridge.is_ready:
+        raise HTTPException(503, "ROS bridge not ready")
+
+    gen = _bump_speed_gen()
+    _drive_gen["speed"] += 1
+    success = bridge.publish_speed(request.value)
+
+    sm = get_state_manager()
+    sm.update_cmd_state(speed=request.value)
+
+    if success and request.duration is not None and request.value != 0.0:
+        # The hold must continue even if the client disconnects while waiting → independent task +
+        # shield (handler cancellation only abandons the response; the stop guarantee stays)
+        task = _track_task(asyncio.create_task(_speed_hold(gen, request.value, request.duration)))
+        outcome = await asyncio.shield(task)
+        return ControlResponse(success=True, value=request.value, message=outcome)
+
+    if success and request.value != 0.0:
+        _track_task(asyncio.create_task(_cmd_mirror_expire(gen)))
+
+    return ControlResponse(success=success, value=request.value)
+
+
+# =============================================================================
+# WS — Streaming Control (per-topic write streams)
+# =============================================================================
+# Streaming counterpart of the control endpoints — the write-side twin of the
+# sensors' ?stream=true read streams. Each frame carries the same
+# {"value": <float>} body as the matching POST.
+# Used by the App page control UI: a whole driving session costs ONE request
+# through tunnels/proxies instead of 10/s.
+#
+# Dead-man switch: when a stream closes, its value is published as 0 — a dead
+# browser can never leave the robot driving. Only the drive axes
+# (speed/steering) get streams; camera pan/tilt is occasional input and the
+# plain POST is enough.
+
+def _make_control_stream(path: str, field: str, publish_name: str, zero_on_close: bool):
+    async def _stream(ws: WebSocket):
+        await ws.accept()
+        bridge = get_ros_bridge()
+        sm = get_state_manager()
+        publish = getattr(bridge, publish_name)
+        sent = False
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                text = msg.get("text")
+                if not text or not bridge.is_ready:
+                    continue
+                try:
+                    value = float(json.loads(text)["value"])
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if field == "speed":
+                    _bump_speed_gen()   # supersede an in-flight duration hold
+                _drive_gen[field] += 1
+                publish(value)
+                sm.update_cmd_state(**{field: value})
+                sent = True
+        except Exception:
+            pass
+        finally:
+            if zero_on_close and sent:
+                gen = _drive_gen[field]
+
+                async def _deadman_zero():
+                    await asyncio.sleep(_DEADMAN_GRACE)
+                    if _drive_gen[field] != gen:
+                        return   # newer command bridged the blip — no stop
+                    if field == "speed":
+                        _bump_speed_gen()   # the dead-man 0 is the final state — don't let the hold overwrite it
+                    b = get_ros_bridge()
+                    if b.is_ready:
+                        getattr(b, publish_name)(0.0)
+                        get_state_manager().update_cmd_state(**{field: 0.0})
+                        print(f"[deadman] {field} zeroed {_DEADMAN_GRACE}s after stream close",
+                              flush=True)
+
+                _track_task(asyncio.create_task(_deadman_zero()))
+    router.add_api_websocket_route(path, _stream)
+
+
+_make_control_stream("/speed/stream", "speed", "publish_speed", zero_on_close=True)
+_make_control_stream("/steering/stream", "steering", "publish_steering", zero_on_close=True)
+
+
+# =============================================================================
+# POST — Steering Control
+# =============================================================================
+
+@router.post("/steering", response_model=ControlResponse)
+async def set_steering(request: SteeringRequest):
+    """
+    Set steering angle (radians).
+    
+    Publishes directly to /steering topic.
+    
+    - Positive = left
+    - Negative = right
+    - 0 = center
+    """
+    bridge = get_ros_bridge()
+    if not bridge.is_ready:
+        raise HTTPException(503, "ROS bridge not ready")
+    
+    _drive_gen["steering"] += 1
+    success = bridge.publish_steering(request.value)
+
+    sm = get_state_manager()
+    sm.update_cmd_state(steering=request.value)
+
+    return ControlResponse(success=success, value=request.value)
+
+
+# =============================================================================
+# POST — Camera Pan Control
+# =============================================================================
+
+@router.post("/camera/pan", response_model=ControlResponse)
+async def set_pan(request: PanRequest):
+    """
+    Set camera pan angle (radians).
+    
+    Publishes directly to /camera/pan topic.
+    
+    - Range: typically -π/2 to +π/2 radians
+    - 0 = center
+    - Positive = left
+    - Negative = right
+    """
+    bridge = get_ros_bridge()
+    if not bridge.is_ready:
+        raise HTTPException(503, "ROS bridge not ready")
+    
+    success = bridge.publish_pan(request.value)
+    
+    sm = get_state_manager()
+    sm.update_cmd_state(pan=request.value)
+    
+    return ControlResponse(success=success, value=request.value)
+
+
+# =============================================================================
+# POST — Camera Tilt Control
+# =============================================================================
+
+@router.post("/camera/tilt", response_model=ControlResponse)
+async def set_tilt(request: TiltRequest):
+    """
+    Set camera tilt angle (radians).
+    
+    Publishes directly to /camera/tilt topic.
+    
+    - Range: typically -π/6 to +π/6 radians
+    - 0 = level
+    - Positive = up
+    - Negative = down
+    """
+    bridge = get_ros_bridge()
+    if not bridge.is_ready:
+        raise HTTPException(503, "ROS bridge not ready")
+    
+    success = bridge.publish_tilt(request.value)
+    
+    sm = get_state_manager()
+    sm.update_cmd_state(tilt=request.value)
+    
+    return ControlResponse(success=success, value=request.value)
+

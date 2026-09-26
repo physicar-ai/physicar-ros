@@ -1,0 +1,25 @@
+[Unit]
+Description=PhysiCar code-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=physicar
+Group=physicar
+Environment=HOME=/home/physicar
+ExecStart=/usr/local/bin/code-server \
+    --bind-addr 127.0.0.1:8080 \
+    --auth none \
+    --disable-telemetry \
+    --disable-update-check \
+    --proxy-domain preview.physicar.ai \
+    /home/physicar/physicar_ws
+# always (not on-failure): a clean exit (observed once right as SD imaging
+# finished — cause unknown, exit 0) left the kiosk with a 502 until manual
+# restart. This is an appliance; the editor must simply always be up.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

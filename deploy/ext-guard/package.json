@@ -1,0 +1,19 @@
+{
+  "name": "physicar-ext-guard",
+  "displayName": "PhysiCar Guard",
+  "description": "Keeps the PhysiCar extension enabled",
+  "version": "1.0.0",
+  "publisher": "physicar",
+  "license": "LicenseRef-PhysiCar-Community-1.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ]
+}
