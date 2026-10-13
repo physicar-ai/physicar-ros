@@ -233,19 +233,26 @@ body:not(.sim-mode) #divider2{display:none}
 #sim-world-btn:hover{filter:brightness(1.12);box-shadow:0 1px 9px rgba(126,87,194,.75)}
 #sim-world-btn:active{filter:brightness(.92);box-shadow:none}
 
-/* World modal — same full-cover treatment as the sensor zoom modal */
+/* World modal — same full-cover treatment as the sensor zoom modal.
+   One grid: [+ Add world] card, custom worlds, official worlds (OFFICIAL badge). No section
+   headers, no footer — the add card holds the World ID field. Mirrored in physicar-sim share/ (gzweb.css). */
 #world-modal .sensor-modal{width:min(640px,92vw)}
-.wm-body{overflow-y:auto;flex:1;padding:4px 0;max-height:calc(95vh - 140px)}
-.wm-sec{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--fg3);padding:8px 14px 3px}
-.wm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:8px;padding:4px 14px 8px}
+.wm-body{overflow-y:auto;flex:1;padding:4px 0 8px;max-height:calc(95vh - 100px)}
+.wm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:8px;padding:10px 14px 6px}
 .wm-card{border:1px solid var(--border);border-radius:8px;padding:7px;cursor:pointer;
-  display:flex;flex-direction:column;gap:3px;font-size:12px;background:var(--bg2)}
+  display:flex;flex-direction:column;gap:3px;font-size:12px;background:var(--bg2);position:relative}
 .wm-card:hover{background:var(--bg3)}
-.wm-card.active{border-color:#4ade80}
+/* Running world: thick green frame, green tint, RUNNING badge, not clickable (hover/cursor off) */
+.wm-card.active{border:2px solid #4ade80;padding:6px;background:rgba(74,222,128,.08);cursor:default}
+.wm-card.active:hover{background:rgba(74,222,128,.08)}
 .wm-card.active .wm-name{color:#4ade80}
-.wm-thumbbox{width:100%;aspect-ratio:4/3;border-radius:5px;overflow:hidden;
+.wm-badge-cur{position:absolute;top:5px;left:5px;font-size:9px;font-weight:700;letter-spacing:.06em;
+  padding:2px 5px;border-radius:4px;background:#16a34a;color:#fff;line-height:1.2;pointer-events:none}
+.wm-thumbbox{width:100%;aspect-ratio:4/3;border-radius:5px;overflow:hidden;position:relative;
   background:linear-gradient(160deg,#333c4d,#232937);display:flex;align-items:center;justify-content:center}
 .wm-thumb{width:100%;height:100%;object-fit:contain;padding:4px;box-sizing:border-box}
+.wm-badge{position:absolute;top:5px;right:5px;font-size:9px;font-weight:700;letter-spacing:.06em;
+  padding:2px 5px;border-radius:4px;background:rgba(126,87,194,.92);color:#fff;line-height:1.2;pointer-events:none}
 .wm-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 /* Two-line sub: size on its own line, then id + copy + delete. flex-wrap +
    the size span's full flex-basis force the break, so the trash button can
@@ -269,15 +276,21 @@ body:not(.sim-mode) #divider2{display:none}
 .wm-cfm-no{border:1px solid var(--border);background:var(--bg3);color:var(--fg2);border-radius:5px;
   padding:4px 0;cursor:pointer;font-size:12px;width:100%}
 .wm-cfm-no:hover{background:var(--bg2)}
-.wm-empty{color:var(--fg3);font-size:11px;padding:2px 0;grid-column:1/-1}
-.wm-foot{border-top:1px solid var(--border);padding:8px 14px;display:flex;flex-direction:column;gap:5px}
-#wm-status{font-size:11px;min-height:14px;color:var(--fg2)}
-.wm-linkrow{display:flex;gap:6px}
-.wm-linkrow input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);
-  border-radius:6px;color:var(--fg);font-size:12px;padding:6px 8px}
-.wm-linkrow button{border:1px solid var(--border);background:var(--bg3);color:var(--fg);
-  border-radius:6px;font-size:12px;padding:6px 10px;cursor:pointer}
-.wm-linkrow button:hover{border-color:var(--accent);color:var(--accent)}
+/* Add card: dashed, a big + and a label; clicking turns it into the World ID field + Import */
+.wm-card.wm-add{border-style:dashed;justify-content:center;align-items:center;gap:6px;color:var(--fg2);min-height:100px}
+.wm-card.wm-add:hover{color:var(--accent)}
+.wm-add-plus{font-size:28px;line-height:1;font-weight:300}
+.wm-add-label{font-size:11px;font-weight:600;letter-spacing:.02em}
+.wm-card.wm-adding{cursor:default;border-style:dashed;justify-content:center;gap:6px}   /* 테두리는 그대로(점선, 색 변화 없음) — 사장님 */
+.wm-card.wm-adding .wm-add-label{color:var(--fg2);align-self:flex-start}
+.wm-card.wm-adding input{width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;color:var(--fg);font-size:11px;font-family:monospace;padding:6px 7px}
+.wm-card.wm-adding input:focus{outline:none;border-color:var(--accent)}
+.wm-card.wm-adding .wm-add-go{border:none;background:var(--accent);color:#fff;border-radius:5px;padding:5px 0;
+  cursor:pointer;font-size:12px;font-weight:600;width:100%}
+.wm-card.wm-adding .wm-add-go:hover{background:var(--accent-hover)}
+.wm-card.wm-adding .wm-add-go:disabled{opacity:.5;cursor:default}
+#wm-status{font-size:11px;min-height:14px;color:var(--fg2);padding:0 14px}
 #wm-status.error{color:#f87171}
 #wm-status.success{color:#4ade80}
 #wm-status.busy::before{content:'';display:inline-block;width:10px;height:10px;
@@ -286,9 +299,7 @@ body:not(.sim-mode) #divider2{display:none}
 @keyframes wm-spin{to{transform:rotate(360deg)}}
 /* Install in progress: freeze every other world action (card switch/install,
    delete, import) — only the header close button stays live */
-#world-modal.wm-busy .wm-body{pointer-events:none;opacity:.55}
-#world-modal.wm-busy .wm-linkrow input,
-#world-modal.wm-busy .wm-linkrow button{opacity:.5}
+#world-modal.wm-busy .wm-grid{pointer-events:none;opacity:.55}
 
 /* Control — ONE row, always: [max | drive pad | readouts] │ [look pad | readouts].
    nowrap by design — the pads shrink with BOTH the card height and the column
@@ -488,27 +499,15 @@ body:not(.sim-mode) #divider2{display:none}
   <div class="sim-body"><iframe id="frame-sim" title="Simulator" allow="autoplay"></iframe></div>
 </div>
 
-<!-- World modal: official/custom sections, inline delete confirm, cloud install -->
+<!-- World modal: ONE grid of installed worlds — "add" card first (click → World ID field + Import),
+     then custom worlds, then official worlds (OFFICIAL badge on the thumbnail). Inline delete confirm.
+     Same markup/CSS/JS as the standalone viewer's modal (physicar-sim share/) — keep the two in sync. -->
 <div class="sensor-modal-overlay" id="world-modal" style="display:none">
   <div class="sensor-modal">
     <div class="sensor-modal-header"><span>Worlds</span>
       <button class="sensor-modal-close" id="wm-close">&times;</button></div>
     <div class="wm-body">
-      <div class="wm-sec">OFFICIAL WORLD</div>
-      <div id="wm-official"></div>
-      <div class="wm-sec">CUSTOM WORLD</div>
-      <div id="wm-custom"></div>
-      <div class="wm-sec" id="wm-mine-sec" style="display:none">MY WORLDS</div>
-      <div id="wm-mine"></div>
-      <div class="wm-sec" id="wm-classroom-sec" style="display:none">CLASSROOM</div>
-      <div id="wm-classroom"></div>
-    </div>
-    <div class="wm-foot">
-      <div class="wm-sec" style="padding:0 0 2px">IMPORT BY WORLD ID</div>
-      <div class="wm-linkrow">
-        <input id="wm-link" placeholder="World ID" autocomplete="off" spellcheck="false">
-        <button id="wm-link-go">Import</button>
-      </div>
+      <div id="wm-grid" class="wm-grid"></div>
       <div id="wm-status"></div>
     </div>
   </div>
@@ -916,6 +915,11 @@ body:not(.sim-mode) #divider2{display:none}
       const img = document.createElement('img');
       img.className = 'wm-thumb'; img.alt = ''; img.loading = 'lazy';
       box.appendChild(img);
+      if (isCurrent) {
+        const cur = document.createElement('span');
+        cur.className = 'wm-badge-cur'; cur.textContent = 'RUNNING';
+        box.appendChild(cur);
+      }
       const name = document.createElement('div');
       name.className = 'wm-name';
       name.textContent = (isCurrent ? '\u2713 ' : '') + display;
@@ -946,14 +950,23 @@ body:not(.sim-mode) #divider2{display:none}
         sub.appendChild(cpy);
       }
     }
+    // One grid: add card, then custom (deletable) worlds, then official. The server list is
+    // already "protected first, then alphabetical" — regroup here so custom comes before official.
     function renderRows(){
-      const official = document.getElementById('wm-official');
-      const custom = document.getElementById('wm-custom');
-      official.innerHTML = ''; custom.innerHTML = '';
-      official.className = 'wm-grid'; custom.className = 'wm-grid';
-      worlds.forEach(w => {
+      const grid = document.getElementById('wm-grid');
+      grid.innerHTML = '';
+      grid.appendChild(makeAddCard());
+      const customs = worlds.filter(w => (w.official !== undefined ? !w.official : w.name.startsWith('custom_')));
+      const officials = worlds.filter(w => !customs.includes(w));
+      customs.concat(officials).forEach(w => {
+        const isOfficial = !customs.includes(w);
         const isCurrent = w.name === current;
         const { card, img, sub } = makeCard(w.display || w.name, isCurrent);
+        if (isOfficial) {
+          const badge = document.createElement('span');
+          badge.className = 'wm-badge'; badge.textContent = 'OFFICIAL';
+          card.querySelector('.wm-thumbbox').appendChild(badge);
+        }
         // Local track icon first; published worlds upgrade when the CDN thumbnail arrives
         img.onerror = () => { img.style.display = 'none'; };
         img.src = '/sim/track_iconography/' + w.name + '.png';
@@ -965,12 +978,14 @@ body:not(.sim-mode) #divider2{display:none}
         }
         // Official worlds use their internal name (physicar_base, etc.) as the ID — used verbatim in WORLDS lists etc.
         subInfo(sub, w.size, w.world_id || w.name);
-        card.onclick = () => {
-          if (isCurrent) return;
-          // Published worlds switch by world_id, built-in worlds by filename
-          switchWorld(w.world_id ? { world_id: w.world_id } : { world: w.file },
-                      w.display || w.name);
-        };
+        // The running world is not a button — no click handler at all (CSS also drops hover/cursor)
+        if (!isCurrent) {
+          card.onclick = () => {
+            // Published worlds switch by world_id, built-in worlds by filename
+            switchWorld(w.world_id ? { world_id: w.world_id } : { world: w.file },
+                        w.display || w.name);
+          };
+        }
         if (w.deletable) {
           const del = document.createElement('button');
           del.className = 'wm-del'; del.innerHTML = TRASH_SVG;
@@ -994,21 +1009,53 @@ body:not(.sim-mode) #divider2{display:none}
           };
           sub.appendChild(del);
         }
-        const isCustom = w.official !== undefined ? !w.official : w.name.startsWith('custom_');
-        (isCustom ? custom : official).appendChild(card);
+        grid.appendChild(card);
       });
-      if (!custom.children.length) {
-        const empty = document.createElement('div');
-        empty.className = 'wm-empty';
-        empty.textContent = 'No custom worlds installed yet.';
-        custom.appendChild(empty);
-      }
+    }
+
+    // "+ Add world" card — first in the grid. Click → the card becomes a World ID field + Import.
+    // Esc or an empty blur folds it back. Enter / Import installs (server downloads from R2).
+    function makeAddCard(){
+      const card = document.createElement('div');
+      card.className = 'wm-card wm-add';
+      card.title = 'Add a world by its World ID';
+      const plus = document.createElement('div'); plus.className = 'wm-add-plus'; plus.textContent = '+';
+      const label = document.createElement('div'); label.className = 'wm-add-label'; label.textContent = 'Add world';
+      card.append(plus, label);
+      card.onclick = () => {
+        if (installing || card.classList.contains('wm-adding')) return;
+        card.classList.remove('wm-add'); card.classList.add('wm-adding');
+        card.innerHTML = '';
+        const lab = document.createElement('div'); lab.className = 'wm-add-label'; lab.textContent = 'World ID';
+        const inp = document.createElement('input');
+        inp.placeholder = '32 characters'; inp.autocomplete = 'off'; inp.spellcheck = false; inp.maxLength = 40;
+        const go = document.createElement('button'); go.className = 'wm-add-go'; go.textContent = 'Import';
+        const fold = () => { renderRows(); };
+        const submit = () => {
+          if (installing) return;
+          const m = (inp.value || '').trim().match(/^[0-9a-f]{32}$/);
+          if (!m) { setSt('Enter a valid world ID.', 'error'); inp.focus(); return; }
+          installWorld(m[0], m[0]);
+        };
+        go.onclick = (e) => { e.stopPropagation(); submit(); };
+        inp.addEventListener('keydown', (e) => {
+          e.stopPropagation();   // avoid clashing with the arrow-key driving shortcuts
+          if (e.key === 'Enter') { e.preventDefault(); submit(); }
+          if (e.key === 'Escape') { e.preventDefault(); fold(); }
+        });
+        inp.addEventListener('click', (e) => e.stopPropagation());
+        inp.addEventListener('blur', () => { setTimeout(() => { if (!inp.value.trim() && card.isConnected && !installing) fold(); }, 120); });
+        card.onclick = null;
+        card.append(lab, inp, go);
+        inp.focus();
+      };
+      return card;
     }
 
     async function refresh(force){
-      // The periodic poll must not wipe an in-progress inline delete confirm;
+      // The periodic poll must not wipe an in-progress inline delete confirm or an open add field;
       // explicit refreshes (open/delete/switch) always re-render.
-      if (!force && modal.style.display !== 'none' && modal.querySelector('.wm-confirming')) return;
+      if (!force && modal.style.display !== 'none' && modal.querySelector('.wm-confirming, .wm-adding')) return;
       try {
         const d = await (await fetch('/sim/api/worlds')).json();
         worlds = d.worlds; current = d.current;
@@ -1040,13 +1087,7 @@ body:not(.sim-mode) #divider2{display:none}
       refresh(true);
     }
 
-    /* ── Published worlds (worlds.physicar.ai) — my/classroom lists + one-click install ──
-       Lists are fetched by the browser itself with the api session (physicarSession — issued via /__session);
-       installs are downloaded by sim_api straight from R2 (no browser relay). */
-    const WAPI = 'https://api.physicar.ai';
-    function apiTok(){ return (window.physicarSession && physicarSession.token()) || null; }
-    let installedIds = {};   // world_id → local world file (for list matching)
-
+    // Published-world thumbnails (worlds.physicar.ai) — installs are downloaded by sim_api straight from R2.
     const CDN = 'https://worlds.physicar.ai';
     const metaCache = {};
     function cloudMeta(id){
@@ -1064,44 +1105,6 @@ body:not(.sim-mode) #divider2{display:none}
         || files.find(p => p.indexOf('track_iconography/') === 0);
       return pick ? CDN + '/worlds/' + id + '/' + meta.rev + '/' + pick : null;
     }
-    function renderCloud(listEl, secEl, list){
-      listEl.innerHTML = '';
-      listEl.className = 'wm-grid';
-      secEl.style.display = list.length ? '' : 'none';
-      list.forEach(w => {
-        const local = installedIds[w.world_id];
-        const isCurrent = local && local.replace(/\.world$/, '') === current;
-        const { card, img, sub } = makeCard(w.name, isCurrent);
-        cloudMeta(w.world_id).then(meta => {
-          const u = thumbFromMeta(w.world_id, meta);
-          if (u) { img.style.display = ''; img.src = u; }
-          if (meta && meta.size && meta.size.length === 2 && !sub.querySelector('.wm-size')) {
-            const sz = document.createElement('span');
-            sz.className = 'wm-size';
-            sz.textContent = meta.size[0] + '\u00d7' + meta.size[1] + 'm';
-            sub.insertBefore(sz, sub.firstChild);
-          }
-        });
-        img.onerror = () => { img.style.display = 'none'; };
-        subInfo(sub, null, w.world_id);
-        card.onclick = () => { if (!isCurrent) installWorld(w.world_id, w.name); };
-        listEl.appendChild(card);
-      });
-    }
-
-    async function refreshCloud(){
-      const tok = apiTok();
-      const mineSec = document.getElementById('wm-mine-sec');
-      const clsSec = document.getElementById('wm-classroom-sec');
-      if (!tok) { mineSec.style.display = 'none'; clsSec.style.display = 'none'; return; }
-      installedIds = {};
-      worlds.forEach(w => { if (w.world_id) installedIds[w.world_id] = w.file; });
-      const get = (p) => fetch(WAPI + p, { headers: { 'Authorization': 'Bearer ' + tok } })
-        .then(r => r.ok ? r.json() : { worlds: [] }).catch(() => ({ worlds: [] }));
-      const [mine, cls] = await Promise.all([get('/worlds/mine'), get('/worlds/classroom')]);
-      renderCloud(document.getElementById('wm-mine'), mineSec, mine.worlds || []);
-      renderCloud(document.getElementById('wm-classroom'), clsSec, cls.worlds || []);
-    }
 
     // Install lock: while a server-side install runs, every other modal
     // action (second import, card switch/install, delete) is frozen — the
@@ -1111,8 +1114,8 @@ body:not(.sim-mode) #divider2{display:none}
     function setInstalling(on){
       installing = on;
       modal.classList.toggle('wm-busy', on);
-      linkIn.disabled = on;
-      linkGo.disabled = on;
+      const go = modal.querySelector('.wm-add-go'); if (go) go.disabled = on;
+      const inp = modal.querySelector('.wm-adding input'); if (inp) inp.disabled = on;
     }
 
     async function installWorld(id, nm){
@@ -1131,22 +1134,7 @@ body:not(.sim-mode) #divider2{display:none}
       } finally { setInstalling(false); }
     }
 
-    const linkIn = document.getElementById('wm-link');
-    const linkGo = document.getElementById('wm-link-go');
-    function loadFromLink(){
-      if (installing) return;
-      const m = (linkIn.value || '').trim().match(/^[0-9a-f]{32}$/);
-      if (!m) { setSt('Enter a valid world ID.', 'error'); return; }
-      linkIn.value = '';
-      installWorld(m[0], m[0]);
-    }
-    linkGo.addEventListener('click', loadFromLink);
-    linkIn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); loadFromLink(); }
-      e.stopPropagation();   // avoid clashing with the arrow-key driving shortcuts
-    });
-
-    function open(){ setSt(''); refresh(true).then(refreshCloud); modal.style.display = 'flex'; }
+    function open(){ setSt(''); refresh(true); modal.style.display = 'flex'; }
 
     // Share-link direct entry (sim.physicar.ai/app?world=<id>) — open the modal, auto-install and switch
     (function autoInstallFromQuery(){
