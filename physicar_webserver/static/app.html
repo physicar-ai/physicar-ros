@@ -23,82 +23,6 @@
     setInterval(beacon, 15000);
   });
 
-  /* ── PhysiCar session token sharing (physicar-ext bridge) ──
-     When the extension pushes the Chat-login session token (pushToken →
-     "physicar-token"), it is planted as the "physicar_session" COOKIE. Why a
-     cookie:
-      - It rides automatically on every same-origin request (new tabs, iframes,
-        WS handshakes), so student backends just read request.cookies —
-        zero-code token delivery, per browser = per user.
-      - localStorage written inside the webview iframe is storage-partitioned
-        away from top-level tabs, but cookies are shared (the nginx pc_token
-        gate proves this in practice).
-     In the iframe (third-party context, always an https tunnel) SameSite=None;
-     Secure is mandatory. Also mirrored to sessionStorage (NOT localStorage —
-     a persistent mirror would outlive the session cookie and leak the previous
-     user's token on shared PCs) as a fallback for JS in the same partition
-     (physicarSession helper). Sign-out (clear) propagates.
-     Outside the webview (plain tab) there is no parent — silently a no-op. */
-  (function () {
-    var SESSION_KEY = "physicar_session";
-    // Always a session cookie (no Max-Age — gone when the browser closes).
-    // Not persisted on purpose: on a shared PC a previous user's token
-    // lingering on /myapp for days outweighs the rare convenience of
-    // "reopen myapp directly after a browser restart". Opening the
-    // workspace/app makes the panel (bridge) replant the cookie anyway.
-    function setCookie(token) {
-      var attrs = "; Path=/"
-        + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
-      try { document.cookie = SESSION_KEY + "=" + encodeURIComponent(token) + attrs; } catch (_) {}
-    }
-    function clearCookie() {
-      var attrs = "; Path=/; Max-Age=0"
-        + (location.protocol === "https:" ? "; SameSite=None; Secure" : "; SameSite=Lax");
-      try { document.cookie = SESSION_KEY + "=" + attrs; } catch (_) {}
-    }
-    window.addEventListener("message", function (e) {
-      var msg = e.data || {};
-      if (msg.type === "physicar-token" && typeof msg.token === "string" && msg.token) {
-        setCookie(msg.token);
-        try { sessionStorage.setItem(SESSION_KEY, msg.token); } catch (_) {}
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}  /* clear legacy persistent mirror */
-      } else if (msg.type === "physicar-token-clear") {
-        clearCookie();
-        try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
-      }
-    });
-    try {
-      if (window.parent !== window) {
-        // always request so a stored token gets refreshed (no reply if chat is closed)
-        window.parent.postMessage({ type: "physicar-token-request" }, "*");
-      }
-    } catch (_) {}
-
-    /* Cloud sim auto-login: on sim.physicar.ai the gateway's own cookie already
-       identifies the user — exchange it for an API session via same-origin
-       /__session when we hold no token (standalone tab; the extension bridge
-       covers the embedded case). Elsewhere the endpoint doesn't exist →
-       non-OK/throw → silently ignored. */
-    try {
-      var _have = null;
-      try {
-        _have = /(?:^|;\s*)physicar_session=/.test(document.cookie)
-          ? "cookie" : sessionStorage.getItem(SESSION_KEY);
-      } catch (_) {}
-      if (!_have) {
-        fetch("/__session", { method: "POST" })
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (d) {
-            if (d && d.token) {
-              setCookie(d.token);
-              try { sessionStorage.setItem(SESSION_KEY, d.token); } catch (_) {}
-            }
-          })
-          .catch(function () {});
-      }
-    } catch (_) {}
-  })();
 </script>
 <script>
   /* Boot race guard: right after a (re)start, CSS/JS subresources can fail
@@ -589,8 +513,7 @@ body:not(.sim-mode) #divider2{display:none}
   // Open a panel (MyApp / VNC / the standalone simulator view) in a full
   // browser tab. Inside the VS Code webview the iframe sandbox blocks
   // window.open (returns null) — relay to the extension instead, which opens
-  // the system browser via openExternal. The session token reaches the new
-  // tab via the physicar_session cookie (no URL exposure).
+  // the system browser via openExternal.
   function openInTab(path){
     const url = new URL(path, location.href).href;
     let w = null;

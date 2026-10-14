@@ -433,14 +433,6 @@ server {
         proxy_set_header If-Modified-Since "";
         proxy_set_header If-None-Match "";
 
-        # ── PhysiCar session helper auto-injection ──
-        # Student pages need zero setup: injects window.physicarSession.token()
-        # (reads the physicar_session cookie). Only HTML is rewritten
-        # (sub_filter_types defaults to text/html) — SSE/MJPEG pass untouched.
-        proxy_set_header Accept-Encoding "";
-        sub_filter_once on;
-        sub_filter '<head>' '<head><script src="/static/js/physicar-session.js"></script>';
-
         proxy_buffering off;
         proxy_request_buffering off;
         chunked_transfer_encoding off;
@@ -778,14 +770,6 @@ server {
 
         proxy_set_header If-Modified-Since "";
         proxy_set_header If-None-Match "";
-
-        # ── PhysiCar session helper auto-injection ──
-        # Student pages need zero setup: injects window.physicarSession.token()
-        # (reads the physicar_session cookie). Only HTML is rewritten
-        # (sub_filter_types defaults to text/html) — SSE/MJPEG pass untouched.
-        proxy_set_header Accept-Encoding "";
-        sub_filter_once on;
-        sub_filter '<head>' '<head><script src="/static/js/physicar-session.js"></script>';
 
         proxy_buffering off;
         proxy_request_buffering off;
