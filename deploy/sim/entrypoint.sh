@@ -345,8 +345,13 @@ if os.path.islink(user_path):
 elif os.path.exists(user_path):
     try:
         user = json.load(open(user_path))
-    except Exception:
-        user = {}
+    except Exception as e:
+        # JSONC (comments, trailing commas) or a broken file: do not touch it.
+        # Treating it as empty rewrote the user's whole file with the seed (2026-10-14 finding).
+        # New seed keys do not reach such a file; the chat switch is inserted separately
+        # (converge_codeserver_settings) and survives this skip.
+        print("[settings] merge skipped — user settings.json is not plain JSON: " + str(e))
+        sys.exit(0)
 merged = {**managed, **user}
 if not os.path.exists(user_path) or merged != user:
     json.dump(merged, open(user_path, 'w'), indent=2, ensure_ascii=False)
