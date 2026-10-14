@@ -792,25 +792,32 @@ converge_codeserver_settings "$CODE_USER_DIR/settings.json"
 # re-applies below hit the new bundle). Before raising the pin, download the new
 # release tar and grep that the patch patterns (B/C·folder) and branding paths still
 # hold. Failure/offline/timeout keeps the current version — never block boot (retried next boot).
-CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
-# The first --version line can be a config-file creation log line — pick only the version line
-CS_CUR=$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
-if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
-  echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
-  if timeout 300 bash -c "curl -fsSL https://code-server.dev/install.sh | sudo sh -s -- --method=standalone --prefix=/usr/local --version='$CS_PIN'"; then
-    sudo ln -sf /usr/local/bin/code-server /usr/local/bin/code
-    # Switch the service to the new version, then remove old version directories
-    # (standalone stacks /usr/local/lib/code-server-<ver> per version — SD card space)
-    sudo systemctl restart physicar-code.service 2>/dev/null || true
-    for _d in /usr/local/lib/code-server-*; do
-      if [ -d "$_d" ] && [ "$_d" != "/usr/local/lib/code-server-$CS_PIN" ]; then
-        sudo rm -rf "$_d"
-      fi
-    done
-  else
-    echo "[code-server] WARNING: update failed — keeping ${CS_CUR:-none}"
+converge_codeserver_version() {
+  CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
+  # The first --version line can be a config-file creation log line — pick only the version line
+  CS_CUR=$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+  if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
+    echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
+    # pipefail: `curl | sh` otherwise reports sh's status (0 on an empty download) and the cleanup
+    # below would delete the running version. Verify the installed version before trusting it.
+    if timeout 300 bash -c "set -o pipefail; curl -fsSL https://code-server.dev/install.sh | sudo sh -s -- --method=standalone --prefix=/usr/local --version='$CS_PIN'" \
+       && [ "$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)" = "$CS_PIN" ]; then
+      echo "[code-server] now $CS_PIN"
+      sudo ln -sf /usr/local/bin/code-server /usr/local/bin/code
+      # Switch the service to the new version, then remove old version directories
+      # (standalone stacks /usr/local/lib/code-server-<ver> per version — SD card space)
+      sudo systemctl restart physicar-code.service 2>/dev/null || true
+      for _d in /usr/local/lib/code-server-*; do
+        if [ -d "$_d" ] && [ "$_d" != "/usr/local/lib/code-server-$CS_PIN" ]; then
+          sudo rm -rf "$_d"
+        fi
+      done
+    else
+      echo "[code-server] WARNING: update failed — keeping ${CS_CUR:-none}"
+    fi
   fi
-fi
+}
+converge_codeserver_version
 
 # ── Webview microphone/camera patch (idempotent, every boot) ──
 # VS Code's webview iframes don't delegate mic/cam permission, blocking
@@ -1261,6 +1268,15 @@ if [ "$DEV" != "true" ] && [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
         if sudo -n nginx -t >/dev/null 2>&1; then
             sudo -n systemctl reload nginx >/dev/null 2>&1 || true
         fi
+        # code-server pin · webview patches · branding · settings from the NEW checkout —
+        # the blocks above ran with the old pin before this update (2026-10-14: a raised
+        # pin landed one boot late). All idempotent; the version step restarts the service.
+        converge_codeserver_version || true
+        patch_codeserver_webview_media || true
+        patch_codeserver_webview_sw || true
+        patch_codeserver_default_folder || true
+        brand_codeserver || true
+        converge_codeserver_settings "$CODE_USER_DIR/settings.json" || true
     fi
 fi
 

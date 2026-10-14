@@ -97,6 +97,19 @@ if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
         if sudo -n nginx -t >/dev/null 2>&1; then
             sudo -n nginx -s reload >/dev/null 2>&1 || true
         fi
+        # code-server pin · webview patches · branding · settings from the NEW checkout —
+        # entrypoint.sh ran them with the old pin before this update (2026-10-14: a raised
+        # pin landed one boot late). Restart code-server only when a new version went in.
+        if [ -f "$PHYSICAR_ROS_DIR/deploy/sim/codeserver.sh" ]; then
+            CS_UPDATED=0
+            # shellcheck source=/dev/null
+            . "$PHYSICAR_ROS_DIR/deploy/sim/codeserver.sh"
+            codeserver_converge_all
+            if [ "${CS_UPDATED:-0}" = "1" ]; then
+                echo "[physicar] code-server updated during boot — restarting it"
+                supervisorctl -s unix:///tmp/supervisor.sock restart code-server >/dev/null 2>&1 || true
+            fi
+        fi
     fi
 fi
 
