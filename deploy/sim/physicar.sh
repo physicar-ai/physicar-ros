@@ -193,6 +193,7 @@ while true; do
     if ! verify_install; then
         echo "[physicar] install/ is stale or incomplete → rebuilding..."
         do_build
+        boot_status starting   # do_build stamped "building"; without this the offline pages said "Building update" for 15 min after ROS was up
     fi
 
     echo "[physicar] Launching sim..."
@@ -210,6 +211,7 @@ while true; do
         rm -f "$UPDATE_SIGNAL"
         echo "[physicar] Update detected → rebuilding..."
         do_build
+        boot_status starting
         FAIL_STREAK=0
         continue
     fi

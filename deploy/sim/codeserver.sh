@@ -244,10 +244,49 @@ brand_codeserver() {
   return 0
 }
 
+# ── Built-in chat extension: disabled by default (one-time seed) ──
+# The stock Chat view is the built-in GitHub.copilot-chat extension. VS Code keeps
+# "chat.disableAIFeatures" in step with that extension's ENABLEMENT: while the extension
+# is enabled, every extensions-service change sets the setting back to false (= removes
+# the key), which is why the seeded key kept vanishing minutes after start (2026-10-14,
+# verified in the 4.141 workbench bundle). Disabling the extension is therefore the
+# switch VS Code itself honours — it then writes the setting to true and keeps it.
+# One-time: a marker row means the seed ran once; whatever the user does afterwards
+# (enabling Copilot) is respected. Skipped while code-server runs: it loads this list
+# at start and would overwrite an external edit on its next write.
+seed_disable_builtin_chat() {
+  pgrep -f "code-server --bind-addr" >/dev/null 2>&1 && { echo "[chat-seed] code-server running — seed deferred to the next boot"; return 0; }
+  python3 - <<'PYCHAT' || true
+import json, os, sqlite3
+p = os.path.expanduser('~/.local/share/code-server/User/globalStorage/state.vscdb')
+os.makedirs(os.path.dirname(p), exist_ok=True)
+EXT = 'GitHub.copilot-chat'
+try:
+    db = sqlite3.connect(p, timeout=3)
+    db.execute('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)')
+    if db.execute("SELECT 1 FROM ItemTable WHERE key='physicar.builtinChatSeeded'").fetchone() is None:
+        row = db.execute("SELECT value FROM ItemTable WHERE key='extensionsIdentifiers/disabled'").fetchone()
+        lst = []
+        if row and row[0]:
+            try: lst = json.loads(row[0].decode() if isinstance(row[0], bytes) else row[0]) or []
+            except Exception: lst = []
+        if not any(isinstance(x, dict) and str(x.get('id', '')).lower() == EXT.lower() for x in lst):
+            lst.append({'id': EXT})
+            db.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('extensionsIdentifiers/disabled', ?)", (json.dumps(lst),))
+            print('[chat-seed] built-in chat extension disabled (' + EXT + ')')
+        db.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('physicar.builtinChatSeeded', '1')")
+        db.commit()
+    db.close()
+except Exception as e:
+    print('[chat-seed] skipped: ' + str(e))
+PYCHAT
+}
+
 # Run everything in the boot order the entrypoint always used. After a version install the
 # stock bundle is back, so the patches and branding must follow it (they do).
 codeserver_converge_all() {
   converge_codeserver_version || true
+  seed_disable_builtin_chat || true
   converge_codeserver_settings "/home/physicar/.local/share/code-server/User/settings.json" || true
   patch_codeserver_webview_media || true
   patch_codeserver_webview_sw || true

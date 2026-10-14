@@ -1023,6 +1023,48 @@ except Exception:
     pass
 PYDND
 
+# ── Built-in chat extension: disabled by default (one-time seed) ──
+# The stock Chat view is the built-in GitHub.copilot-chat extension. VS Code keeps
+# "chat.disableAIFeatures" in step with that extension's ENABLEMENT: while it is enabled,
+# every extensions-service change sets the setting back to false (removes the key) —
+# which is why the seeded key kept vanishing (2026-10-14, verified in the 4.141 bundle).
+# Disabling the extension is the switch VS Code honours; it then writes the setting to
+# true itself. One-time (marker row): whatever the user does afterwards is respected.
+# physicar-code.service starts in parallel with this script, so the workbench may already
+# have loaded the old list — restart it once when the seed changed something (boot only,
+# nobody is connected yet). Failures never block boot.
+_chat_seed_out=$(python3 - <<'PYCHAT' 2>/dev/null || true
+import json, os, sqlite3
+p = os.path.expanduser('~/.local/share/code-server/User/globalStorage/state.vscdb')
+os.makedirs(os.path.dirname(p), exist_ok=True)
+EXT = 'GitHub.copilot-chat'
+try:
+    db = sqlite3.connect(p, timeout=3)
+    db.execute('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)')
+    if db.execute("SELECT 1 FROM ItemTable WHERE key='physicar.builtinChatSeeded'").fetchone() is None:
+        row = db.execute("SELECT value FROM ItemTable WHERE key='extensionsIdentifiers/disabled'").fetchone()
+        lst = []
+        if row and row[0]:
+            try: lst = json.loads(row[0].decode() if isinstance(row[0], bytes) else row[0]) or []
+            except Exception: lst = []
+        if not any(isinstance(x, dict) and str(x.get('id', '')).lower() == EXT.lower() for x in lst):
+            lst.append({'id': EXT})
+            db.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('extensionsIdentifiers/disabled', ?)", (json.dumps(lst),))
+            print('changed')
+        db.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('physicar.builtinChatSeeded', '1')")
+        db.commit()
+    db.close()
+except Exception as e:
+    print('error ' + str(e))
+PYCHAT
+)
+if [ "$_chat_seed_out" = "changed" ]; then
+  echo "[chat-seed] built-in chat extension disabled (GitHub.copilot-chat) — restarting code-server once"
+  sudo systemctl restart physicar-code.service 2>/dev/null || true
+elif [ -n "$_chat_seed_out" ]; then
+  echo "[chat-seed] $_chat_seed_out"
+fi
+
 # ── settings.json merge seed (symlink → real-file transition) ──
 # The old symlink (repo file, root-owned/read-only) made user settings saves fail,
 # resurrecting an unsaved settings.json editor every session.
