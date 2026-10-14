@@ -73,6 +73,30 @@ chmod 644 /tmp/pc-gate.map
 
 STUDENT_WS="/home/physicar/physicar_ws"
 
+# ── code-server settings convergence (idempotent, every boot) ──
+# The seed (deploy/*/home/.../User/settings.json) is copied ONCE; a key added to the
+# seed later never reaches an existing instance (install-sim.sh pointed at a "boot
+# merge" that did not exist). Only one key is converged on purpose — the AI chat
+# switch: without it the stock Chat view sits next to PHYSICAR AI in the secondary
+# side bar. A missing key is inserted; a key the user set (true or false) is left
+# alone. Text insertion after the first "{" keeps comments and formatting intact.
+converge_codeserver_settings() {
+  local f="$1"
+  [ -f "$f" ] && [ ! -L "$f" ] || return 0
+  grep -q '"chat.disableAIFeatures"' "$f" && return 0
+  python3 - "$f" <<'PYSET' || echo "[settings] WARNING: could not insert chat.disableAIFeatures"
+import sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+i = s.find("{")
+if i < 0: sys.exit(1)
+nl = "\n" if "\n" in s[i:i + 3] else ""
+s = s[:i + 1] + nl + '  "chat.disableAIFeatures": true,' + (nl or " ") + s[i + 1:].lstrip("\n") if nl else s[:i + 1] + ' "chat.disableAIFeatures": true,' + s[i + 1:]
+open(p, "w", encoding="utf-8").write(s)
+print("[settings] chat.disableAIFeatures: true added to " + p)
+PYSET
+}
+
 # ── code-server version convergence (repo pin, idempotent) ──
 # deploy/code-server-version is the single source of truth — install that
 # version when the installed one differs. Prevents bake pinning: one pin-line
@@ -91,6 +115,8 @@ if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
   timeout 300 bash -c "curl -fsSL https://code-server.dev/install.sh | sudo sh -s -- --version='$CS_PIN'" \
     || echo "[code-server] WARNING: update failed — keeping ${CS_CUR:-none}"
 fi
+
+converge_codeserver_settings "/home/physicar/.local/share/code-server/User/settings.json"
 
 # ── code-server webview microphone/camera patch (idempotent, every boot) ──
 # The install script patches once, but a code-server update restores the
@@ -441,6 +467,10 @@ fi
 
 # Start supervisord
 supervisord -c "$CONF"
+# Second pass ~90s after code-server is up: a settings.json editor restored at startup can
+# save its pre-boot content over the file (autosave) and undo the convergence above
+# (seen 2026-10-14: the key written at boot was gone 6-17s after code-server start).
+( sleep 90; converge_codeserver_settings "/home/physicar/.local/share/code-server/User/settings.json" ) >/dev/null 2>&1 &
 sleep 2
 
 # Start the student app only if one has actually been deployed. The myapp program

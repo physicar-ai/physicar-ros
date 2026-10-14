@@ -756,6 +756,34 @@ cat > "$CODE_USER_DIR/settings.json" <<'CODE_SETTINGS'
 CODE_SETTINGS
 fi
 
+# ── code-server settings convergence (idempotent, every boot) ──
+# The seed (deploy/*/home/.../User/settings.json) is copied ONCE; a key added to the
+# seed later never reaches an existing instance (install-sim.sh pointed at a "boot
+# merge" that did not exist). Only one key is converged on purpose — the AI chat
+# switch: without it the stock Chat view sits next to PHYSICAR AI in the secondary
+# side bar. A missing key is inserted; a key the user set (true or false) is left
+# alone. Text insertion after the first "{" keeps comments and formatting intact.
+converge_codeserver_settings() {
+  local f="$1"
+  [ -f "$f" ] && [ ! -L "$f" ] || return 0
+  grep -q '"chat.disableAIFeatures"' "$f" && return 0
+  python3 - "$f" <<'PYSET' || echo "[settings] WARNING: could not insert chat.disableAIFeatures"
+import sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+i = s.find("{")
+if i < 0: sys.exit(1)
+nl = "\n" if "\n" in s[i:i + 3] else ""
+s = s[:i + 1] + nl + '  "chat.disableAIFeatures": true,' + (nl or " ") + s[i + 1:].lstrip("\n") if nl else s[:i + 1] + ' "chat.disableAIFeatures": true,' + s[i + 1:]
+open(p, "w", encoding="utf-8").write(s)
+print("[settings] chat.disableAIFeatures: true added to " + p)
+PYSET
+}
+converge_codeserver_settings "$CODE_USER_DIR/settings.json"
+# Second pass ~90s later (code-server is started by physicar-code.service): a settings.json
+# editor restored at startup can save its pre-boot content over the file and undo the line above.
+( sleep 90; converge_codeserver_settings "$CODE_USER_DIR/settings.json" ) >/dev/null 2>&1 &
+
 # code-server is managed by physicar-code.service
 
 # ── code-server version convergence (repo pin, idempotent) ──
