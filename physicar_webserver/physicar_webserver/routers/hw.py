@@ -40,7 +40,7 @@ async def odom_reset():
     this after every vehicle teleport (pose API, Reset); the next /odom reflects it within one
     scan period (~0.1 s)."""
     bridge = get_ros_bridge()
-    if not bridge.is_ready():
+    if not bridge.is_ready:
         raise HTTPException(503, "ROS bridge not ready")
     r = await asyncio.get_running_loop().run_in_executor(None, bridge.reset_odom)
     if not r.get("success"):
