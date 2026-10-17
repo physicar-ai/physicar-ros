@@ -300,38 +300,6 @@ set +u; source /opt/ros/lyrical/setup.bash; set -u
 rosdep init 2>/dev/null || true
 sudo -u physicar rosdep update --rosdistro lyrical 2>/dev/null || true
 
-# Patch nav2 navigation_launch.py: disable docking_server, route_server & following_server (not used; docking needs dock_plugins)
-NAV2_LAUNCH=/opt/ros/lyrical/share/nav2_bringup/launch/navigation_launch.py
-if grep -q "'route_server'," "$NAV2_LAUNCH" 2>/dev/null; then
-  python3 -c "
-import re
-with open('$NAV2_LAUNCH') as f: c = f.read()
-for old, new in [
-    (\"        'route_server',\\n\", \"        # 'route_server',  # disabled for physicar\\n\"),
-    (\"        'docking_server',\\n\", \"        # 'docking_server',  # disabled for physicar\\n\"),
-    (\"        'following_server',\\n\", \"        # 'following_server',  # disabled for physicar\\n\"),
-]:
-    c = c.replace(old, new)
-for pkg, exe, plugin in [
-    ('nav2_route', 'route_server', 'nav2_route::RouteServer'),
-    ('opennav_docking', 'opennav_docking', 'opennav_docking::DockingServer'),
-    ('opennav_following', 'opennav_following', 'opennav_following::FollowingServer'),
-]:
-    # Non-composed Node blocks
-    c = re.sub(
-        r\"(            )(Node\\(\\n\\s+package='\" + pkg + r\"'.*?remappings=remappings,\\n\\s+\\),)\",
-        lambda m: m.group(1) + '# ' + m.group(2).replace('\\n', '\\n' + m.group(1) + '# '),
-        c, count=1, flags=re.DOTALL)
-    # ComposableNode blocks
-    c = re.sub(
-        r\"(                    )(ComposableNode\\(\\n\\s+package='\" + pkg + r\"'.*?remappings=remappings,\\n\\s+\\),)\",
-        lambda m: m.group(1) + '# ' + m.group(2).replace('\\n', '\\n' + m.group(1) + '# '),
-        c, count=1, flags=re.DOTALL)
-with open('$NAV2_LAUNCH', 'w') as f: f.write(c)
-print('nav2 navigation_launch.py patched')
-"
-fi
-
 # Prevent automatic package upgrades (lock installed versions)
 apt-mark hold $(dpkg -l | grep -E '^ii  (ros-lyrical|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
 apt-mark hold linux-image-raspi linux-headers-raspi linux-image-generic linux-headers-generic 2>/dev/null || true
