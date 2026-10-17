@@ -9,4 +9,4 @@ export DISPLAY="${DISPLAY:-:1}"
 pgrep -x rviz2 >/dev/null 2>&1 && exit 0
 _d="${DISPLAY#:}"; _d="${_d%%.*}"
 for _ in $(seq 1 120); do [ -S "/tmp/.X11-unix/X${_d}" ] && break; sleep 0.5; done
-exec bash -ic 'exec rviz2 -d /opt/ros/jazzy/share/nav2_bringup/rviz/nav2_default_view.rviz "$@"' rviz2 "$@"
+exec bash -ic 'exec rviz2 -d /opt/ros/lyrical/share/nav2_bringup/rviz/nav2_default_view.rviz "$@"' rviz2 "$@"

@@ -3,7 +3,7 @@
 # Output: /odom (fused odometry) + odom→base_footprint TF
 #
 # robot_localization EKF config reference:
-# https://docs.ros.org/en/jazzy/p/robot_localization/
+# https://docs.ros.org/en/lyrical/p/robot_localization/
 
 ekf_filter_node:
   ros__parameters:

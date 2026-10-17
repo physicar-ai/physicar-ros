@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Physicar SIM Installer — Ubuntu 24.04
+#  Physicar SIM Installer — Ubuntu 26.04
 #  Mirrors deploy/install-real.sh pattern but for simulation environment.
-#  Works on any Ubuntu 24.04 host (local VM, cloud, etc.)
+#  Works on any Ubuntu 26.04 host (local VM, cloud, etc.)
 #
 #  Usage:
 #    sudo bash /opt/physicar/src/physicar-ros/deploy/install-sim.sh
@@ -217,13 +217,13 @@ if [ -n "$CS_OUT_MEDIA" ] && [ -f "$CS_OUT_MEDIA/code-icon.svg" ]; then
 fi
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │  2. ROS 2 Jazzy                                                           │
+# │  2. ROS 2 Lyrical                                                           │
 # └─────────────────────────────────────────────────────────────────────────────┘
 
-echo "[2/7] Installing ROS 2 Jazzy..."
+echo "[2/7] Installing ROS 2 Lyrical..."
 
-# ROS 2 Jazzy
-if [ ! -f /opt/ros/jazzy/setup.bash ]; then
+# ROS 2 Lyrical
+if [ ! -f /opt/ros/lyrical/setup.bash ]; then
   curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
     -o /usr/share/keyrings/ros-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
@@ -232,43 +232,42 @@ if [ ! -f /opt/ros/jazzy/setup.bash ]; then
   apt-get update -y
   wait_for_apt
   apt-get install -y --no-install-recommends \
-    ros-jazzy-ros-base \
-    ros-jazzy-rmw-cyclonedds-cpp \
-    ros-jazzy-rviz2 \
-    ros-jazzy-rqt \
-    ros-jazzy-rqt-common-plugins \
-    ros-jazzy-image-transport \
-    ros-jazzy-image-transport-plugins \
-    ros-jazzy-cv-bridge \
-    ros-jazzy-teleop-twist-keyboard \
-    ros-jazzy-tf2-tools \
-    ros-jazzy-xacro \
+    ros-lyrical-ros-base \
+    ros-lyrical-rmw-cyclonedds-cpp \
+    ros-lyrical-rviz2 \
+    ros-lyrical-rqt \
+    ros-lyrical-rqt-common-plugins \
+    ros-lyrical-image-transport \
+    ros-lyrical-image-transport-plugins \
+    ros-lyrical-cv-bridge \
+    ros-lyrical-teleop-twist-keyboard \
+    ros-lyrical-tf2-tools \
+    ros-lyrical-xacro \
     python3-colcon-common-extensions \
     python3-rosdep \
-    ros-jazzy-rosbridge-server \
-    ros-jazzy-ros2-control \
-    ros-jazzy-ros2-controllers
+    ros-lyrical-rosbridge-server \
+    ros-lyrical-ros2-control \
+    ros-lyrical-ros2-controllers
 fi
 
 # SLAM/Nav2
 wait_for_apt
 apt-get install -y --no-install-recommends \
-  ros-jazzy-slam-toolbox \
-  ros-jazzy-cartographer-ros \
-  ros-jazzy-navigation2 \
-  ros-jazzy-nav2-bringup \
-  ros-jazzy-nav2-rviz-plugins \
-  ros-jazzy-rqt-tf-tree \
-  ros-jazzy-rqt-graph \
-  ros-jazzy-joy \
-  ros-jazzy-camera-info-manager
+  ros-lyrical-slam-toolbox \
+  ros-lyrical-navigation2 \
+  ros-lyrical-nav2-bringup \
+  ros-lyrical-nav2-rviz-plugins \
+  ros-lyrical-rqt-tf-tree \
+  ros-lyrical-rqt-graph \
+  ros-lyrical-joy \
+  ros-lyrical-camera-info-manager
 
-set +u; source /opt/ros/jazzy/setup.bash; set -u
+set +u; source /opt/ros/lyrical/setup.bash; set -u
 rosdep init 2>/dev/null || true
-sudo -u physicar rosdep update --rosdistro jazzy 2>/dev/null || true
+sudo -u physicar rosdep update --rosdistro lyrical 2>/dev/null || true
 
 # Patch nav2: disable docking_server & route_server
-NAV2_LAUNCH=/opt/ros/jazzy/share/nav2_bringup/launch/navigation_launch.py
+NAV2_LAUNCH=/opt/ros/lyrical/share/nav2_bringup/launch/navigation_launch.py
 if grep -q "'route_server'," "$NAV2_LAUNCH" 2>/dev/null; then
   python3 -c "
 import re
@@ -296,7 +295,7 @@ print('nav2 navigation_launch.py patched')
 fi
 
 # Lock package versions
-apt-mark hold $(dpkg -l | grep -E '^ii  (ros-jazzy|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
+apt-mark hold $(dpkg -l | grep -E '^ii  (ros-lyrical|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  3. Python Packages                                                        │
@@ -306,7 +305,7 @@ echo "[3/7] Installing Python packages..."
 
 runuser -u physicar -- python3 -m pip config set global.break-system-packages true 2>/dev/null || true
 
-# Pin numpy<2
+# Pin numpy>=2 (Lyrical cv_bridge is built against numpy 2.x)
 mkdir -p /etc/pip
 ln -sf "$DEPLOY_DIR/etc/pip/constraints.txt" /etc/pip/constraints.txt
 ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip/pip.conf
@@ -321,12 +320,12 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'flask-sock~=0.7' \
   'requests~=2.32' \
   'ultralytics~=8.4' \
-  'numpy<2' \
-  opencv-python-headless==4.9.0.80 \
+  'numpy>=2,<3' \
+  'opencv-python-headless>=4.10,<5' \
   websockets aiohttp \
   'ddgs~=9.14' \
   python-multipart watchdog pydantic starlette \
-  setuptools==70.0.0
+  'setuptools>=70,<82'
 
 # ── Deep learning stack (deeplearning workspace: PyTorch training + ONNX) ──
 # CPU-only torch wheel (no CUDA on sim hosts).
@@ -334,13 +333,13 @@ echo "  Installing deep learning stack (torch/onnx/gymnasium/sb3)..."
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
-  'onnx~=1.17' \
-  'onnxruntime~=1.20' \
+  'onnx>=1.19,<2' \
+  'onnxruntime>=1.25,<2' \
   'gymnasium~=1.0' \
   'stable-baselines3~=2.7' \
   'tqdm~=4.69' \
   'rich~=13.7' \
-  'shapely~=2.0' \
+  'shapely~=2.1' \
   'ncnn~=1.0' \
   'ipykernel~=7.3' \
   'ipywidgets~=8.1' \
@@ -446,7 +445,7 @@ echo 'physicar ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/physicar
 chmod 440 /etc/sudoers.d/physicar
 
 # Initial colcon build
-sudo -u physicar bash -c 'set +u; source /opt/ros/jazzy/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
+sudo -u physicar bash -c 'set +u; source /opt/ros/lyrical/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
 rm -rf "$PHYSICAR_WS/log"
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -460,9 +459,9 @@ echo "[7/7] Cleanup..."
 # anything skipped just compiles lazily at runtime as before.
 export PYTHONPYCACHEPREFIX=/opt/physicar/pycache
 python3 -m compileall -qq -j0 \
-  /opt/ros/jazzy/lib/python3.12/site-packages \
+  /opt/ros/lyrical/lib/python3.14/site-packages \
   /usr/lib/python3/dist-packages \
-  /usr/local/lib/python3.12/dist-packages \
+  /usr/local/lib/python3.14/dist-packages \
   /opt/physicar/src 2>/dev/null || true
 chown -R physicar:physicar /opt/physicar/pycache 2>/dev/null || true
 

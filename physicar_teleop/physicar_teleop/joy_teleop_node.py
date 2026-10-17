@@ -1,6 +1,6 @@
 """Gamepad teleop for PhysiCar.
 
-Subscribes to /joy (sensor_msgs/Joy from ros-jazzy-joy, which uses SDL2
+Subscribes to /joy (sensor_msgs/Joy from ros-lyrical-joy, which uses SDL2
 under the hood so axes/buttons are normalised across Xbox, PlayStation,
 Switch Pro, etc.) and publishes to a *separate* set of teleop topics so
 the driver can pick which input source to apply based on lock state:
@@ -494,7 +494,7 @@ class JoyTeleopNode(Node):
             self._publish_status()
             return
 
-        # Stale-joy guard: ros-jazzy-joy publishes ~50Hz with autorepeat, so a
+        # Stale-joy guard: ros-lyrical-joy publishes ~50Hz with autorepeat, so a
         # gap >0.5s means the controller dropped (BT disconnect, USB unplug,
         # node crash).  Treat that as "everything released" so locks fall and
         # other publishers (REST) regain control instead of being

@@ -9,7 +9,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=file://$PHYSICAR_ROS_DIR/deploy/sim/cyclonedds-net.xml
 export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
 export PHYSICAR_SIM_API=http://172.30.0.3:9003
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 source ~/physicar_ws/install/setup.bash 2>/dev/null || true
 eval "$(register-python-argcomplete ros2)"
 eval "$(register-python-argcomplete colcon)"

@@ -343,7 +343,7 @@ safe_build_locked() {
 
     log "building (symlink-install)..."
     if (cd "$WORKSPACE_DIR" && \
-        source /opt/ros/jazzy/setup.bash && \
+        source /opt/ros/lyrical/setup.bash && \
         colcon build --symlink-install \
             --base-paths src/physicar-ros \
             --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5); then

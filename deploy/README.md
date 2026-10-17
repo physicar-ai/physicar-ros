@@ -2,7 +2,7 @@
 
 ## SIM
 
-Ubuntu 24.04 — ROS nodes run natively in the workspace. The simulator itself
+Ubuntu 26.04 — ROS nodes run natively in the workspace. The simulator itself
 (Gazebo, the simulation API, the 3D viewer) runs in its own container
 (`simulator`, 172.30.0.3 on the docker network `physicar`). It is the robot's
 virtual hardware — it provides the same ROS topics as the real robot's drivers
@@ -22,7 +22,7 @@ sudo bash /opt/physicar/src/physicar-ros/deploy/install-sim.sh
 
 ### Prerequisites
 
-1. Flash Ubuntu 24.04 Server image to SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (set username to `physicar`)
+1. Flash Ubuntu 26.04 Server image to SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (set username to `physicar`)
 2. Connect Ethernet cable
 3. Boot and SSH in: `ssh physicar@physicar.local`
 

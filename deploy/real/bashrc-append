@@ -11,7 +11,7 @@ export CYCLONEDDS_URI=file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml
 export XDG_RUNTIME_DIR=/tmp/runtime-$(id -u)
 export VGL_DISPLAY=:0
 export LD_PRELOAD=/usr/lib/libvglfaker.so
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 source ~/physicar_ws/install/setup.bash 2>/dev/null || true
 eval "$(register-python-argcomplete ros2)"
 eval "$(register-python-argcomplete colcon)"

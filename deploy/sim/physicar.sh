@@ -18,7 +18,7 @@ fi
 
 # ────────────────── ROS2 Launch ──────────────────
 
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # The simulator (the robot's virtual hardware) is another container on the docker
 # network: its ROS topics reach us over that network (deploy/sim/cyclonedds-net.xml),

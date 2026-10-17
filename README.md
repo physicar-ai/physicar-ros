@@ -1,14 +1,14 @@
 # PhysiCar ROS 2
 
-[![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-blue)](https://docs.ros.org/en/jazzy/)
-[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420)](https://releases.ubuntu.com/24.04/)
+[![ROS 2 Lyrical](https://img.shields.io/badge/ROS%202-Lyrical-blue)](https://docs.ros.org/en/lyrical/)
+[![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04-E95420)](https://releases.ubuntu.com/26.04/)
 [![License](https://img.shields.io/badge/License-PhysiCar%20Community%201.0-blue)](LICENSE)
 
 <p align="center">
   <img src="logo.png" alt="logo" width="480" style="max-width: 100%;">
 </p>
 
-The ROS 2 Jazzy stack for **PhysiCar AI**, a Physical AI education platform.
+The ROS 2 Lyrical stack for **PhysiCar AI**, a Physical AI education platform.
 
 ### 🌐 Official site: [https://physicar.ai](https://physicar.ai)
 

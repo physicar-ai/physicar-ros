@@ -2,7 +2,7 @@
 # Online Async mode — builds map while robot moves
 #
 # Usage (host terminal):
-#   source /opt/ros/jazzy/setup.bash
+#   source /opt/ros/lyrical/setup.bash
 #   ros2 launch physicar_navigation slam_launch.py
 #
 # Save map:

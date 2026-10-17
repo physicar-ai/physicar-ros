@@ -70,8 +70,8 @@ ROBOT_INFO = {
         "imu": "MPU6050",
     },
     "software": {
-        "ros_distro": "jazzy",
-        "os": "Ubuntu 24.04",
+        "ros_distro": "lyrical",
+        "os": "Ubuntu 26.04",
         "api_version": "2.0.0",
     },
     "physical": {

@@ -17,8 +17,8 @@
   "jupyter.notebookFileRoot": "${fileDirname}",
   "jupyter.kernels.excludePythonEnvironments": ["/usr/bin/python3"],
   "python.analysis.extraPaths": [
-    "/opt/ros/jazzy/lib/python3.12/site-packages",
-    "/opt/physicar/install/physicar_interfaces/lib/python3.12/site-packages"
+    "/opt/ros/lyrical/lib/python3.14/site-packages",
+    "/opt/physicar/install/physicar_interfaces/lib/python3.14/site-packages"
   ],
   "simpleBrowser.focusLockIndicator.enabled": false,
   "telemetry.telemetryLevel": "off",

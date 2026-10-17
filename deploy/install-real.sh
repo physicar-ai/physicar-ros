@@ -115,13 +115,13 @@ snap set system refresh.hold="forever" 2>/dev/null || true
 snap set system refresh.timer="fri,sat,sun3,4,5" 2>/dev/null || true
 snap refresh --hold 2>/dev/null || true
 
-# Add noble-updates repo (prevent version mismatch with pre-installed packages)
-if ! grep -q 'noble-updates' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; then
+# Add resolute-updates repo (prevent version mismatch with pre-installed packages)
+if ! grep -q 'resolute-updates' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; then
   cat >> /etc/apt/sources.list.d/ubuntu.sources <<'__NOBLE_UPDATES__'
 
 Types: deb
 URIs: http://ports.ubuntu.com/ubuntu-ports/
-Suites: noble-updates
+Suites: resolute-updates
 Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 __NOBLE_UPDATES__
@@ -282,10 +282,10 @@ ln -sf "$DEPLOY_DIR/home/physicar/.config/tint2/tint2rc" /home/physicar/.config/
 chown -R physicar:physicar /home/physicar/.config
 
 
-# ── ROS 2 Jazzy ──
+# ── ROS 2 Lyrical ──
 # Download the apt signing key with retries + validation. A transient GitHub
 # error (e.g. HTTP 400) would otherwise be saved verbatim as the "key", giving an
-# invalid keyring -> apt reports the ROS repo as NOT signed -> ros-jazzy install
+# invalid keyring -> apt reports the ROS repo as NOT signed -> ros-lyrical install
 # fails -> `set -e` aborts the ENTIRE install (no services/build -> no kiosk).
 _ros_key=/usr/share/keyrings/ros-archive-keyring.gpg
 for _kt in 1 2 3 4 5 6; do
@@ -304,44 +304,43 @@ wait_for_apt
 apt-get update -y
 wait_for_apt
 apt-get install -y \
-  ros-jazzy-ros-base \
-  ros-jazzy-rmw-cyclonedds-cpp \
-  ros-jazzy-rviz2 \
-  ros-jazzy-rqt \
-  ros-jazzy-rqt-common-plugins \
-  ros-jazzy-image-transport \
-  ros-jazzy-image-transport-plugins \
-  ros-jazzy-cv-bridge \
-  ros-jazzy-teleop-twist-keyboard \
-  ros-jazzy-tf2-tools \
-  ros-jazzy-xacro \
+  ros-lyrical-ros-base \
+  ros-lyrical-rmw-cyclonedds-cpp \
+  ros-lyrical-rviz2 \
+  ros-lyrical-rqt \
+  ros-lyrical-rqt-common-plugins \
+  ros-lyrical-image-transport \
+  ros-lyrical-image-transport-plugins \
+  ros-lyrical-cv-bridge \
+  ros-lyrical-teleop-twist-keyboard \
+  ros-lyrical-tf2-tools \
+  ros-lyrical-xacro \
   python3-colcon-common-extensions \
   python3-rosdep \
   python3-pip \
   python3-dev \
-  ros-jazzy-joy \
-  ros-jazzy-camera-info-manager \
-  ros-jazzy-rosbridge-server \
-  ros-jazzy-ros2-control \
-  ros-jazzy-ros2-controllers
+  ros-lyrical-joy \
+  ros-lyrical-camera-info-manager \
+  ros-lyrical-rosbridge-server \
+  ros-lyrical-ros2-control \
+  ros-lyrical-ros2-controllers
 
 # SLAM/Nav2 packages for host-side navigation practice
 wait_for_apt
 apt-get install -y --no-install-recommends \
-  ros-jazzy-slam-toolbox \
-  ros-jazzy-cartographer-ros \
-  ros-jazzy-navigation2 \
-  ros-jazzy-nav2-bringup \
-  ros-jazzy-nav2-rviz-plugins \
-  ros-jazzy-rqt-tf-tree \
-  ros-jazzy-rqt-graph
+  ros-lyrical-slam-toolbox \
+  ros-lyrical-navigation2 \
+  ros-lyrical-nav2-bringup \
+  ros-lyrical-nav2-rviz-plugins \
+  ros-lyrical-rqt-tf-tree \
+  ros-lyrical-rqt-graph
 
-set +u; source /opt/ros/jazzy/setup.bash; set -u
+set +u; source /opt/ros/lyrical/setup.bash; set -u
 rosdep init 2>/dev/null || true
-sudo -u physicar rosdep update --rosdistro jazzy 2>/dev/null || true
+sudo -u physicar rosdep update --rosdistro lyrical 2>/dev/null || true
 
 # Patch nav2 navigation_launch.py: disable docking_server & route_server
-NAV2_LAUNCH=/opt/ros/jazzy/share/nav2_bringup/launch/navigation_launch.py
+NAV2_LAUNCH=/opt/ros/lyrical/share/nav2_bringup/launch/navigation_launch.py
 if grep -q "'route_server'," "$NAV2_LAUNCH" 2>/dev/null; then
   python3 -c "
 import re
@@ -371,13 +370,13 @@ print('nav2 navigation_launch.py patched')
 fi
 
 # Prevent automatic package upgrades (lock installed versions)
-apt-mark hold $(dpkg -l | grep -E '^ii  (ros-jazzy|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
+apt-mark hold $(dpkg -l | grep -E '^ii  (ros-lyrical|gz-|libgz-)' | awk '{print $2}') 2>/dev/null || true
 apt-mark hold linux-image-raspi linux-headers-raspi linux-image-generic linux-headers-generic 2>/dev/null || true
 
 # python
 runuser -u physicar -- python3 -m pip config set global.break-system-packages true 2>/dev/null || true
 
-# Pin numpy<2 globally (cv_bridge C++ ABI requires numpy 1.x)
+# Pin numpy>=2 globally (Lyrical cv_bridge is built against numpy 2.x)
 mkdir -p /etc/pip
 ln -sf "$DEPLOY_DIR/etc/pip/constraints.txt" /etc/pip/constraints.txt
 ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip/pip.conf
@@ -400,13 +399,13 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   'flask-sock~=0.7' \
   'requests~=2.32' \
   'ultralytics~=8.4' \
-  'numpy<2' \
+  'numpy>=2,<3' \
   smbus2 RPi.GPIO gpiozero adafruit-circuitpython-servokit \
-  opencv-python-headless==4.9.0.80 \
+  'opencv-python-headless>=4.10,<5' \
   websockets aiohttp \
   'ddgs~=9.14' \
   python-multipart watchdog pydantic starlette \
-  setuptools==70.0.0
+  'setuptools>=70,<82'
 
 # ── Deep learning stack (identical to install-sim.sh — digital twin:
 # student code must run unchanged on the robot). CPU-only torch wheel.
@@ -414,13 +413,13 @@ echo "  Installing deep learning stack (torch/onnx/gymnasium/sb3)..."
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
-  'onnx~=1.17' \
-  'onnxruntime~=1.20' \
+  'onnx>=1.19,<2' \
+  'onnxruntime>=1.25,<2' \
   'gymnasium~=1.0' \
   'stable-baselines3~=2.7' \
   'tqdm~=4.69' \
   'rich~=13.7' \
-  'shapely~=2.0' \
+  'shapely~=2.1' \
   'ncnn~=1.0' \
   'ipykernel~=7.3' \
   'ipywidgets~=8.1' \
@@ -839,7 +838,7 @@ systemctl enable physicar-code.service
 systemctl enable physicar-startup.service
 
 # Initial ROS 2 workspace build
-sudo -u physicar bash -c 'set +u; source /opt/ros/jazzy/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
+sudo -u physicar bash -c 'set +u; source /opt/ros/lyrical/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'
 rm -rf "$PHYSICAR_WS/log"
 # Stamp the revision this install/ was built from — physicar.sh (verify_install)
 # compares it with the checkout at boot and rebuilds the whole workspace when

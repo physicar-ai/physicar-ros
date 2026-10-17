@@ -1238,7 +1238,7 @@ print(".".join(map(str, max(vs))) if vs else "")' "$_ext_major" 2>/dev/null)
 # ────────────────── ROS2 Launch ──────────────────
 
 export DISPLAY=:1
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/lyrical/setup.bash
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
 # CycloneDDS pinned to loopback (cyclonedds.xml): all topics are machine-
