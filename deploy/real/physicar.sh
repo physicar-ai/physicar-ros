@@ -571,6 +571,7 @@ fi
 if ! pgrep -x openbox > /dev/null 2>&1; then
   DISPLAY=:1 openbox &>/dev/null &
 fi
+DISPLAY=:1 bash "$PHYSICAR_ROS_DIR/deploy/vnc/set-wallpaper.sh" &>/dev/null &
 if ! pgrep -x tint2 > /dev/null 2>&1; then
   DISPLAY=:1 tint2 &>/dev/null &
 fi
@@ -728,14 +729,9 @@ echo "[physicar] Root initialization complete."
 
 # ────────────────── code-server ──────────────────
 
-# ~/physicar_ws is the student's — it is seeded ONCE by install-real.sh and
-# never written again by boot/update flows. The single exception below is
-# app.physicar, the managed URL pointer file.
-APP_FILE="$HOME/physicar_ws/app.physicar"
-sudo chattr -i "$APP_FILE" 2>/dev/null || true
-echo "https://real.physicar.ai/app" > "$APP_FILE"
-chmod 444 "$APP_FILE"
-sudo chattr +i "$APP_FILE"
+# ~/physicar_ws is the student's — created ONCE by install-real.sh and never
+# written by boot/update flows. Its shipped content (tutorials/, agent/, the
+# app.physicar bookmark) is installed and kept by the PhysiCar panel.
 
 CODE_USER_DIR="$HOME/.local/share/code-server/User"
 mkdir -p "$CODE_USER_DIR"
@@ -1114,6 +1110,10 @@ if [ ! -f "$EXT_MARKER" ]; then
     for EXT_ID in physicar.physicar-ext ms-python.python ms-python.debugpy ms-toolsai.jupyter redhat.vscode-xml redhat.vscode-yaml formulahendry.code-runner; do
       /usr/local/bin/code-server --install-extension "$EXT_ID" &>/dev/null || true
     done
+    # ms-python.python's pack brings ms-python.vscode-python-envs along; it needs the native
+    # environment finder (pet) the "universal" Python build on arm64 lacks and warns about the
+    # interpreter path at every start — the Python extension works without it (sim does the same)
+    /usr/local/bin/code-server --uninstall-extension ms-python.vscode-python-envs &>/dev/null || true
     # Marker only on success — installs need internet (Open VSX), which may
     # not be up yet on first boot. No marker -> retried on the next boot.
     if /usr/local/bin/code-server --list-extensions 2>/dev/null | grep -q '^physicar.physicar-ext$'; then
@@ -1319,6 +1319,8 @@ if [ "$DEV" != "true" ] && [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
         patch_codeserver_default_folder || true
         brand_codeserver || true
         converge_codeserver_settings "$CODE_USER_DIR/settings.json" || true
+        # the VNC wallpaper was painted above from the old checkout — repaint from the new one
+        DISPLAY=:1 bash "$PHYSICAR_ROS_DIR/deploy/vnc/set-wallpaper.sh" &>/dev/null &
     fi
 fi
 
@@ -1540,6 +1542,8 @@ fi
     fi
     if ! pgrep -x openbox > /dev/null 2>&1; then
       DISPLAY=:1 openbox &>/dev/null &
+      # a fresh openbox (or a fresh Xvfb, which takes openbox down with it) starts on a bare root window
+      DISPLAY=:1 bash "$PHYSICAR_ROS_DIR/deploy/vnc/set-wallpaper.sh" &>/dev/null &
     fi
     if ! pgrep -x tint2 > /dev/null 2>&1; then
       DISPLAY=:1 tint2 &>/dev/null &

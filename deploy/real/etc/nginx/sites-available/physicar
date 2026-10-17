@@ -155,13 +155,12 @@ server {
     absolute_redirect off;
 
     # ── Access log: skip the polling traffic ──
-    # The panel polls /racing/status every second and the live views poll
-    # /steering /speed /camera several times a second — ~10k lines/hour of
-    # nothing, and nothing rotates this file on the robot (SD card). The boot
-    # script also caps it (physicar.sh log_housekeeping). Same as deploy/sim.
+    # The live views poll /steering /speed /camera several times a second —
+    # ~10k lines/hour of nothing, and nothing rotates this file on the robot
+    # (SD card). The boot script also caps it (physicar.sh log_housekeeping).
+    # Same as deploy/sim.
     set $pc_log 1;
-    if ($request_uri ~ "^/(steering|speed|camera|health|generate_204|connecttest\.txt|ncsi\.txt|hotspot-detect\.html|success\.txt)(\?|$)") { set $pc_log 0; }
-    if ($request_uri ~ "^/racing/status(\?|$)") { set $pc_log 0; }
+    if ($request_uri ~ "^/(steering|speed|camera|health|states|lidar|odom|generate_204|connecttest\.txt|ncsi\.txt|hotspot-detect\.html|success\.txt)(\?|$)") { set $pc_log 0; }
     if ($request_uri ~ "^/myapp/?(\?|$)") { set $pc_log 0; }
     access_log /var/log/nginx/access.log combined if=$pc_log;
 
@@ -452,11 +451,13 @@ server {
     }
 
     location @myapp_offline {
-        default_type text/html;
+        # the robot's face (physicar_webserver/static/face.html): the page on /myapp/ while nothing
+        # listens on 5000. It reads /states and /lidar itself and reloads into the app when one comes up.
+        root /opt/physicar/src/physicar-ros/physicar_webserver/static;
         charset utf-8;
         add_header Cache-Control "no-store" always;
         add_header X-MyApp-Status "offline" always;
-        return 200 '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyApp</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d10;color:#aaa;font-family:system-ui,sans-serif}body{display:flex;align-items:center;justify-content:center;text-align:center;font-size:4vw}h2{font-size:6.5vw}code{background:#222;padding:.4vw 1.2vw;border-radius:.8vw;color:#b388ff}.box{padding:5vw}.spin{display:inline-block;width:3.2vw;height:3.2vw;border:.45vw solid #333;border-top-color:#7e57c2;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle;margin-right:1.6vw}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div class="box"><h2>MyApp is not running</h2><p>It will auto-start on port <code>5000</code>.</p><p style="color:#666"><span class="spin"></span>Auto-reloading…</p></div><script>(function(){var n=0,t=null;function arm(ms){t=setTimeout(chk,ms)}async function chk(){t=null;if(document.hidden)return;try{var r=await fetch(location.pathname+(location.pathname.endsWith("/")?"":"/")+"?_t="+Date.now(),{cache:"no-store"});if(r.headers.get("X-MyApp-Status")!=="offline"){location.reload();return}}catch(e){}n++;arm(n<15?2000:15000)}document.addEventListener("visibilitychange",function(){if(!document.hidden&&!t)chk()});arm(2000)})();</script></body></html>';
+        try_files /face.html =503;
     }
 
 
@@ -790,11 +791,13 @@ server {
     }
 
     location @myapp_offline {
-        default_type text/html;
+        # the robot's face (physicar_webserver/static/face.html): the page on /myapp/ while nothing
+        # listens on 5000. It reads /states and /lidar itself and reloads into the app when one comes up.
+        root /opt/physicar/src/physicar-ros/physicar_webserver/static;
         charset utf-8;
         add_header Cache-Control "no-store" always;
         add_header X-MyApp-Status "offline" always;
-        return 200 '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MyApp</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d10;color:#aaa;font-family:system-ui,sans-serif}body{display:flex;align-items:center;justify-content:center;text-align:center;font-size:4vw}h2{font-size:6.5vw}code{background:#222;padding:.4vw 1.2vw;border-radius:.8vw;color:#b388ff}.box{padding:5vw}.spin{display:inline-block;width:3.2vw;height:3.2vw;border:.45vw solid #333;border-top-color:#7e57c2;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle;margin-right:1.6vw}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div class="box"><h2>MyApp is not running</h2><p>It will auto-start on port <code>5000</code>.</p><p style="color:#666"><span class="spin"></span>Auto-reloading…</p></div><script>(function(){var n=0,t=null;function arm(ms){t=setTimeout(chk,ms)}async function chk(){t=null;if(document.hidden)return;try{var r=await fetch(location.pathname+(location.pathname.endsWith("/")?"":"/")+"?_t="+Date.now(),{cache:"no-store"});if(r.headers.get("X-MyApp-Status")!=="offline"){location.reload();return}}catch(e){}n++;arm(n<15?2000:15000)}document.addEventListener("visibilitychange",function(){if(!document.hidden&&!t)chk()});arm(2000)})();</script></body></html>';
+        try_files /face.html =503;
     }
 
 

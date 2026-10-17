@@ -84,13 +84,14 @@ async def run(req: RunRequest):
         if _alive():
             raise HTTPException(status_code=409, detail="already running")
         # bash -lc — a login shell, so ~ expansion and the ROS environment (bashrc)
-        # are set up exactly like the student's terminal. Own session → the whole
-        # tree can be killed as a group.
+        # are set up exactly like the student's terminal, and the SAME cwd as that
+        # terminal: the workspace root (so `python3 run.py` means ~/physicar_ws/run.py).
+        # Own session → the whole tree can be killed as a group.
         proc = await asyncio.create_subprocess_exec(
             "bash", "-lc", command,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            start_new_session=True, cwd=os.path.expanduser("~"),
-        )
+            start_new_session=True, cwd=os.path.expanduser("~/physicar_ws"),
+            env={**os.environ, "PYTHONUNBUFFERED": "1"})   # prints reach the run log at once — no -u in the student's command
         _proc = proc
         _exit_code = None
 
@@ -123,7 +124,7 @@ async def run(req: RunRequest):
 
     async def activity():
         # A running evaluation is student activity — the host's idle-stop heartbeat
-        # only watches terminals and myapp.log, so mark it here every 30 s.
+        # only watches terminals and startup.log, so mark it here every 30 s.
         marker = "/opt/physicar/userdata/.eval-active"
         while proc.returncode is None:
             try:

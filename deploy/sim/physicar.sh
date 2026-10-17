@@ -85,18 +85,21 @@ if [ -f "$PHYSICAR_ROS_DIR/updater.sh" ]; then
     boot_status updating
     bash "$PHYSICAR_ROS_DIR/updater.sh" --boot
     _post_head=$(git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD 2>/dev/null || true)
-    # If the code was updated during boot, re-run the boot-time program that already ran once on
-    # the old code (app_browser: priority 250 < physicar 650) with the new code — so a release takes
-    # effect from the first boot, not "from the second boot on". (Real case 2026-08-22: after a tag
-    # deploy the old script wrote first on the first boot, so the bookmark guard applied one boot late)
+    # If the code was updated during boot, re-apply what already ran on the old code:
     if [ -n "$_post_head" ] && [ "$_pre_head" != "$_post_head" ]; then
-        echo "[physicar] code updated during boot (${_pre_head:0:7} -> ${_post_head:0:7}) — re-running app_browser"
-        supervisorctl -s unix:///tmp/supervisor.sock restart app_browser >/dev/null 2>&1 || true
+        echo "[physicar] code updated during boot (${_pre_head:0:7} -> ${_post_head:0:7})"
         # nginx reads its (symlinked) site config at start — before this update
         # landed. Reload so a shipped config change counts from this boot too.
         if sudo -n nginx -t >/dev/null 2>&1; then
             sudo -n nginx -s reload >/dev/null 2>&1 || true
         fi
+        # supervisord read its program list at container start — before this update.
+        # Add/remove the programs the new checkout ships (a changed section restarts
+        # that program, so the running services' sections must stay stable across tags).
+        supervisorctl -s unix:///tmp/supervisor.sock reread >/dev/null 2>&1 || true
+        supervisorctl -s unix:///tmp/supervisor.sock update >/dev/null 2>&1 || true
+        # the VNC wallpaper (priority 212) was painted from the old checkout — repaint from the new one
+        supervisorctl -s unix:///tmp/supervisor.sock start wallpaper >/dev/null 2>&1 || true
         # code-server pin · webview patches · branding · settings from the NEW checkout —
         # entrypoint.sh ran them with the old pin before this update (2026-10-14: a raised
         # pin landed one boot late). Restart code-server only when a new version went in.

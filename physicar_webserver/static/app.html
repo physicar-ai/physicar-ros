@@ -381,19 +381,7 @@ body:not(.sim-mode) #divider2{display:none}
     </div>
 
 
-    <!-- VNC (accordion section: header click toggles the body) -->
-    <div class="stack-panel on" id="panel-vnc">
-      <div class="sp-head"><span class="sp-caret">&#9662;</span>VNC
-        <div class="sp-actions">
-          <button class="sp-btn" id="btn-open-vnc" title="Open in new tab">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
-    </div>
-
-    <!-- MYAPP (accordion section) -->
+    <!-- MYAPP (accordion section: header click toggles the body) -->
     <div class="stack-panel on" id="panel-myapp">
       <div class="sp-head"><span class="sp-caret">&#9662;</span>MY APP
         <div class="sp-actions">
@@ -403,6 +391,18 @@ body:not(.sim-mode) #divider2{display:none}
         </div>
       </div>
       <div class="sp-body"><iframe id="frame-myapp" title="MyApp" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-myapp" title="Click to interact"></div></div>
+    </div>
+
+    <!-- VNC (accordion section) -->
+    <div class="stack-panel on" id="panel-vnc">
+      <div class="sp-head"><span class="sp-caret">&#9662;</span>VNC
+        <div class="sp-actions">
+          <button class="sp-btn" id="btn-open-vnc" title="Open in new tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="sp-body"><iframe id="frame-vnc" title="VNC" scrolling="no" allow="autoplay; camera; microphone"></iframe><div class="sp-shield" data-frame="frame-vnc" title="Click to interact"></div></div>
     </div>
 
   </div>
@@ -890,9 +890,13 @@ body:not(.sim-mode) #divider2{display:none}
           badge.className = 'wm-badge'; badge.textContent = 'OFFICIAL';
           card.querySelector('.wm-thumbbox').appendChild(badge);
         }
-        // Local track icon first; published worlds upgrade when the CDN thumbnail arrives
-        img.onerror = () => { img.style.display = 'none'; };
-        img.src = '/sim/track_iconography/' + w.name + '.png';
+        // official worlds: the shipped 3D thumbnail (/sim/thumbnails/<name>.jpg), else the track icon;
+        // published worlds start on the icon and upgrade when the CDN thumbnail arrives
+        img.onerror = () => {
+          if (!img._iconTried) { img._iconTried = true; img.src = '/sim/track_iconography/' + w.name + '.png'; return; }
+          img.style.display = 'none';
+        };
+        img.src = w.world_id ? '/sim/track_iconography/' + w.name + '.png' : '/sim/thumbnails/' + w.name + '.jpg';
         if (w.world_id) {
           cloudMeta(w.world_id).then(meta => {
             const u = thumbFromMeta(w.world_id, meta);

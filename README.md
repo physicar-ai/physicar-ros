@@ -106,48 +106,30 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 | `POST` | `/audio/volume` | Change volume of a playing item (`id`, `volume` 0–1) |
 | `WS` | `/audio/stream` | Realtime PCM16 playback stream (`?sample_rate=24000&channels=1&volume=1.0`), e.g. OpenAI Realtime API voice output. Binary frames = raw PCM16; close = stop |
 
-### Racing
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/racing/run` | Start a job — `{"job": "rb-run" \| "sl-train" \| "rl-train" \| "ml-run", "model"?, "base"?, "steps"?, "worlds"?}`. Everything about a run rides on the request: `model` (ml-run; default newest), `base` (train jobs; continue from), `steps`/`worlds` (rl-train). Requesting `ml-run` while ml-run is already driving swaps the model LIVE — no restart |
-| `POST` | `/racing/stop` | Stop the running job |
-| `GET` | `/racing/status` | Lock, run gates, log tail, training progress |
-| `GET`/`POST` | `/racing/rb/settings` | Rule-Based settings, applied LIVE (`speed, gain, hue*, sat*, val*, crop, pan, tilt`; `{"reset": true}`) |
-| `GET`/`POST` | `/racing/ml/settings` | The ML profile SHARED by Supervised/Reinforcement, applied LIVE (`speed, left, right, pan, tilt, mode`) |
-| `GET` | `/racing/ml/models` | The model store (hash-named, never overwritten) |
-| `GET` | `/racing/code/{job}` | The executed script with current settings substituted |
-
 ## MyApp
 
-- Your own robot web app.
-- Launch an app on port **5000** and it becomes accessible at `/myapp/`.
-- While a Racing course runs, it takes over port 5000 for its live view (the managed MyApp process is stopped first); the port is released when the course stops.
+- Your own robot web app. Launch an app on port **5000** and it becomes accessible at `/myapp/`.
+- While a Racing course runs, it takes over port 5000 for its live view (the startup script's process is stopped first) and the course starts it again when it ends.
 - Path rules
     - nginx strips `/myapp` from `/myapp/` requests and forwards them to the app (5000). So the app only needs to be written relative to its own root (`/`).
     - Write HTML links, static resources, redirects, and `fetch` as **relative paths**. Absolute paths (`/...`) point outside `/myapp/` and will break.
-
-- Auto-start script
-    - `/opt/physicar/userdata/myapp.sh`: runs automatically at boot. The command that launches the app on port 5000.
-        ```
-        python3 /home/physicar/physicar_ws/app.py
-        ```
-    - `/opt/physicar/userdata/myapp.log`: execution log of the auto-start script.
+- Auto-start: the **startup script** `/opt/physicar/userdata/startup.sh` runs at boot **from `~/physicar_ws`** (sim: supervisord program `startup`; real robot: `physicar-startup.service`). It is created empty — put the command that launches the app in it:
+    ```
+    exec python3 ~/physicar_ws/myapp/app.py
+    ```
+    Its output goes to `/opt/physicar/userdata/startup.log` (truncated on every start). The PhysiCar panel's System tab opens the script (Edit) and its log (Log).
 
 ## Racing
 
-- Guided driving courses in the PhysiCar panel's **Racing** tab: **Rule-Based** (HSV line tracing) and **Machine Learning** — one CNN taught two ways.
-- **Flow**: gather the teacher on the Train page (Supervised: button-labeled photos / Reinforcement: a reward function, simulator only) → `Train the model` → drive it on the Inference page. Both teachers train the SAME network into ONE model store; Inference is identical either way.
-- **Jobs** — one at a time, machine-wide: `rb-run`, `sl-train`, `rl-train`, `ml-run`, started with `POST /racing/run {"job", "model"?, "base"?, "steps"?, "worlds"?}`. Everything about a run rides on the request; nothing is stored. Requesting `ml-run` while it is already driving swaps the model LIVE (no restart).
-- **Runs are detached**: the runner spawns the course script under a lock in `/opt/physicar/userdata/racing/` — every window sees the same run, and any window (or `POST /racing/stop`) stops it. `GET /racing/status` returns the lock, run gates, log tail and training progress.
-- **Models**: training checkpoints continuously into `ml/checkpoint.pt`, and HOWEVER a run ends (finish, Stop, crash) the runner files the last checkpoint into `userdata/racing/ml/models/` as `<sha256(pt)[:8]>.pt` plus a derived deployable `.onnx`. The `.pt` is the interchange format — download/upload it, continue training from it (`base`), across teachers too (supervised pretrain → reinforcement finetune works).
-- **Settings apply live**: `/racing/{rb|ml}/settings` — a running script re-reads them within a frame.
-- **The code is the course**: scripts ship standalone in `physicar_webserver/racing_assets/`; `GET /racing/code/{job}` returns the exact executed script with the current settings substituted (what the panel's View Code shows).
-- A running course serves its live view on port 5000 (the MYAPP slot). The panel, the AI chat's `racing_*` tools and a student's curl all drive the same API.
+- Guided driving courses in the PhysiCar panel's **Tutorials** tab (picker → Racing): **Rule-Based** (line tracing by color) and **Machine Learning** (label photos → train → drive).
+- **The courses are files in the student's workspace**, installed and kept by the PhysiCar panel (read-only in the editor, restored if changed): `~/physicar_ws/tutorials/racing-rb/line_tracing.py` + `settings.json` + `myapp.html` (the page the course shows in the MYAPP tab while it runs), `tutorials/racing-ml/train.py`, `tutorials/racing-ml/inference.py` + `settings.json` + `myapp.html`, `tutorials/racing-ml/data/{left,straight,right}/` (labeled photos), `tutorials/racing-ml/models/<id>.onnx`. There is no racing API in this webserver: the scripts use the Web API below (`/camera`, `/speed`, `/steering`, `/camera/pan`, `/camera/tilt`).
+- **Running** = a terminal: `python3 ~/physicar_ws/tutorials/racing-rb/line_tracing.py`, `python3 ~/physicar_ws/tutorials/racing-ml/train.py`, `python3 ~/physicar_ws/tutorials/racing-ml/inference.py` (the panel's ▶ button types exactly this; Ctrl+C or the panel's Stop ends it). One course drives at a time — a starting `run.py` stops any other racing run and takes port 5000 for its live view (the MYAPP slot), giving MyApp back when it ends. A training may run alongside a drive.
+- **Settings apply live**: each script re-reads its `settings.json` when the file changes (the panel's settings edit that file).
+- **Models**: `train.py` trains a new model from scratch every run and saves `tutorials/racing-ml/models/<id>.onnx` (id = 8 hex of the file's hash); `inference.py` drives with the newest, or the one named in `settings.json` (`model`), and follows a change of that key while driving.
 
 ## Tool Server (`physicar_tools`)
 
-FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, `racing.py` (the Racing runner: status/run/models/stop/settings), plus the user-editable `/opt/physicar/userdata/custom_tools.py`. Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
+FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) serving the AI chat's Python tools: the bundled `robot.py` (Web API mirror), `sim.py` (sim API), `utils.py`, plus the student's `~/physicar_ws/agent/tools.py` (custom tools — installed by the PhysiCar panel). Launched by the bringup launch files with `respawn=True` — a crash or an intentional `/reload` comes back within a second, and a broken custom script never takes the server down (the last working module keeps serving while the import error is reported).
 
 | Method | Path | Description |
 |--------|------|-------------|

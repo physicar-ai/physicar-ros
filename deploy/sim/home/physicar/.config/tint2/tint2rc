@@ -1,33 +1,65 @@
-# Background 1
+# Background 1 — the panel
 #-------------------------------------
 rounded = 0
 border_width = 0
 background_color = #2d2d2d 90
 
-# Background 2
+# Background 2 — the active window's task
 #-------------------------------------
 rounded = 3
 border_width = 0
 background_color = #0078d4 100
 
+# Background 3 — the launcher buttons
+#-------------------------------------
+rounded = 3
+border_width = 1
+border_color = #6e6e6e 100
+background_color = #3c3c3c 100
+background_color_hover = #4c4c4c 100
+border_color_hover = #8e8e8e 100
+background_color_pressed = #2a2a2a 100
+border_color_pressed = #8e8e8e 100
+
 # Panel
-panel_items = LT
+panel_items = EET
 panel_size = 100% 28
 panel_margin = 0 0
-panel_padding = 2 0 2
+panel_padding = 4 3 4
 panel_position = bottom center horizontal
 panel_layer = top
 panel_background_id = 1
 
-# Launcher
-launcher_padding = 2 4 4
-launcher_background_id = 0
-launcher_icon_background_id = 0
-launcher_icon_size = 22
-launcher_icon_theme = Tango
-launcher_icon_asb = 100 0 0
-launcher_tooltip = 1
-launcher_item_app = /usr/share/applications/xterm.desktop
+# Launchers — text buttons; a click runs the command
+execp = new
+execp_command = echo Terminal
+execp_interval = 0
+execp_has_icon = 0
+execp_continuous = 0
+execp_markup = 0
+execp_centered = 1
+execp_font = sans 9
+execp_font_color = #eeeeee 100
+execp_padding = 10 0 0
+execp_background_id = 3
+execp_tooltip = Open a terminal window
+execp_lclick_command = xterm -fa Monospace -fs 10 -bg black -fg white -title Terminal -e "cd ~ && bash -l"
+
+execp = new
+execp_command = echo RViz
+execp_interval = 0
+execp_has_icon = 0
+execp_continuous = 0
+execp_markup = 0
+execp_centered = 1
+execp_font = sans 9
+execp_font_color = #eeeeee 100
+execp_padding = 10 0 0
+execp_background_id = 3
+execp_tooltip = Open RViz
+execp_lclick_command = /opt/physicar/src/physicar-ros/deploy/vnc/rviz2.sh
+
+# Taskbar
 taskbar_mode = single_desktop
 taskbar_padding = 2 2 2
 taskbar_background_id = 0

@@ -282,11 +282,27 @@ except Exception as e:
 PYCHAT
 }
 
+# ── Python Environments extension: not on this platform ──
+# ms-python.python's extension pack brings in ms-python.vscode-python-envs, which checks
+# python.defaultInterpreterPath with the native finder (pet) that the "universal" Python
+# build we get on arm64 does not carry — so it warns "Default interpreter path … could not
+# be resolved" at every start (2026-10-16) and then falls back to auto-discovery anyway.
+# The Python extension works without it (python.useEnvironmentsExtension is off). Removed
+# whenever a (re)install brought it back; skipped while code-server runs (its CLI asks for
+# a restart before touching an extension the running server loaded).
+remove_python_envs_extension() {
+  pgrep -f "code-server --bind-addr" >/dev/null 2>&1 && return 0
+  code-server --list-extensions 2>/dev/null | grep -qx 'ms-python.vscode-python-envs' || return 0
+  code-server --uninstall-extension ms-python.vscode-python-envs >/dev/null 2>&1 \
+    && echo "[ext] ms-python.vscode-python-envs removed (no native environment finder on this platform)" || true
+}
+
 # Run everything in the boot order the entrypoint always used. After a version install the
 # stock bundle is back, so the patches and branding must follow it (they do).
 codeserver_converge_all() {
   converge_codeserver_version || true
   seed_disable_builtin_chat || true
+  remove_python_envs_extension || true
   converge_codeserver_settings "/home/physicar/.local/share/code-server/User/settings.json" || true
   patch_codeserver_webview_media || true
   patch_codeserver_webview_sw || true

@@ -48,7 +48,7 @@ apt-get install -y \
   xvfb x11vnc novnc websockify xterm supervisor net-tools \
   jq python3-pip ffmpeg gh mpv \
   python3-fastapi python3-uvicorn \
-  nginx openbox tint2 alsa-utils python3-dev \
+  nginx openbox tint2 feh x11-utils alsa-utils python3-dev \
   fonts-noto fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji
 
 # Python bytecode cache -> /opt/physicar/pycache (keeps __pycache__ out of the
@@ -372,7 +372,6 @@ mkdir -p /etc/xdg/openbox /home/physicar/.config/tint2
 ln -sf "$DEPLOY_DIR/etc/xdg/openbox/rc.xml" /etc/xdg/openbox/rc.xml
 ln -sf "$DEPLOY_DIR/home/physicar/.config/tint2/tint2rc" /home/physicar/.config/tint2/tint2rc
 chown -R physicar:physicar /home/physicar/.config
-ln -sf "$DEPLOY_DIR/usr/share/applications/xterm.desktop" /usr/share/applications/xterm.desktop
 
 # Nginx
 rm -f /etc/nginx/sites-enabled/default
@@ -397,7 +396,6 @@ chown -R physicar:physicar /var/log/supervisor
 
 # Script permissions
 chmod +x "$DEPLOY_DIR/physicar.sh"
-chmod +x "$DEPLOY_DIR/app-browser.sh" 2>/dev/null || true
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  5. Workspace Setup                                                        │

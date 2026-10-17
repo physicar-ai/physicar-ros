@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MyApp</title>
+<!--
+  The robot's face — an LED dot matrix: the page on /myapp/ while nothing listens on port 5000
+  (nginx serves it from this folder on 502). Pixel eyes and a pixel mouth that react to the robot —
+  speed, turning, what the lidar sees around it, the battery — and to a touch. Same origin as the
+  Web API, so the browser reads /states and /lidar directly; no server of its own, no polling: two
+  server-sent streams, and the app's arrival on 5000 comes over the same stream (the myapp key).
+-->
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0d0d10;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  canvas{display:block;cursor:pointer}
+  /* the words float over the top rows of the matrix (the face keeps the rows below them) */
+  #say{position:fixed;top:4.5%;left:0;right:0;text-align:center;pointer-events:none;font-family:system-ui,sans-serif;color:#a7a7bd;font-weight:700;font-size:clamp(10px,4.6vmin,17px);line-height:1.25;text-shadow:0 1px 3px #0d0d10,0 0 8px #0d0d10}
+  #say small{display:block;color:#7a7a90;font-weight:400;font-size:clamp(9px,3.6vmin,13px)}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="led" aria-label="robot face"></canvas></div>
+<div id="say">Make your own MyApp!<small>You can build one like this too.</small></div>
+<script>
+(function () {
+  "use strict";
+  // ── the matrix fills the page: 18 rows of big LEDs, as many columns as the width takes (20 at
+  //    least). The words float over the top rows; the face sits at fixed rows below them — the same
+  //    picture at every size, never a scrollbar. Eyes on row 8, 12 columns apart; mouth on row 14.
+  var H = 18, W = 24, cell = 10, dpr = 1, litS = null, dimS = null, EL, ER, MO, last = "";
+  var cv = document.getElementById("led"), ctx = cv.getContext("2d"), wrap = document.getElementById("wrap");
+  function sprite(lit) {
+    var s = Math.ceil(cell * dpr), c = document.createElement("canvas"); c.width = c.height = s * 2;
+    var g = c.getContext("2d"), r = s * 0.37, cx = s;
+    if (lit) {
+      var glow = g.createRadialGradient(cx, cx, r * 0.5, cx, cx, s);
+      glow.addColorStop(0, "rgba(183,136,255,0.5)"); glow.addColorStop(1, "rgba(126,87,194,0)");
+      g.fillStyle = glow; g.fillRect(0, 0, s * 2, s * 2);
+      var core = g.createRadialGradient(cx - r * 0.3, cx - r * 0.3, r * 0.1, cx, cx, r);
+      core.addColorStop(0, "#f1e9ff"); core.addColorStop(0.45, "#c2a4ff"); core.addColorStop(1, "#8b63e6");
+      g.fillStyle = core;
+    } else { g.fillStyle = "#1c1c26"; }
+    g.beginPath(); g.arc(cx, cx, r, 0, Math.PI * 2); g.fill();
+    return c;
+  }
+  function size() {
+    dpr = window.devicePixelRatio || 1;
+    var w = wrap.clientWidth, h = wrap.clientHeight;
+    cell = Math.max(3, Math.min(h / H, w / 20));   // 18 rows fill the height; a portrait panel keeps the 20 columns the face needs instead
+    W = Math.max(20, Math.floor(w / cell));
+    var mid = Math.round(W / 2);
+    EL = { x: mid - 6, y: 8 }; ER = { x: mid + 6, y: 8 }; MO = { x: mid, y: 14 };
+    cv.style.width = (cell * W) + "px"; cv.style.height = (cell * H) + "px";
+    cv.width = Math.round(cell * W * dpr); cv.height = Math.round(cell * H * dpr);
+    litS = sprite(true); dimS = sprite(false);
+    last = ""; if (typeof frame === "function") { frame(); }   // the canvas is blank after a resize — paint it now
+  }
+  window.addEventListener("resize", size);
+  if (window.ResizeObserver) { new ResizeObserver(size).observe(wrap); }
+
+  // ── the robot's state (fed by the streams below, or by __face.set in tests) ──
+  var now = function () { return performance.now(); };
+  var v = 0, wz = 0, batt = null, near = null, nearAng = 0, lastData = 0;
+  var lastMotion = now(), touchAt = -1e9, touchLook = null, expr = 0, surprisedAt = -1e9;
+  var blinkAt = now() + 2500, blinkUntil = 0;
+  var EXPR = ["neutral", "happy", "wow", "grumpy"];   // a touch cycles these
+  function feedLidar(d) {   // angles: 0 front, +90 left, -90 right (the Web API's convention)
+    var r = d && d.ranges; if (!r) { return; }
+    var best = null, bestA = 0;
+    for (var k in r) {
+      var m = r[k]; if (m === null || !(m > 0.05)) { continue; }
+      if (best === null || m < best) { best = m; var a = Number(k); a = ((a + 180) % 360 + 360) % 360 - 180; bestA = a; }
+    }
+    near = best; nearAng = bestA;
+    if (best !== null && best < 0.3) { surprisedAt = now(); }
+    lastData = now();
+  }
+  function feedStates(d) {
+    if (!d) { return; }
+    if (d.odom && d.odom.velocity) {
+      v = Number(d.odom.velocity.linear) || 0; wz = Number(d.odom.velocity.angular) || 0;
+      if (Math.abs(v) > 0.02 || Math.abs(wz) > 0.1) { lastMotion = now(); }
+    }
+    if (d.battery && d.battery.percentage !== undefined) { batt = d.battery.percentage; }
+    if (d.myapp && d.myapp.up === true) { location.reload(); return; }   // the student's app is up on 5000 — into it
+    lastData = now();
+  }
+
+  // ── what the face should show right now ──
+  function targets(t) {
+    var o = { dx: 0, dy: 0, eye: "open", squint: false, lid: 0, mouth: "flat", zz: false };
+    var fresh = t - lastData < 3000;   // streams alive — otherwise the robot's data is not believed
+    var moving = fresh && (Math.abs(v) > 0.02 || Math.abs(wz) > 0.1);
+    var asleep = t - lastMotion > 60000 && t - touchAt > 60000;
+    var e = EXPR[expr];
+    if (e === "happy") { o.eye = "happy"; o.mouth = "smile"; }
+    else if (e === "wow") { o.eye = "ring"; o.mouth = "o"; }
+    else if (e === "grumpy") { o.eye = "grumpy"; o.mouth = "frown"; }
+    // where the eyes look: a touch (1.5 s), else the nearest thing the lidar sees, else the turn, else a slow drift
+    if (touchLook && t - touchAt < 1500) { o.dx = touchLook.dx; o.dy = touchLook.dy; }
+    else if (fresh && near !== null && near < 1.2) { var a = nearAng * Math.PI / 180; o.dx = -Math.sin(a) * 2; o.dy = -Math.cos(a) * 1; }
+    else if (moving && Math.abs(wz) > 0.5) { o.dx = wz > 0 ? -2 : 2; }
+    else { o.dx = Math.sin(t / 2300) * 0.8; o.dy = Math.cos(t / 3100) * 0.5; }
+    if (fresh && v < -0.05) { o.dy += 1; }                                   // reversing: eyes down, "where am I going"
+    if (fresh && Math.abs(v) > 0.25) { o.squint = true; o.mouth = "big"; }   // fast: thrilled
+    if (fresh && batt !== null && batt < 20 && !moving) { o.lid = Math.max(o.lid, 0.5); if (o.mouth === "flat") { o.mouth = "sleep"; } }
+    if (t - surprisedAt < 1200) { o.eye = "big"; o.squint = false; o.lid = 0; o.mouth = "o"; }   // something right in front
+    if (asleep) { o.eye = "closed"; o.lid = 0; o.mouth = "sleep"; o.zz = true; o.dx = 0; o.dy = 0; }
+    else if (t < blinkUntil) { o.eye = "closed"; }
+    return o;
+  }
+
+  // ── pixel art (5 x 7 eyes, a 3-pixel-wide mouth curve) ──
+  function eyePx(set, c, o, side) {   // side: -1 left eye, +1 right eye (the inner corner is toward the other eye)
+    var x0 = c.x + Math.round(cur.dx), y0 = c.y + Math.round(cur.dy), x, y, hw = 2, hh = 3;
+    var on = function (dx, dy) { var X = x0 + dx, Y = y0 + dy; if (X >= 0 && X < W && Y >= 0 && Y < H) { set[Y * W + X] = 1; } };
+    if (o.eye === "closed") { for (x = -hw; x <= hw; x++) { on(x, 1); } return; }
+    if (o.eye === "happy") { for (x = -hw; x <= hw; x++) { y = -3 + Math.round(x * x / 2); on(x, y); on(x, y + 1); } return; }
+    if (o.eye === "ring" || o.eye === "big") { hw = 3; hh = 4; }
+    if (o.squint) { hh = 1; }
+    var lidRows = Math.round(cur.lid * (hh * 2 + 1));
+    for (y = -hh; y <= hh; y++) {
+      for (x = -hw; x <= hw; x++) {
+        if (Math.abs(x) === hw && Math.abs(y) === hh) { continue; }            // rounded corners
+        if (y + hh < lidRows) { continue; }                                     // the lid, from the top
+        if (o.eye === "ring" && Math.abs(x) <= hw - 2 && Math.abs(y) <= hh - 2) { continue; }   // hollow
+        if (o.eye === "grumpy") {                                               // the brow slants down toward the inner corner
+          var inner = side < 0 ? x : -x;                                        // + = toward the other eye
+          if (y === -hh) { continue; }
+          if (y === -hh + 1 && inner > -1) { continue; }
+          if (y === -hh + 2 && inner > 1) { continue; }
+        }
+        on(x, y);
+      }
+    }
+  }
+  function mouthPx(set, o) {
+    var x, y, on = function (dx, dy) { var X = MO.x + dx, Y = MO.y + dy; if (X >= 0 && X < W && Y >= 0 && Y < H) { set[Y * W + X] = 1; } };
+    if (o.mouth === "flat") { for (x = -2; x <= 2; x++) { on(x, 0); } }
+    else if (o.mouth === "sleep") { for (x = -1; x <= 1; x++) { on(x, 0); } }
+    else if (o.mouth === "smile") { for (x = -3; x <= 3; x++) { on(x, -Math.round(x * x / 4.5)); } }
+    else if (o.mouth === "frown") { for (x = -3; x <= 3; x++) { on(x, 1 + Math.round(x * x / 4.5)); } }
+    else if (o.mouth === "big") { for (x = -4; x <= 4; x++) { y = -Math.round(x * x / 5); on(x, y); on(x, y + 1); } }
+    else if (o.mouth === "o") { for (x = -1; x <= 1; x++) { for (y = -1; y <= 1; y++) { if (x || y) { on(x, y); } } } }
+  }
+  var Z = [[0, 0], [1, 0], [2, 0], [1, 1], [0, 2], [1, 2], [2, 2]];
+  function zzPx(set, t) {
+    var n = 1 + Math.floor((t / 700) % 3);   // z, zz, zzz
+    // between the closed eyes and the mouth, climbing to the right (always inside the 20 columns)
+    for (var i = 0; i < n; i++) { var bx = MO.x - 5 + i * 3, by = 11 - i; Z.forEach(function (p) { var X = bx + p[0], Y = by + p[1]; if (X >= 0 && X < W && Y >= 0 && Y < H) { set[Y * W + X] = 1; } }); }
+  }
+
+  // ── the frame: targets → eased values → pixels → LEDs ──
+  var cur = { dx: 0, dy: 0, lid: 0 };
+  function lerp(a, b, k) { return a + (b - a) * k; }
+  function clamp(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
+  function frame() {
+    var t = now();
+    if (t >= blinkAt) { blinkUntil = t + 120; blinkAt = t + 2500 + Math.random() * 3500; }
+    var o = targets(t);
+    cur.dx = clamp(lerp(cur.dx, o.dx, 0.5), -2, 2); cur.dy = clamp(lerp(cur.dy, o.dy, 0.5), -1, 1);
+    cur.lid = lerp(cur.lid, o.lid, 0.5);
+    var set = new Uint8Array(W * H);
+    eyePx(set, EL, o, -1); eyePx(set, ER, o, 1); mouthPx(set, o);
+    if (o.zz) { zzPx(set, t); }
+    var key = Array.prototype.join.call(set, "");
+    if (key === last) { return; }   // nothing changed on the matrix — no redraw
+    last = key;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#0d0d10"; ctx.fillRect(0, 0, cell * W, cell * H);
+    var s = litS.width / dpr;   // sprite size in CSS px (2 cells)
+    for (var i = 0; i < W * H; i++) {
+      var x = (i % W) * cell + cell / 2, y = Math.floor(i / W) * cell + cell / 2;
+      ctx.drawImage(set[i] ? litS : dimS, x - s / 2, y - s / 2, s, s);
+    }
+  }
+  size();
+  setInterval(frame, 33);   // 30 fps: a dot matrix needs no more, and it stays cheap on the robot's own screen
+
+  // ── a touch: look there, next expression ──
+  function onTouch(ev) {
+    var r = cv.getBoundingClientRect();
+    touchLook = { dx: clamp((ev.clientX - r.left) / r.width * 2 - 1, -1, 1) * 2, dy: clamp((ev.clientY - r.top) / r.height * 2 - 1, -1, 1) * 1 };
+    var t = now(), wasAsleep = t - lastMotion > 60000 && t - touchAt > 60000;
+    touchAt = t; lastMotion = t;
+    if (!wasAsleep) { expr = (expr + 1) % EXPR.length; }   // a sleeping robot just wakes
+    last = "";
+    ev.preventDefault();
+  }
+  cv.addEventListener("pointerdown", onTouch);
+
+  // ── the robot's data: two server-sent streams (same origin), closed while the page is hidden ──
+  var esA = null, esB = null;
+  function open() {
+    if (esA || typeof EventSource === "undefined") { return; }
+    esA = new EventSource("/states?stream=true&include=odom,battery,myapp");
+    esA.onmessage = function (e) { try { feedStates(JSON.parse(e.data)); } catch (x) { /* keepalive */ } };
+    esB = new EventSource("/lidar?stream=true&step=10");
+    esB.onmessage = function (e) { try { feedLidar(JSON.parse(e.data)); } catch (x) { /* keepalive */ } };
+  }
+  function close() { if (esA) { esA.close(); esA = null; } if (esB) { esB.close(); esB = null; } }
+  document.addEventListener("visibilitychange", function () { if (document.hidden) { close(); } else { open(); } });
+  open();
+
+  // test hook (the headless render): feed states without a robot
+  window.__face = { set: function (s) { if ("v" in s || "wz" in s || "batt" in s) { feedStates({ odom: { velocity: { linear: s.v || 0, angular: s.wz || 0 } }, battery: s.batt === undefined ? undefined : { percentage: s.batt } }); } if ("ranges" in s) { feedLidar({ ranges: s.ranges }); } last = ""; },
+    touch: function (x, y) { onTouch({ clientX: x, clientY: y, preventDefault: function () {} }); }, sleep: function () { lastMotion = touchAt = now() - 61000; last = ""; }, expr: function (i) { expr = i; last = ""; }, noblink: function () { blinkAt = 1e12; } };
+})();
+</script>
+</body>
+</html>

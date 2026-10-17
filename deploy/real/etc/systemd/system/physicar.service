@@ -8,6 +8,8 @@ Type=simple
 User=physicar
 Group=physicar
 EnvironmentFile=-/opt/physicar/userdata/.env
+# bytecode caches out of the source trees and the student's files (same as the shells)
+Environment=PYTHONPYCACHEPREFIX=/opt/physicar/pycache
 StandardOutput=append:/opt/physicar/userdata/physicar.log
 StandardError=append:/opt/physicar/userdata/physicar.log
 ExecStartPre=/bin/bash -c '> /opt/physicar/userdata/physicar.log'

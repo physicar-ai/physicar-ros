@@ -1,10 +1,11 @@
 {
   "chat.disableAIFeatures": true,
   "code-runner.runInTerminal": true,
+  "code-runner.showRunIconInEditorTitleMenu": false,
   "code-runner.ignoreSelection": true,
   "code-runner.executorMap": {
     "shellscript": "cd $dir && ./$fileName",
-    "python": "cd $dir && python3 -u $fileName"
+    "python": "cd $dir && python3 $fileName"
   },
   "chat.sendElementsToChat.enabled": false,
   "workbench.startupEditor": "none",

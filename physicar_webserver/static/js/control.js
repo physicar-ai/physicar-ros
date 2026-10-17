@@ -4,7 +4,7 @@ const CTRL = {
   MAX_STEER: 0.349,          // rad (~20°) max steering
   MAX_PAN: 0.5236,           // rad (30°) - matches real kit max_pan
   MAX_TILT: 0.5236,          // rad (30°) - matches real kit max_tilt
-  SEND_HZ: 10,               // control send rate
+  SEND_HZ: 30,               // control tick rate — sends only on change (plus the 0.4 s keep-alive), so idle costs nothing; a key press reaches the socket within ~33 ms (was 10 Hz / 100 ms until 2026-10-16)
 
   // State
   maxSpeed: 0.5,             // m/s, adjustable
@@ -130,8 +130,11 @@ const CTRL = {
     ctx.fillStyle = 'rgba(128,128,128,0.35)';
     ctx.fill();
 
-    // Thumb (proportional — the page scales as a fixed 4:3 stage)
-    const { x, y } = this.joy[group];
+    // Thumb (proportional — the page scales as a fixed 4:3 stage). The DRIVE
+    // thumb mirrors the arrow keys while they drive (see _kbAnimate), so a
+    // keyboard driver sees the same pad move that a pointer driver does.
+    const kb = group === 'drive' && !this._joyDragging.drive && (this._kbShown.x !== 0 || this._kbShown.y !== 0 || this._getKeyboardDrive());
+    const { x, y } = kb ? this._kbShown : this.joy[group];
     const tx = cx + x * halfSize;
     const ty = cy - y * halfSize; // Y inverted
     const thumbR = Math.max(8, halfSize * 0.18);
@@ -184,12 +187,40 @@ const CTRL = {
       if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
       e.preventDefault();
       this._keys[e.key] = true;
+      this._kbAnimate();
     });
     document.addEventListener('keyup', (e) => {
       if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
       e.preventDefault();
       delete this._keys[e.key];
+      this._kbAnimate();
     });
+  },
+
+  // Keyboard drive shown on the DRIVE pad: the thumb glides to where the
+  // arrow keys put it (full deflection, like holding the stick at the edge)
+  // and back to the center on release. Display only — the commands still come
+  // from _getKeyboardDrive() in the send tick.
+  _kbShown: { x: 0, y: 0 },
+  _kbAnim: null,
+
+  _kbTarget() {
+    const k = this._keys;
+    return { x: k['ArrowLeft'] ? -1 : k['ArrowRight'] ? 1 : 0, y: k['ArrowUp'] ? 1 : k['ArrowDown'] ? -1 : 0 };
+  },
+
+  _kbAnimate() {
+    if (this._kbAnim) return;
+    const step = () => {
+      const t = this._kbTarget(), s = this._kbShown;
+      s.x += (t.x - s.x) * 0.35;
+      s.y += (t.y - s.y) * 0.35;
+      if (Math.abs(t.x - s.x) < 0.02) s.x = t.x;
+      if (Math.abs(t.y - s.y) < 0.02) s.y = t.y;
+      this._drawJoystick('drive');
+      this._kbAnim = (s.x !== t.x || s.y !== t.y) ? requestAnimationFrame(step) : null;
+    };
+    this._kbAnim = requestAnimationFrame(step);
   },
 
   _getKeyboardDrive() {

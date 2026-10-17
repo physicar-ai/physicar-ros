@@ -24,8 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 # Authentication is handled by nginx (see deploy/).
 # FastAPI listens on 127.0.0.1:8000 and trusts every request that reaches it.
 from physicar_webserver.routers import health, kiosk, info, auth
-from physicar_webserver.routers import racing
-from physicar_webserver.routers import hw, calibration, network, bluetooth, myapp
+from physicar_webserver.routers import hw, calibration, network, bluetooth
 from physicar_webserver.routers import pages
 from physicar_webserver.routers import audio as audio_router
 from physicar_webserver.routers import joy
@@ -252,7 +251,6 @@ app.add_middleware(SimBlockMiddleware)
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
-app.include_router(racing.router)     # /racing/api (course runner, no UI)
 app.include_router(auth.router, tags=["Auth"])
 app.include_router(info.router, tags=["Info"])
 
@@ -271,7 +269,6 @@ if not _is_sim_mode():
     app.include_router(calibration.router) # /calibration (no servo in SIM)
 app.include_router(network.router)     # /network
 app.include_router(bluetooth.router)   # /network/bluetooth
-app.include_router(myapp.router)       # /settings/myapp (host-side :5000 student web app)
 if not _is_sim_mode():
     app.include_router(joy.router)     # /teleop/joy — gamepad (sim has no joy node and no kiosk UI)
 app.include_router(pages.router)       # /app (standalone UI page)

@@ -8,6 +8,8 @@ Type=simple
 User=physicar
 Group=physicar
 Environment=HOME=/home/physicar
+# python started by extensions (outside a shell) must not drop __pycache__ into ~/physicar_ws
+Environment=PYTHONPYCACHEPREFIX=/opt/physicar/pycache
 ExecStart=/usr/local/bin/code-server \
     --bind-addr 127.0.0.1:8080 \
     --auth none \

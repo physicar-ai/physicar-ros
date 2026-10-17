@@ -8,7 +8,7 @@ to run one, POST /reload to restart the interpreter.
 
 NEVER-DIE DESIGN — the server core must survive anything user code does:
   - the FastAPI app has ZERO import-time dependency on tool scripts; a broken
-    custom_tools.py cannot prevent startup
+    agent/tools.py cannot prevent startup
   - tool scripts are (re)imported inside try/except with LAST-GOOD semantics:
     a failed reimport keeps serving the previous working module and only
     records the error (shown red in the extension's TOOLS panel)
@@ -23,7 +23,7 @@ NEVER-DIE DESIGN — the server core must survive anything user code does:
 Modules served (script = section = tool-name namespace):
   robot.py                          -> robot_*   (this directory; read-only)
   sim.py                            -> sim_*     (this directory; only when the sim stack exists)
-  /opt/physicar/userdata/custom_tools.py -> custom_*  (user-owned; created on demand)
+  ~/physicar_ws/agent/tools.py -> custom_*  (user-owned; the PhysiCar panel creates it from a template when missing)
 
 A tool call may carry a `session` id (the chat window that called it). Tool
 code can obtain a wake handle bound to that session (see pcwake.py) to start
@@ -45,8 +45,9 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-USERDATA = os.environ.get("PHYSICAR_USERDATA", "/opt/physicar/userdata")
-CUSTOM_PATH = os.path.join(USERDATA, "custom_tools.py")
+# the student's custom tools: ~/physicar_ws/agent/tools.py (the PhysiCar panel installs
+# the template there; every top-level function becomes a custom_* tool)
+CUSTOM_PATH = os.environ.get("PHYSICAR_CUSTOM_TOOLS", os.path.expanduser("~/physicar_ws/agent/tools.py"))
 PORT = int(os.environ.get("PHYSICAR_TOOLS_PORT", "9004"))
 CALL_TIMEOUT = 660          # > robot_speed's 600s server-side cap
 MAX_WORKERS = 16
@@ -64,7 +65,6 @@ SECTIONS = {
     "robot": {"path": os.path.join(HERE, "robot.py"), "enabled": lambda: True},
     "sim": {"path": os.path.join(HERE, "sim.py"), "enabled": lambda: PROFILE != "real"},
     "utils": {"path": os.path.join(HERE, "utils.py"), "enabled": lambda: True},
-    "racing": {"path": os.path.join(HERE, "racing.py"), "enabled": lambda: True},
     "custom": {"path": CUSTOM_PATH, "enabled": lambda: True},
 }
 

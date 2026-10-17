@@ -246,6 +246,12 @@ if ! pgrep -x Xvfb >/dev/null 2>&1; then
   rm -f /tmp/.X1-lock /tmp/.X11-unix/X1 2>/dev/null || true
 fi
 
+# The startup script (System tab): the user's own boot commands. Created empty and
+# physicar-owned, so the editor can save it and the `startup` program has a file to run.
+if [ ! -f /opt/physicar/userdata/startup.sh ]; then
+  sudo install -o physicar -g physicar -m 644 /dev/null /opt/physicar/userdata/startup.sh
+fi
+
 # Start supervisord
 supervisord -c "$CONF"
 # Second pass ~90s after code-server is up: a settings.json editor restored at startup can
@@ -253,11 +259,3 @@ supervisord -c "$CONF"
 # (seen 2026-10-14: the key written at boot was gone 6-17s after code-server start).
 ( sleep 90; converge_codeserver_settings "/home/physicar/.local/share/code-server/User/settings.json" ) >/dev/null 2>&1 &
 sleep 2
-
-# Start the student app only if one has actually been deployed. The myapp program
-# is autostart=false so that a fresh sim with no run.sh never creates an empty
-# run.log; here we bring it up when the script already exists (e.g. after a
-# container restart). The web UI starts/restarts it on deploy.
-if [ -f "/opt/physicar/userdata/myapp.sh" ]; then
-  supervisorctl -c "$CONF" start myapp 2>/dev/null || true
-fi

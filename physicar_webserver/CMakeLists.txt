@@ -24,7 +24,7 @@ install(PROGRAMS
 # Install
 ################################################################################
 install(
-  DIRECTORY launch config static racing_assets
+  DIRECTORY launch config static
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -147,7 +147,7 @@ apt-get install -y \
   xorg xinit unclutter-xfixes feh mesa-utils \
   fonts-noto fonts-noto-cjk fonts-noto-cjk-extra fonts-noto-color-emoji \
   nginx openssl \
-  xvfb x11vnc novnc openbox tint2 xterm \
+  xvfb x11vnc novnc openbox tint2 x11-utils xterm \
   i2c-tools libi2c-dev v4l-utils \
   alsa-utils mpv \
   ffmpeg \
@@ -281,7 +281,6 @@ ln -sf "$DEPLOY_DIR/etc/xdg/openbox/rc.xml" /etc/xdg/openbox/rc.xml
 ln -sf "$DEPLOY_DIR/home/physicar/.config/tint2/tint2rc" /home/physicar/.config/tint2/tint2rc
 chown -R physicar:physicar /home/physicar/.config
 
-ln -sf "$DEPLOY_DIR/usr/share/applications/xterm.desktop" /usr/share/applications/xterm.desktop
 
 # ── ROS 2 Jazzy ──
 # Download the apt signing key with retries + validation. A transient GitHub
@@ -791,7 +790,7 @@ chmod 440 /etc/sudoers.d/physicar
 # systemd services
 ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar.service" /etc/systemd/system/physicar.service
 ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-code.service" /etc/systemd/system/physicar-code.service
-ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-myapp.service" /etc/systemd/system/physicar-myapp.service
+ln -sf "$DEPLOY_DIR/etc/systemd/system/physicar-startup.service" /etc/systemd/system/physicar-startup.service
 
 # /opt/physicar symlink (services reference this path)
 if [[ "$PHYSICAR_WS" != "/opt/physicar" ]]; then
@@ -808,14 +807,17 @@ chown -R physicar:physicar "$PHYSICAR_WS"
 # truncate it (systemd would otherwise create it root-owned on first boot).
 sudo -u physicar mkdir -p /opt/physicar/userdata
 sudo -u physicar touch /opt/physicar/userdata/physicar.log
+# The startup script (physicar-startup.service; panel → System tab): the user's own
+# boot commands. Created empty and physicar-owned so the editor can save it.
+sudo -u physicar touch /opt/physicar/userdata/startup.sh
 
 # Student workspace — code-server (physicar-code.service), nginx /code
 # rewrites and bashrc all point at ~/physicar_ws, but nothing on a fresh
 # install created it: code-server then opened a nonexistent folder. The
-# workspace starts empty — learning content (racing, agent, ...) now ships
-# inside physicar-ext, so nothing is seeded into the workspace any more
-# (2026-09-06). Boot/update flows never write into the student
-# workspace either (app.physicar excepted).
+# workspace starts empty — the PhysiCar panel (physicar-ext) installs
+# tutorials/ and agent/ into it on its first activation, so nothing is
+# seeded here (2026-09-06, layout 2026-10-16). Boot/update flows never write
+# into the student workspace either.
 mkdir -p /home/physicar/physicar_ws
 chown -R physicar:physicar /home/physicar/physicar_ws
 
@@ -834,7 +836,7 @@ __BASHRC_HOOK__
 systemctl daemon-reload
 systemctl enable physicar.service
 systemctl enable physicar-code.service
-systemctl enable physicar-myapp.service
+systemctl enable physicar-startup.service
 
 # Initial ROS 2 workspace build
 sudo -u physicar bash -c 'set +u; source /opt/ros/jazzy/setup.bash; set -u; cd '"$PHYSICAR_WS"' && colcon build --symlink-install'

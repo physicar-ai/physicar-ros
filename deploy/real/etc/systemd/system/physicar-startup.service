@@ -1,0 +1,25 @@
+[Unit]
+Description=PhysiCar startup script
+After=network-online.target
+Wants=network-online.target
+# The user's own commands, run once at boot (panel → System tab: Edit · log · Restart).
+# install-real.sh creates the script empty; an empty script exits 0 and the unit
+# simply ends (no failure, no restart).
+ConditionPathExists=/opt/physicar/userdata/startup.sh
+
+[Service]
+Type=simple
+User=physicar
+Group=physicar
+# run FROM the workspace root so relative paths resolve there
+WorkingDirectory=/home/physicar/physicar_ws
+Environment=PORT=5000 PYTHONUNBUFFERED=1 PYTHONPYCACHEPREFIX=/opt/physicar/pycache
+# the shell writes startup.log itself (truncate on start), as the physicar user —
+# the file stays the user's (systemd's own redirect would be root's)
+ExecStart=/bin/bash -ic 'exec bash /opt/physicar/userdata/startup.sh > /opt/physicar/userdata/startup.log 2>&1'
+Restart=on-failure
+RestartSec=2
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
