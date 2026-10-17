@@ -289,9 +289,12 @@ export PIP_CONSTRAINT=/etc/pip/constraints.txt
 # resolves the CUDA torch build and drags in cuda-* wheels a sim host can never use —
 # and the later torch request is then already "satisfied" by the CUDA build (observed
 # 2026-10-17: torch 2.14.1 + cuda-toolkit on a fresh image). Same order as install-real.sh.
-echo "  Installing CPU torch..."
+# torchvision comes from the same index in the same step: ultralytics imports it, and a PyPI
+# torchvision next to a CPU torch has no matching C++ ops ("operator torchvision::nms does not
+# exist" — lyrical canary 2026-10-17).
+echo "  Installing CPU torch + torchvision..."
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
-  'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
+  'torch~=2.11' torchvision --index-url https://download.pytorch.org/whl/cpu
 
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'physicar~=1.0' \
