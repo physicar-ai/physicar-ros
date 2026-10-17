@@ -22,7 +22,6 @@ NEVER-DIE DESIGN — the server core must survive anything user code does:
 
 Modules served (script = section = tool-name namespace):
   robot.py                          -> robot_*   (this directory; read-only)
-  sim.py                            -> sim_*     (this directory; only when the sim stack exists)
   ~/physicar_ws/agent/tools.py -> custom_*  (user-owned; the PhysiCar panel creates it from a template when missing)
 
 A tool call may carry a `session` id (the chat window that called it). Tool
