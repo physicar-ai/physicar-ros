@@ -183,13 +183,12 @@ _ext_park="/tmp/pc-ext-builtin.prev"
 if [ -n "$_ext_bi" ] && [ -d "$_ext_bi" ]; then
   sudo rm -rf "$_ext_park"; sudo mv "$_ext_bi" "$_ext_park" 2>/dev/null || true
 fi
-# Major line = platform generation injected by the cloud (physicar → 1, physicar2 → 2).
-_ext_gen="${PHYSICAR_GENERATION:-physicar}"
-_ext_major="${_ext_gen#physicar}"; _ext_major="${_ext_major:-1}"
-case "$_ext_major" in *[!0-9]*) _ext_major=1;; esac
-# Only versions of the same major line are eligible: the extension's major
-# tracks the platform generation (physicar → 1.x, physicar2 → 2.x), so a
-# newer major published for a later generation never lands here.
+# Major line = the platform software's major, read from the physicar-ros checkout's tag
+# (v2.x.y → 2) exactly as the real robot does (deploy/real/physicar.sh). The extension's
+# major tracks it, so a newer major published for a newer platform never lands on an
+# older image — and the generation key (the kit) has nothing to do with it.
+_ext_major=$(sudo -u physicar git -C /opt/physicar/src/physicar-ros describe --tags --abbrev=0 HEAD 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\)\..*/\1/p')
+_ext_major="${_ext_major:-1}"
 _ext_want=$(timeout 15 curl -sf https://open-vsx.org/api/physicar/physicar-ext 2>/dev/null \
   | python3 -c '
 import sys, json
