@@ -5,6 +5,7 @@ requests~=2.32
 ultralytics~=8.4
 numpy>=2,<3
 opencv-python-headless>=4.10,<5
+opencv-python>=4.10,<5
 ddgs~=9.14
 torch~=2.11
 onnx>=1.19,<2
