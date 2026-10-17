@@ -50,7 +50,7 @@ def _start_file_watcher(node: Node, watch_dir: str):
         from watchdog.observers import Observer
         from watchdog.events import FileSystemEventHandler
     except ImportError:
-        node.get_logger().warn('[DEV] watchdog not installed — auto-reload disabled')
+        node.get_logger().warning('[DEV] watchdog not installed — auto-reload disabled')
         return
 
     class _ReloadHandler(FileSystemEventHandler):
