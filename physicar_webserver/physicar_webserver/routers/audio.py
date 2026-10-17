@@ -50,7 +50,7 @@ class DurationRequest(BaseModel):
 
 
 class VolumeRequest(BaseModel):
-    id: str
+    id: Optional[str] = Field(default=None, description="A playing id; empty = the master volume (every sound)")
     volume: float = Field(ge=0.0, le=1.0)
 
 
@@ -83,8 +83,15 @@ async def stop(req: StopRequest):
     return {"success": True}
 
 
+@router.get("/audio/volume")
+async def master_volume():
+    return {"master": audio_manager.master}
+
+
 @router.post("/audio/volume")
 async def volume(req: VolumeRequest):
+    if not req.id:
+        return {"success": True, "master": audio_manager.set_master(req.volume)}
     if not audio_manager.set_volume(req.id, req.volume):
         raise HTTPException(404, f"no such sound: {req.id}")
     return {"success": True, "volume": req.volume}
@@ -136,7 +143,7 @@ async def events(request: Request):
                 yield "data: " + json.dumps({
                     "type": "play", "id": item["id"],
                     "url": item["source"] if item["kind"] == "url" else f"/audio/file/{item['id']}",
-                    "volume": item["volume"], "loop": item["loop"],
+                    "volume": item["volume"] * audio_manager.master, "loop": item["loop"],
                     "offset": round(offset, 2),
                     "kind": item["kind"], "source": item["source"],
                 }) + "\n\n"

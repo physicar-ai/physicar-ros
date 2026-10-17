@@ -103,7 +103,8 @@ Command-based playback on the robot speaker (played in the browser viewer in SIM
 | `GET` | `/audio` | List of currently playing items |
 | `POST` | `/audio/play` | Play one of `url` / `path` / `data` (base64 audio file). Options: `volume` (0–1), `loop`, `replace` |
 | `POST` | `/audio/stop` | Stop by `id`, or everything with `{"all": true}` |
-| `POST` | `/audio/volume` | Change volume of a playing item (`id`, `volume` 0–1) |
+| `GET` | `/audio/volume` | Master volume (`{"master": 0–1}`, every sound × master, kept across reboots) |
+| `POST` | `/audio/volume` | Change volume of a playing item (`id`, `volume` 0–1); without `id` = the master volume |
 | `WS` | `/audio/stream` | Realtime PCM16 playback stream (`?sample_rate=24000&channels=1&volume=1.0`), e.g. OpenAI Realtime API voice output. Binary frames = raw PCM16; close = stop |
 
 ## MyApp

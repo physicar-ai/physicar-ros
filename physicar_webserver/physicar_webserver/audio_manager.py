@@ -76,6 +76,9 @@ class _Item:
         self.channels = 0
 
 
+_MASTER_FILE = Path("/opt/physicar/userdata/audio.json")   # {"master": 0..1} — survives reboots
+
+
 class AudioManager:
     def __init__(self):
         self.sim = None           # resolved lazily (ROS param not ready at import)
@@ -84,6 +87,32 @@ class AudioManager:
         # SSE subscribers: list of (asyncio.Queue, loop)
         self._subs: list = []
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        # Master volume: every item plays at its own volume × master (mpv on the robot, the
+        # viewer's elements in the simulator), so it needs no ALSA control name.
+        self.master = 1.0
+        try:
+            self.master = max(0.0, min(1.0, float(json.loads(_MASTER_FILE.read_text()).get("master", 1.0))))
+        except (OSError, ValueError, TypeError):
+            pass
+
+    def _eff(self, item: "_Item") -> float:
+        return max(0.0, min(1.0, item.volume * self.master))
+
+    def set_master(self, volume: float) -> float:
+        self.master = max(0.0, min(1.0, volume))
+        try:
+            _MASTER_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _MASTER_FILE.write_text(json.dumps({"master": self.master}))
+        except OSError:
+            pass
+        with self.lock:
+            items = list(self.items.values())
+        for item in items:
+            if self._is_sim():
+                self._broadcast({"type": "volume", "id": item.id, "volume": self._eff(item)})
+            elif item.proc and item.proc.poll() is None:
+                self._mpv_ipc(item, "set_property", "volume", int(self._eff(item) * 100))
+        return self.master
 
     # ── mode ────────────────────────────────────────────────────────────────
     def _is_sim(self) -> bool:
@@ -132,7 +161,7 @@ class AudioManager:
     def _spawn_mpv(self, item: _Item, src: str, extra: Optional[list] = None):
         item.ipc = str(CACHE_DIR / f"mpv-{item.id}.sock")
         cmd = _MPV_BASE + [
-            f"--volume={int(max(0.0, min(1.0, item.volume)) * 100)}",
+            f"--volume={int(self._eff(item) * 100)}",
             f"--input-ipc-server={item.ipc}",
         ]
         if item.loop:
@@ -209,7 +238,7 @@ class AudioManager:
             self._broadcast({
                 "type": "play", "id": item.id,
                 "url": url if url else f"/audio/file/{item.id}",
-                "volume": item.volume, "loop": item.loop,
+                "volume": self._eff(item), "loop": item.loop,
                 "kind": item.kind, "source": item.source,
             })
         else:
@@ -259,9 +288,9 @@ class AudioManager:
             return False
         item.volume = volume
         if self._is_sim():
-            self._broadcast({"type": "volume", "id": item_id, "volume": volume})
+            self._broadcast({"type": "volume", "id": item_id, "volume": self._eff(item)})
         else:
-            self._mpv_ipc(item, "set_property", "volume", int(volume * 100))
+            self._mpv_ipc(item, "set_property", "volume", int(self._eff(item) * 100))
         return True
 
     def status(self) -> list:
@@ -328,7 +357,7 @@ class AudioManager:
                 "type": "pcm", "id": item_id,
                 "data": base64.b64encode(frames).decode(),
                 "sample_rate": item.sample_rate, "channels": item.channels,
-                "volume": item.volume, "source": item.source,
+                "volume": self._eff(item), "source": item.source,
             })
         elif item.proc and item.proc.poll() is None:
             try:
