@@ -57,13 +57,10 @@ sys.path.insert(0, HERE)    # tool scripts may import pcwake / sibling helpers
 
 
 # Which machine this is — set explicitly by the bringup launch ("sim"/"real").
-# The only per-profile difference: a real car has no simulator, so the sim
-# section is not served there.
-PROFILE = os.environ.get("PHYSICAR_PROFILE", "sim")
-
+# The simulator tools are not here: the simulator API answers the browser only, so the
+# extension carries them (physicar-ext/sim-tools.js) and calls through its panel webview.
 SECTIONS = {
     "robot": {"path": os.path.join(HERE, "robot.py"), "enabled": lambda: True},
-    "sim": {"path": os.path.join(HERE, "sim.py"), "enabled": lambda: PROFILE != "real"},
     "utils": {"path": os.path.join(HERE, "utils.py"), "enabled": lambda: True},
     "custom": {"path": CUSTOM_PATH, "enabled": lambda: True},
 }
