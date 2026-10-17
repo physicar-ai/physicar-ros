@@ -428,7 +428,8 @@ class ROSBridge:
             req = SetPose.Request()
             req.pose = PoseWithCovarianceStamped()
             req.pose.header.frame_id = 'odom'
-            req.pose.header.stamp = self._node.get_clock().now().to_msg()
+            # stamp 0: the EKF ignores every measurement older than the set-pose stamp, and this
+            # node's clock is not necessarily the filter's (sim time) — zero disables that gate
             req.pose.pose.pose.orientation.w = 1.0
             cov = [0.0] * 36
             for i in (0, 7, 14, 21, 28, 35):
