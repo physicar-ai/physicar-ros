@@ -293,7 +293,7 @@ async def get_camera(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     frame = await loop.run_in_executor(None, sm.get_camera_image, width, height)
     
     if frame is None:

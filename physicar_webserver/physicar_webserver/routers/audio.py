@@ -171,7 +171,7 @@ async def stream(ws: WebSocket):
     item_id = audio_manager.stream_open(sample_rate, channels, vol)
     await ws.send_json({"id": item_id, "sample_rate": sample_rate, "channels": channels})
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         while True:
             msg = await ws.receive()

@@ -97,7 +97,7 @@ class AudioManager:
     # ── SSE event bus ────────────────────────────────────────────────────────
     def subscribe(self):
         q: asyncio.Queue = asyncio.Queue(maxsize=256)
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._subs.append((q, loop))
         return q
 

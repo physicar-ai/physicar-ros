@@ -31,13 +31,13 @@ public:
     pub_ = create_publisher<sensor_msgs::msg::LaserScan>(output_topic, sensor_qos);
     sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       input_topic, sensor_qos,
-      [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) { scan_callback(msg); });
+      [this](sensor_msgs::msg::LaserScan::ConstSharedPtr msg) { scan_callback(msg); });
 
     RCLCPP_INFO(get_logger(), "Scan filter: %s -> %s", input_topic.c_str(), output_topic.c_str());
   }
 
 private:
-  void scan_callback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+  void scan_callback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
   {
     auto filtered = std::make_unique<sensor_msgs::msg::LaserScan>();
     filtered->header = msg->header;

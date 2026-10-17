@@ -1218,6 +1218,9 @@ export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 # channel state wedged long-running participants into announce-only mode
 # (camera/driver stop delivering while the processes look alive).
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# Node output already lands in physicar.log through the unit; the per-node spdlog files under
+# ~/.ros/log were a second copy on the SD card.
+export RCL_LOGGING_IMPLEMENTATION=rcl_logging_noop
 export CYCLONEDDS_URI="file://$PHYSICAR_ROS_DIR/deploy/cyclonedds.xml"
 rm -f /dev/shm/fastrtps_* 2>/dev/null
 

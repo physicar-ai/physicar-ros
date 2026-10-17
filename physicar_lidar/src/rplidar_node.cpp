@@ -449,6 +449,8 @@ public:
         rclcpp::Time start_scan_time;
         rclcpp::Time end_scan_time;
         double scan_duration;
+        rclcpp::executors::SingleThreadedExecutor exec;
+        exec.add_node(shared_from_this());
         while (rclcpp::ok() && !need_exit) {
             sl_lidar_response_measurement_node_hq_t nodes[8192];
             size_t   count = _countof(nodes);
@@ -540,7 +542,7 @@ public:
                 }
             }
 
-            rclcpp::spin_some(shared_from_this());
+            exec.spin_some();
         }
 
         // done!

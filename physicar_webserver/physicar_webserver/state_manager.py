@@ -744,7 +744,7 @@ class StateManager:
     
     async def stream_sse(self, key: str, **kwargs) -> AsyncGenerator[str, None]:
         """Generate SSE stream for a resource."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         last_seq = -1
         first_msg = True
         
@@ -817,7 +817,7 @@ class StateManager:
             if key not in ("cmd", "myapp"):
                 self._ensure_subscription(key)
         
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         last_seqs = {key: -1 for key in include}
         
         while True:
@@ -857,7 +857,7 @@ class StateManager:
         height: Optional[int] = None
     ) -> AsyncGenerator[bytes, None]:
         """Generate MJPEG stream."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         last_seq = -1
         
         while True:

@@ -22,7 +22,7 @@ sudo bash /opt/physicar/src/physicar-ros/deploy/install-sim.sh
 
 ### Prerequisites
 
-1. Flash Ubuntu 26.04 Server image to SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (set username to `physicar`)
+1. Flash Ubuntu 26.04 Server image to SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (set username to `physicar`). Ubuntu 26.04 needs a Pi 5 bootloader dated 2025-02-11 or later; the installer runs `rpi-eeprom-update -a`, but a board with an older EEPROM must be updated once from a working OS first.
 2. Connect Ethernet cable
 3. Boot and SSH in: `ssh physicar@physicar.local`
 

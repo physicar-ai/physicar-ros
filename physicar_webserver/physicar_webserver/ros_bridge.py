@@ -223,7 +223,7 @@ class ROSBridge:
             raise Exception("Joy mapping services not available")
 
         request = GetJoyMapping.Request()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             self._executor,
             self._call_service_sync,
@@ -266,7 +266,7 @@ class ROSBridge:
         request.mapping_json = mapping_json
         request.save_to_file = save
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             self._executor,
             self._call_service_sync,
@@ -305,7 +305,7 @@ class ROSBridge:
         )
         request.parameters = [param]
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             self._executor,
             self._call_service_sync,
@@ -434,7 +434,7 @@ class ROSBridge:
         
         request = GetCalibration.Request()
         
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             self._executor,
             self._call_service_sync,
@@ -490,7 +490,7 @@ class ROSBridge:
             request.bool_value = bool_value
         request.save_to_file = save
         
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             self._executor,
             self._call_service_sync,

@@ -150,7 +150,8 @@ server {
     # camera) makes backpressure reach the app's latest-frame-only logic
     # almost immediately: streams skip to current instead of replaying the
     # past. Throughput ceiling 512KB/RTT is >4MB/s on local links — harmless.
-    listen 443 ssl http2 default_server sndbuf=524288;
+    listen 443 ssl default_server sndbuf=524288;
+    http2 on;
     server_name _;
     absolute_redirect off;
 
@@ -553,7 +554,8 @@ server {
 # ─────────────────────────────────────────────────────────────────────────
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name real.physicar.ai *.preview.physicar.ai;
     absolute_redirect off;
 

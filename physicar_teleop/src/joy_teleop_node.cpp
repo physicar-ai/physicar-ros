@@ -416,7 +416,7 @@ private:
   }
 
   // ── Callbacks ──
-  void on_joy(const sensor_msgs::msg::Joy::SharedPtr msg) {
+  void on_joy(sensor_msgs::msg::Joy::ConstSharedPtr msg) {
     last_joy_ = *msg;
     has_joy_ = true;
     last_joy_time_ = get_clock()->now();

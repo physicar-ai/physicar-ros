@@ -69,7 +69,7 @@ class LaserOdomNode : public rclcpp::Node {
   }
 
  private:
-  void on_scan(const sensor_msgs::msg::LaserScan::SharedPtr scan) {
+  void on_scan(sensor_msgs::msg::LaserScan::ConstSharedPtr scan) {
     // Convert scan to points
     auto points = scan_to_points(
         scan->ranges.data(),

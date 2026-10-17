@@ -133,7 +133,7 @@ private:
     return "std_msgs/msg/Empty";
   }
 
-  void on_clock(const rosgraph_msgs::msg::Clock::SharedPtr msg)
+  void on_clock(rosgraph_msgs::msg::Clock::ConstSharedPtr msg)
   {
     double sec = msg->clock.sec + msg->clock.nanosec * 1e-9;
     double prev = last_sim_sec_;

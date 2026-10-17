@@ -681,33 +681,33 @@ public:
 
     // Subscribers (must store SharedPtr — rclcpp callback groups hold WeakPtr)
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/speed", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) {
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) {
         if (!drive_engaged()) set_speed(m->data);
       }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/steering", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) {
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) {
         if (!drive_engaged()) set_steering_rad(m->data);
       }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/teleop/speed", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) { set_speed(m->data); }));
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) { set_speed(m->data); }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/teleop/steering", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) { set_steering_rad(m->data); }));
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) { set_steering_rad(m->data); }));
     subs_.push_back(create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", qos,
       std::bind(&PhysicarDriverNode::cmd_vel_callback, this, _1)));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/camera/pan", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) {
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) {
         if (!camera_engaged()) apply_pan(m->data);
       }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/camera/tilt", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) {
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) {
         if (!camera_engaged()) apply_tilt(m->data);
       }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/teleop/camera/pan", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) { apply_pan(m->data); }));
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) { apply_pan(m->data); }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64>("/teleop/camera/tilt", qos,
-      [this](const std_msgs::msg::Float64::SharedPtr m) { apply_tilt(m->data); }));
+      [this](std_msgs::msg::Float64::ConstSharedPtr m) { apply_tilt(m->data); }));
     subs_.push_back(create_subscription<std_msgs::msg::Float64MultiArray>("/servo/commands", qos,
-      [this](const std_msgs::msg::Float64MultiArray::SharedPtr m) {
+      [this](std_msgs::msg::Float64MultiArray::ConstSharedPtr m) {
         if (m->data.size() >= 2) {
           int ch = static_cast<int>(m->data[0]);
           if (ch >= 1 && ch <= 4) board_->set_pwm_servo(ch, static_cast<int>(std::round(m->data[1])));
@@ -814,7 +814,7 @@ private:
   }
 
 #if HAS_TELEOP_STATUS
-  void teleop_status_callback(const physicar_interfaces::msg::TeleopStatus::SharedPtr msg) {
+  void teleop_status_callback(physicar_interfaces::msg::TeleopStatus::ConstSharedPtr msg) {
     std::string src = msg->source.empty() ? "unknown" : msg->source;
     double timeout = msg->timeout.sec + msg->timeout.nanosec / 1e9;
     if (timeout <= 0) timeout = 0.5;
@@ -865,7 +865,7 @@ private:
 
   // ── Odom feedback ──
 
-  void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+  void odom_callback(nav_msgs::msg::Odometry::ConstSharedPtr msg) {
     double now_t = steady_now();
     double actual = msg->twist.twist.linear.x;
     double dt = (prev_odom_time_ > 0) ? (now_t - prev_odom_time_) : 0.0;
@@ -896,7 +896,7 @@ private:
 
   // ── cmd_vel ──
 
-  void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg) {
+  void cmd_vel_callback(geometry_msgs::msg::Twist::ConstSharedPtr msg) {
     if (drive_engaged()) return;
     double vx = msg->linear.x;
     double wz = msg->angular.z;

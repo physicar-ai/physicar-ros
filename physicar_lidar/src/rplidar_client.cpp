@@ -14,7 +14,7 @@
 
 #define RAD2DEG(x) ((x)*180./M_PI)
 
-static void scanCb(sensor_msgs::msg::LaserScan::SharedPtr scan) {
+static void scanCb(sensor_msgs::msg::LaserScan::ConstSharedPtr scan) {
   int count = scan->scan_time / scan->time_increment;
   printf("[SLLIDAR INFO]: I heard a laser scan %s[%d]:\n", scan->header.frame_id.c_str(), count);
   printf("[SLLIDAR INFO]: angle_range : [%f, %f]\n", RAD2DEG(scan->angle_min),

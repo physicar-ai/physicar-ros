@@ -119,7 +119,7 @@ def _myapp_port_listening() -> bool:
 
 
 async def _watch_myapp_port():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     while True:
         up = await loop.run_in_executor(None, _myapp_port_listening)
         state_manager.update_myapp_state(up)

@@ -130,6 +130,10 @@ fi
 wait_for_apt
 apt-get update -y
 apt-get remove -y unattended-upgrades needrestart 2>/dev/null || true
+# 26.04 ships the Rust coreutils; the -updates build carries its security fixes (the image is frozen afterwards)
+apt-get install -y --only-upgrade rust-coreutils 2>/dev/null || true
+# Pi 5 boots 26.04 only with a bootloader dated 2025-02-11 or later (Ubuntu release notes)
+apt-get install -y rpi-eeprom && rpi-eeprom-update -a || true
 
 # ── Kernel upgrade (do this BEFORE installing DKMS modules) ──
 # Upgrade kernel+headers first so DKMS builds target the new kernel.
@@ -279,7 +283,8 @@ apt-get install -y \
   ros-lyrical-camera-info-manager \
   ros-lyrical-rosbridge-server \
   ros-lyrical-ros2-control \
-  ros-lyrical-ros2-controllers
+  ros-lyrical-ros2-controllers \
+  ros-lyrical-rcl-logging-noop
 
 # SLAM/Nav2 packages for host-side navigation practice
 wait_for_apt

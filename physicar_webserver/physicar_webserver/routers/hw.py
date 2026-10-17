@@ -298,7 +298,7 @@ async def get_camera(
     sm = get_state_manager()
     
     if format == "ansi":
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if _wants_stream(request, stream):
             async def _ansi_gen():
                 yield "\x1b[2J"
@@ -327,7 +327,7 @@ async def get_camera(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     frame = await loop.run_in_executor(None, sm.get_camera_image, width, height)
     
     if frame is None:
@@ -459,7 +459,7 @@ def _track_task(task):
 
 
 async def _speed_hold(gen: int, value: float, duration: float) -> str:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     end = loop.time() + duration
     while True:
         if gen != _speed_gen:

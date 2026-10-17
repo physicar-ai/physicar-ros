@@ -251,7 +251,7 @@ async def call_tool(api_name: str, request: Request):
         finally:
             _busy.discard(api_name)
 
-    loop = __import__("asyncio").get_event_loop()
+    loop = __import__("asyncio").get_running_loop()
     try:
         return await __import__("asyncio").wait_for(loop.run_in_executor(_pool, run), timeout=CALL_TIMEOUT)
     except __import__("asyncio").TimeoutError:
@@ -301,7 +301,7 @@ async def poll_wakes(session: str, wait: float = 0.0):
     """Long-poll pending wake messages for one chat session (in-memory only).
     Blocks up to `wait` seconds (max 30) for the first message, then drains."""
     import pcwake
-    loop = __import__("asyncio").get_event_loop()
+    loop = __import__("asyncio").get_running_loop()
     wakes = await loop.run_in_executor(None, pcwake.drain, session, min(max(wait, 0.0), 30.0))
     return {"wakes": wakes}
 
