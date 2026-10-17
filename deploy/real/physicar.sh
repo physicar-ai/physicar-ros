@@ -31,35 +31,6 @@ if [ -z "$(swapon --show)" ]; then
   grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null
 fi
 
-# Auto-register unbound USB WiFi adapters with Realtek drivers
-# Scans for USB interfaces with vendor-specific class (ff:ff:ff) that have no
-# driver bound — covers adapters plugged in before boot completed.
-# Uses ref-ID so driver_info (chip type) is passed correctly.
-for _iface in /sys/bus/usb/devices/*/bInterfaceClass; do
-  [ -f "$_iface" ] || continue
-  _dir=$(dirname "$_iface")
-  [ "$(cat "$_dir/bInterfaceClass")" = "ff" ] || continue
-  [ "$(cat "$_dir/bInterfaceSubClass")" = "ff" ] || continue
-  [ "$(cat "$_dir/bInterfaceProtocol")" = "ff" ] || continue
-  [ -L "$_dir/driver" ] && continue  # already bound
-  _parent=$(dirname "$_dir")
-  [ -f "$_parent/idVendor" ] || continue
-  _vid=$(cat "$_parent/idVendor")
-  _pid=$(cat "$_parent/idProduct")
-  [ "$_vid:$_pid" = "0bda:1a2b" ] && continue  # USB modeswitch
-  # Skip devices that still have a mass storage interface (needs modeswitch first)
-  _has_ms=0
-  for _sib in "$_parent"/*/bInterfaceClass; do
-    [ -f "$_sib" ] || continue
-    [ "$(cat "$_sib")" = "08" ] && { _has_ms=1; break; }
-  done
-  [ "$_has_ms" = "1" ] && continue
-  # ref-ID: inherit driver_info from known table entry
-  sudo sh -c "echo '$_vid $_pid ff 0bda 8832' > /sys/bus/usb/drivers/rtl8852au/new_id" 2>/dev/null || true
-  sudo sh -c "echo '$_vid $_pid ff 0bda b832' > /sys/bus/usb/drivers/rtl8852bu/new_id" 2>/dev/null || true
-  sudo sh -c "echo '$_vid $_pid ff 0bda 8832' > /sys/bus/usb/drivers/rtl8852cu/new_id" 2>/dev/null || true
-done
-
 # Disable WiFi power save (connection stability)
 sudo iw wlan0 set power_save off 2>/dev/null || true
 

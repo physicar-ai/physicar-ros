@@ -208,68 +208,24 @@ if ! dkms status 2>/dev/null | grep -q "^hid-xpadneo.*installed"; then
   rm -rf "$TMPD"
 fi
 
-# ── Realtek USB WiFi drivers (DKMS) ──
-echo "Installing Realtek USB WiFi drivers (DKMS)..."
+# ── Realtek USB WiFi (rtl8852au/bu/cu) ──
+# No out-of-tree driver any more: the 26.04 raspi kernel (7.0) carries the rtw89 USB drivers
+# in-tree (rtw89_8852au/bu/cu, including the TP-Link TX20U Nano id 35bc:0108 this installer
+# used to patch in) and their firmware ships with the image. The adapters bind by USB id on
+# their own; the vendor DKMS repos used before (lwfinger rtl8852au/bu) stopped building at
+# kernel 6.x and are gone.
 
-declare -A WIFI_DRIVERS=(
-  [rtl8852au]="https://github.com/lwfinger/rtl8852au.git"
-  [rtl8852bu]="https://github.com/lwfinger/rtl8852bu.git"
-  [rtl8852cu]="https://github.com/morrownr/rtl8852cu-20251113.git"
-)
-
-for repo in "${!WIFI_DRIVERS[@]}"; do
-  KMOD="${repo#rtl}"   # 8852au, 8852bu, or 8852cu
-  if dkms status 2>/dev/null | grep -q "^${repo}.*installed"; then
-    echo "  $KMOD (DKMS) already installed, skipping."
-    continue
-  fi
-  TMPD=$(mktemp -d)
-  git clone --depth 1 "${WIFI_DRIVERS[$repo]}" "$TMPD/$repo"
-  # Patch USB ID table: add known adapters whose VID:PID is not upstream yet.
-  # This ensures driver_info (chip type) is set correctly at compile time.
-  _intf="$TMPD/$repo/os_dep/linux/usb_intf.c"
-  if [ -f "$_intf" ] && [ "$repo" = "rtl8852bu" ]; then
-    grep -q "0x35bc.*0x0108" "$_intf" || \
-      sed -i '/CONFIG_RTL8852B \*\//i\\t/*=== TP-Link TX20U Nano ===*/\n\t{USB_DEVICE_AND_INTERFACE_INFO(0x35bc, 0x0108, 0xff, 0xff, 0xff), .driver_info = RTL8852B},' "$_intf"
-  fi
-  # Ensure dkms.conf exists with ARCH=arm64
-  if [ ! -f "$TMPD/$repo/dkms.conf" ]; then
-    VER="1.0.0"
-    cat > "$TMPD/$repo/dkms.conf" <<DKMS
-PACKAGE_NAME="$repo"
-PACKAGE_VERSION="$VER"
-MAKE="'make' ARCH=arm64 -j\$(nproc) KVER=\$kernelver KSRC=/lib/modules/\$kernelver/build"
-CLEAN="'make' clean"
-BUILT_MODULE_NAME[0]="$KMOD"
-DEST_MODULE_LOCATION[0]="/updates/dkms"
-AUTOINSTALL="YES"
-DKMS
-  else
-    VER=$(grep PACKAGE_VERSION "$TMPD/$repo/dkms.conf" | head -1 | sed 's/.*="\(.*\)"/\1/')
-    # Fix ARCH for arm64 in dkms build scripts
-    if [ -f "$TMPD/$repo/dkms-make.sh" ]; then
-      sed -i 's|^make |make ARCH=arm64 |' "$TMPD/$repo/dkms-make.sh"
-    fi
-  fi
-  sudo cp -r "$TMPD/$repo" "/usr/src/${repo}-${VER}"
-  sudo dkms add "${repo}/${VER}" 2>/dev/null || true
-  # Build/install for NEW_KVER (the post-reboot kernel whose headers are present).
-  # Building for the running kernel here fails — its headers are not installed.
-  sudo dkms build "${repo}/${VER}" -k "$NEW_KVER" && sudo dkms install --force "${repo}/${VER}" -k "$NEW_KVER"
-  rm -rf "$TMPD"
-done
-
-# WiFi USB auto-bind + hotspot-migrate scripts + modules auto-load.
-# autobind binds the Realtek driver on hotplug; migrate moves the hotspot onto
-# the USB WiFi (wlx*) when present and back to ap0 when removed. The autobind
-# udev rule execs the migrate script, so BOTH must be installed — otherwise a
-# hotplugged USB adapter is bound but the hotspot never moves off ap0.
+# WiFi USB hotplug + hotspot-migrate scripts.
+# On hotplug the udev rule runs the autobind script, which (the kernel having bound the
+# driver itself) waits for the wlx* interface and execs migrate; migrate moves the hotspot
+# onto the USB WiFi when present and back to ap0 when removed. BOTH must be executable —
+# otherwise a hotplugged USB adapter comes up but the hotspot never moves off ap0.
 # No installed copies: the udev rule and autobind script execute these
 # straight from the repo checkout, so updater-shipped fixes reach the code
 # that actually runs. Only the exec bits need to be ensured here.
 chmod 755 "$DEPLOY_DIR/usr/local/bin/physicar-wifi-usb-autobind.sh" \
           "$DEPLOY_DIR/usr/local/bin/physicar-wifi-hotspot-migrate.sh"
-ln -sf "$DEPLOY_DIR/etc/modules-load.d/physicar-wifi.conf" /etc/modules-load.d/physicar-wifi.conf
+rm -f /etc/modules-load.d/physicar-wifi.conf   # the out-of-tree module list of the 24.04 image
 
 # noVNC symlink
 [ -d /usr/share/novnc ] && ln -sf vnc_lite.html /usr/share/novnc/index.html

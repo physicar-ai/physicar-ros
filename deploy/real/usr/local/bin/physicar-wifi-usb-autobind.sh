@@ -1,7 +1,7 @@
 #!/bin/sh
-# Called by udev when a USB interface with class ff:ff:ff appears.
-# Tries to register the device with Realtek WiFi drivers via ref-ID mechanism.
-# Then triggers hotspot migration if a wireless interface appears.
+# Called by udev when a USB interface with class ff:ff:ff appears (a USB WiFi adapter).
+# The in-kernel rtw89 driver binds the adapter by USB id on its own; this script only
+# triggers the hotspot migration once the wireless interface shows up.
 # Usage: physicar-wifi-usb-autobind.sh <devpath>
 DEVPATH="$1"
 [ -n "$DEVPATH" ] || exit 0
@@ -20,13 +20,6 @@ for _sib in "$PARENT"/*/bInterfaceClass; do
   [ -f "$_sib" ] || continue
   [ "$(cat "$_sib")" = "08" ] && exit 0
 done
-
-# Register with drivers only if not already bound
-if ! [ -L "$PARENT/$(basename "$DEVPATH")/driver" ]; then
-  echo "$VID $PID ff 0bda 8832" > /sys/bus/usb/drivers/rtl8852au/new_id 2>/dev/null || true
-  echo "$VID $PID ff 0bda b832" > /sys/bus/usb/drivers/rtl8852bu/new_id 2>/dev/null || true
-  echo "$VID $PID ff 0bda 8832" > /sys/bus/usb/drivers/rtl8852cu/new_id 2>/dev/null || true
-fi
 
 # Trigger hotspot migration after driver has time to create the wlx* interface.
 # Uses systemd-run to escape udev's process-kill timeout.

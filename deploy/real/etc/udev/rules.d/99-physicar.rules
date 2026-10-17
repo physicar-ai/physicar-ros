@@ -20,7 +20,7 @@ SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Mouse", ATTR{inhibited}="1"
 SUBSYSTEM=="input", ACTION=="add|change", ATTRS{name}=="Xbox Wireless Controller Consumer Control", ATTR{inhibited}="1"
 
-# USB WiFi — auto-bind unknown Realtek adapters (interface class ff:ff:ff).
+# USB WiFi plugged in (interface class ff:ff:ff) — move the hotspot onto it once it is up.
 # Scripts run straight from the repo (this rules file is itself a symlink
 # into the repo): the updater refreshes the repo checkout, so executing the
 # repo copy is what makes these scripts updatable in the field. An installed
