@@ -214,6 +214,8 @@ body:not(.sim-mode) #divider2{display:none}
   cursor:pointer;font-size:12px;font-weight:600;width:100%}
 .wm-card.wm-adding .wm-add-go:hover{background:var(--accent-hover)}
 .wm-card.wm-adding .wm-add-go:disabled{opacity:.5;cursor:default}
+.wm-card.wm-adding .wm-add-link{font-size:11px;color:var(--fg2);text-decoration:none;align-self:flex-start}
+.wm-card.wm-adding .wm-add-link:hover{color:var(--accent);text-decoration:underline}
 #wm-status{font-size:11px;min-height:14px;color:var(--fg2);padding:0 14px}
 #wm-status.error{color:#f87171}
 #wm-status.success{color:#4ade80}
@@ -957,11 +959,20 @@ body:not(.sim-mode) #divider2{display:none}
         const inp = document.createElement('input');
         inp.placeholder = '32 characters'; inp.autocomplete = 'off'; inp.spellcheck = false; inp.maxLength = 40;
         const go = document.createElement('button'); go.className = 'wm-add-go'; go.textContent = 'Import';
+        // Import stays disabled until the field holds a well-formed World ID (32 hex characters)
+        const WORLD_ID = /^[0-9a-f]{32}$/;
+        go.disabled = true;
+        inp.addEventListener('input', () => { go.disabled = installing || !WORLD_ID.test((inp.value || '').trim().toLowerCase()); });
+        // the way to a world of your own — shown only while an ID is being entered
+        const mk = document.createElement('a'); mk.className = 'wm-add-link';
+        mk.href = 'https://physicar.ai/worlds/world-builder/'; mk.target = '_blank'; mk.rel = 'noopener';
+        mk.textContent = 'Make your own in the World Builder \u2197';
+        mk.addEventListener('click', (e) => e.stopPropagation());
         const fold = () => { renderRows(); };
         const submit = () => {
           if (installing) return;
-          const m = (inp.value || '').trim().match(/^[0-9a-f]{32}$/);
-          if (!m) { setSt('Enter a valid world ID.', 'error'); inp.focus(); return; }
+          const m = (inp.value || '').trim().toLowerCase().match(WORLD_ID);
+          if (!m) { inp.focus(); return; }
           installWorld(m[0], m[0]);
         };
         go.onclick = (e) => { e.stopPropagation(); submit(); };
@@ -973,7 +984,7 @@ body:not(.sim-mode) #divider2{display:none}
         inp.addEventListener('click', (e) => e.stopPropagation());
         inp.addEventListener('blur', () => { setTimeout(() => { if (!inp.value.trim() && card.isConnected && !installing) fold(); }, 120); });
         card.onclick = null;
-        card.append(lab, inp, go);
+        card.append(lab, inp, go, mk);
         inp.focus();
       };
       return card;
@@ -1041,8 +1052,8 @@ body:not(.sim-mode) #divider2{display:none}
     function setInstalling(on){
       installing = on;
       modal.classList.toggle('wm-busy', on);
-      const go = modal.querySelector('.wm-add-go'); if (go) go.disabled = on;
       const inp = modal.querySelector('.wm-adding input'); if (inp) inp.disabled = on;
+      const go = modal.querySelector('.wm-add-go'); if (go) go.disabled = on || !(inp && /^[0-9a-f]{32}$/.test((inp.value || '').trim().toLowerCase()));
     }
 
     async function installWorld(id, nm){
