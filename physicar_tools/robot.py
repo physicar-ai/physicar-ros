@@ -236,11 +236,14 @@ def audio_stop(
 
 
 def audio_volume(
-    id: Annotated[str, Field(description="Playing item id.")],
     volume: Annotated[float, Field(description="Volume 0..1.")],
+    id: Annotated[str, Field(description="Playing item id (from robot_audio_play/robot_audio); omit for the master volume, which scales every sound and is kept across reboots.")] = None,
 ):
-    """POST /audio/volume — change the volume of a playing item."""
-    r = requests.post("http://localhost/audio/volume", json={"id": id, "volume": float(volume)}, timeout=10)
+    """POST /audio/volume — the volume of one playing item, or the master volume without id."""
+    body = {"volume": float(volume)}
+    if id:
+        body["id"] = id
+    r = requests.post("http://localhost/audio/volume", json=body, timeout=10)
     r.raise_for_status()
     tool_call_output_contents = [
         {"type": "text", "text": r.text or "ok"},

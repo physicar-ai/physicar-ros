@@ -9,7 +9,8 @@ Audio router — command-based playback (see audio_manager.py).
 
     POST /audio/play    {url | path | data(+format)} + volume/loop/replace
     POST /audio/stop    {id} or {all: true}
-    POST /audio/volume  {id, volume}
+    GET  /audio/volume  {master}  — the master volume (every sound × master, kept across reboots)
+    POST /audio/volume  {id, volume}; no id = the master volume
     GET  /audio         current playback list
     GET  /audio/events  SSE command relay (sim browser playback / UI display)
     GET  /audio/file/{id}   local file backing an item (sim browser fetch)
