@@ -967,7 +967,8 @@ body:not(.sim-mode) #divider2{display:none}
         const mk = document.createElement('a'); mk.className = 'wm-add-link';
         mk.href = 'https://physicar.ai/worlds/world-builder/'; mk.target = '_blank'; mk.rel = 'noopener';
         mk.textContent = 'Make your own in the World Builder \u2197';
-        mk.addEventListener('click', (e) => e.stopPropagation());
+        // inside the editor webview a plain _blank link goes nowhere — the same relay as the ↗ panel buttons
+        mk.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openInTab(mk.href); });
         const fold = () => { renderRows(); };
         const submit = () => {
           if (installing) return;
