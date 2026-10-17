@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(physicar_laser_odom)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -20,14 +20,14 @@ target_include_directories(laser_odom_node PRIVATE
   include
   ${EIGEN3_INCLUDE_DIRS}
 )
-ament_target_dependencies(laser_odom_node
-  rclcpp
-  sensor_msgs
-  nav_msgs
-  geometry_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
+target_link_libraries(laser_odom_node PRIVATE
+  rclcpp::rclcpp
+  ${sensor_msgs_TARGETS}
+  ${nav_msgs_TARGETS}
+  ${geometry_msgs_TARGETS}
+  tf2::tf2
+  tf2_ros::tf2_ros
+  tf2_geometry_msgs::tf2_geometry_msgs
 )
 
 install(TARGETS laser_odom_node

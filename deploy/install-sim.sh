@@ -313,6 +313,14 @@ grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
   echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
 export PIP_CONSTRAINT=/etc/pip/constraints.txt
 
+# CPU torch MUST come before ultralytics below: from the default index, ultralytics
+# resolves the CUDA torch build and drags in cuda-* wheels a sim host can never use —
+# and the later torch request is then already "satisfied" by the CUDA build (observed
+# 2026-10-17: torch 2.14.1 + cuda-toolkit on a fresh image). Same order as install-real.sh.
+echo "  Installing CPU torch..."
+sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
+  'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
+
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'physicar~=1.0' \
   'flask~=3.1' \
@@ -327,11 +335,6 @@ sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install 
   python-multipart watchdog pydantic starlette \
   'setuptools>=70,<82'
 
-# ── Deep learning stack (deeplearning workspace: PyTorch training + ONNX) ──
-# CPU-only torch wheel (no CUDA on sim hosts).
-echo "  Installing deep learning stack (torch/onnx/gymnasium/sb3)..."
-sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
-  'torch~=2.11' --index-url https://download.pytorch.org/whl/cpu
 sudo -u physicar PIP_CONSTRAINT=/etc/pip/constraints.txt python3 -m pip install --user \
   'onnx>=1.19,<2' \
   'onnxruntime>=1.25,<2' \

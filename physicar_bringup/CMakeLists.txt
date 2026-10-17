@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 project(physicar_bringup)
 
 find_package(ament_cmake REQUIRED)
@@ -16,16 +16,16 @@ find_package(physicar_interfaces QUIET)
 
 # ── C++ nodes ──
 add_executable(scan_filter_node src/scan_filter_node.cpp)
-ament_target_dependencies(scan_filter_node rclcpp sensor_msgs)
+target_link_libraries(scan_filter_node PRIVATE rclcpp::rclcpp ${sensor_msgs_TARGETS})
 
 add_executable(topic_watchdog_node src/topic_watchdog_node.cpp)
-ament_target_dependencies(topic_watchdog_node rclcpp sensor_msgs nav_msgs rosgraph_msgs)
+target_link_libraries(topic_watchdog_node PRIVATE rclcpp::rclcpp ${sensor_msgs_TARGETS} ${nav_msgs_TARGETS} ${rosgraph_msgs_TARGETS})
 
 add_executable(physicar_driver_node src/physicar_driver_node.cpp)
-ament_target_dependencies(physicar_driver_node
-  rclcpp sensor_msgs nav_msgs geometry_msgs std_msgs std_srvs)
+target_link_libraries(physicar_driver_node PRIVATE
+  rclcpp::rclcpp ${sensor_msgs_TARGETS} ${nav_msgs_TARGETS} ${geometry_msgs_TARGETS} ${std_msgs_TARGETS} ${std_srvs_TARGETS})
 if(physicar_interfaces_FOUND)
-  ament_target_dependencies(physicar_driver_node physicar_interfaces)
+  target_link_libraries(physicar_driver_node PRIVATE ${physicar_interfaces_TARGETS})
   target_compile_definitions(physicar_driver_node PRIVATE HAS_CUSTOM_INTERFACES=1)
 endif()
 

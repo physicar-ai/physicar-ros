@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 project(physicar_teleop)
 
 find_package(ament_cmake REQUIRED)
@@ -11,9 +11,9 @@ find_package(nlohmann_json REQUIRED)
 
 # C++ node
 add_executable(joy_teleop_node src/joy_teleop_node.cpp)
-ament_target_dependencies(joy_teleop_node
-  rclcpp sensor_msgs std_msgs physicar_interfaces)
-target_link_libraries(joy_teleop_node nlohmann_json::nlohmann_json)
+target_link_libraries(joy_teleop_node
+  rclcpp::rclcpp ${sensor_msgs_TARGETS} ${std_msgs_TARGETS} ${physicar_interfaces_TARGETS}
+  nlohmann_json::nlohmann_json)
 
 install(TARGETS joy_teleop_node
   DESTINATION lib/${PROJECT_NAME}
