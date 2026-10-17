@@ -9,6 +9,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -24,6 +25,7 @@ target_link_libraries(laser_odom_node PRIVATE
   rclcpp::rclcpp
   ${sensor_msgs_TARGETS}
   ${nav_msgs_TARGETS}
+  ${std_srvs_TARGETS}
   ${geometry_msgs_TARGETS}
   tf2::tf2
   tf2_ros::tf2_ros

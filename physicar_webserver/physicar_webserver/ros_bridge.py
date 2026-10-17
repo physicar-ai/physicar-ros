@@ -14,6 +14,13 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Float64
+from std_srvs.srv import Trigger
+from geometry_msgs.msg import PoseWithCovarianceStamped
+try:
+    from robot_localization.srv import SetPose
+    HAS_SET_POSE = True
+except ImportError:
+    HAS_SET_POSE = False
 
 from physicar_webserver.sim import is_sim_mode
 
@@ -86,6 +93,8 @@ class ROSBridge:
         self._get_joy_mapping_client = None
         self._set_joy_mapping_client = None
         self._joy_set_params_client = None
+        self._laser_reset_client = None
+        self._ekf_set_pose_client = None
         self._joy_status: Dict[str, Any] = {'enabled': False, 'received': False}
 
         # Thread pool for async service calls
@@ -403,6 +412,35 @@ class ROSBridge:
     # Service Helpers
     # ========================================================================
     
+    def reset_odom(self) -> Dict[str, Any]:
+        """Zero the odometry right now: laser_odom restarts at (0, 0, 0) from its next scan and
+        the EKF state is set to the identity pose in `odom`. Used after a teleport (the
+        simulator's pose API / Reset), when the accumulated odometry no longer matches the car."""
+        t0 = time.time()
+        out: Dict[str, Any] = {"success": True}
+        if self._laser_reset_client is None:
+            self._laser_reset_client = self._node.create_client(Trigger, '/laser_odom/reset')
+        r = self._call_service_sync(self._laser_reset_client, Trigger.Request(), timeout=3.0)
+        out["laser_odom"] = bool(r and r.success)
+        if HAS_SET_POSE:
+            if self._ekf_set_pose_client is None:
+                self._ekf_set_pose_client = self._node.create_client(SetPose, '/set_pose')
+            req = SetPose.Request()
+            req.pose = PoseWithCovarianceStamped()
+            req.pose.header.frame_id = 'odom'
+            req.pose.header.stamp = self._node.get_clock().now().to_msg()
+            req.pose.pose.pose.orientation.w = 1.0
+            cov = [0.0] * 36
+            for i in (0, 7, 14, 21, 28, 35):
+                cov[i] = 1e-6
+            req.pose.pose.covariance = cov
+            out["ekf"] = self._call_service_sync(self._ekf_set_pose_client, req, timeout=3.0) is not None
+        else:
+            out["ekf"] = False
+        out["success"] = bool(out["laser_odom"] and out["ekf"])
+        out["ms"] = int((time.time() - t0) * 1000)
+        return out
+
     def _call_service_sync(self, client, request, timeout: float = 5.0):
         """Call a service synchronously (for use in executor).
         

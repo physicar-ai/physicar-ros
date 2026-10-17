@@ -34,6 +34,20 @@ router = APIRouter(tags=["hw"])
 # Request / Response Models (from control)
 # =============================================================================
 
+@router.post("/odom/reset")
+async def odom_reset():
+    """Zero the odometry now (laser odometry + EKF → (0, 0, 0) in `odom`). The simulator calls
+    this after every vehicle teleport (pose API, Reset); the next /odom reflects it within one
+    scan period (~0.1 s)."""
+    bridge = get_ros_bridge()
+    if not bridge.is_ready():
+        raise HTTPException(503, "ROS bridge not ready")
+    r = await asyncio.get_running_loop().run_in_executor(None, bridge.reset_odom)
+    if not r.get("success"):
+        raise HTTPException(503, f"odometry reset failed: {r}")
+    return r
+
+
 class SpeedRequest(BaseModel):
     """Speed control request."""
     value: float = Field(..., description="Speed in m/s. Positive=forward, Negative=backward")

@@ -77,6 +77,7 @@ Query endpoints support real-time streaming via `?stream=true` (camera uses MJPE
 | `GET` | `/speed` | Speed (m/s) |
 | `GET` | `/steering` | Steering angle (rad) |
 | `GET` | `/odom` | Odometry |
+| `POST` | `/odom/reset` | Zero the odometry now (laser odometry + EKF → (0, 0, 0)); the simulator calls it after every vehicle teleport (pose API, Reset) |
 | `GET` | `/battery` | Battery state |
 | `GET` | `/imu` | IMU — acceleration + gyro (6-axis; `orientation` is not provided and reads all-zero) |
 | `GET` | `/lidar` | LiDAR scan |

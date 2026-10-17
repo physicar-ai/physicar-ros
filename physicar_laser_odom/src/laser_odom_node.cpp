@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <tf2/utils.hpp>
@@ -62,6 +63,19 @@ class LaserOdomNode : public rclcpp::Node {
     scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
         laser_topic_, qos,
         std::bind(&LaserOdomNode::on_scan, this, std::placeholders::_1));
+
+    // ~/reset: the odometry restarts at (0, 0, 0) from the next scan — called after the
+    // vehicle was teleported (the simulator's pose API / Reset), when the previous reference
+    // scan no longer belongs to where the car is.
+    reset_srv_ = create_service<std_srvs::srv::Trigger>("~/reset",
+        [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+               std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+          pose_ = Pose2D{};
+          has_prev_scan_ = false;
+          res->success = true;
+          res->message = "odometry reset to (0, 0, 0)";
+          RCLCPP_INFO(get_logger(), "odometry reset to (0, 0, 0)");
+        });
 
     RCLCPP_INFO(get_logger(),
         "LaserOdomNode started — listening on [%s], publishing to [%s]",
@@ -178,6 +192,7 @@ class LaserOdomNode : public rclcpp::Node {
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_srv_;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
