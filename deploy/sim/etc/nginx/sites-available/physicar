@@ -21,12 +21,10 @@ upstream myapp_backend {
 }
 
 # Simulator upstreams — the simulator (virtual hardware) runs in its own
-# container at a fixed address on the docker network "physicar": simulation
-# API :9003, 3D scene websocket :9002, viewer files :9005 (its own nginx sets
-# the cache headers).
+# container at a fixed address on the docker network "physicar". Only the
+# simulation API :9003 is reached from here (the GETs it permits from the
+# workspace); the viewer, 3D stream and commands go browser → host gate → simulator.
 upstream sim_api_backend    { server 172.30.0.3:9003; }
-upstream sim_ws_backend     { server 172.30.0.3:9002; }
-upstream sim_static_backend { server 172.30.0.3:9005; }
 
 map $http_upgrade $connection_upgrade {
     default upgrade;
@@ -60,20 +58,6 @@ server {
     # "deny" only on cloud instances where a secret is provisioned; "pass" elsewhere.
     if ($pc_origin_gate = "deny") { return 403; }
 
-    # ── Simulation 3D Viewer (/sim) ──
-
-    location = /sim {
-        return 302 /sim/;
-    }
-
-    # Viewer files, served by the simulator container
-    location /sim/ {
-        proxy_pass http://sim_static_backend/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Connection "";
-        proxy_connect_timeout 5s;
-    }
 
     # Evaluation runner (webserver routers/evaluation.py): the simulator's evaluation
     # session starts student runs here so student code executes in this container.
@@ -93,7 +77,8 @@ server {
         proxy_read_timeout 86400s;
     }
 
-    # Sim API (world list, status, switch, pose, route, reset)
+    # Sim API — only the GETs sim_api permits from the workspace (status, worlds, brightness…);
+    # the viewer, the 3D stream and every command go browser → host gate → simulator directly
     location /sim/api/ {
         proxy_pass http://sim_api_backend/;
         proxy_http_version 1.1;
@@ -116,18 +101,6 @@ server {
         proxy_set_header Connection "";
     }
 
-    # Simulation WebSocket (3D scene streaming)
-    location /sim/ws {
-        proxy_pass http://sim_ws_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header Upgrade $http_upgrade;
-        # strip permessage-deflate offers: CF edge (h2 WS) mangles compressed
-        # frames -> "Invalid frame header" in browsers; payloads are tiny anyway
-        proxy_set_header Sec-WebSocket-Extensions "";
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 86400s;
-    }
 
     # ── noVNC (/vnc) ──
 

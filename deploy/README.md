@@ -8,7 +8,7 @@ Ubuntu 26.04 — ROS nodes run natively in the workspace. The simulator itself
 virtual hardware — it provides the same ROS topics as the real robot's drivers
 (sensors, `/cmd_vel` drive, compressed camera stream) — so `sim.launch.py`
 equals `real.launch.py` minus the hardware drivers; DDS crosses the docker
-network (`deploy/sim/cyclonedds-net.xml`), the simulation API is `PHYSICAR_SIM_API`.
+network (`deploy/sim/cyclonedds-net.xml`); the simulation API accepts commands only from the browser (host gate), the workspace may read its status.
 
 ### Install
 
