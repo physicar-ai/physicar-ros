@@ -141,8 +141,15 @@ private:
 
     if (prev < 1.0 || sec >= prev) return;
 
+    // A backward /clock jump (world start) makes every TF listener drop its buffer
+    // (tf2: "Detected jump back in time. Clearing TF buffer."), including the static
+    // base_footprint->imu_link transform that robot_state_publisher sends only once.
+    // An EKF that survives the jump can then never transform /imu again and keeps
+    // integrating a phantom yaw rate (2026-10-18: second world start 10 s after the
+    // first, inside the cooldown, left /odom at 0.23 rad/s while standing still).
+    // So the jump path ignores the startup grace and the stale-topic cooldown; the
+    // 1 s guard only folds the jitter of one restart into a single kill.
     auto now = Clock::now();
-    if (duration<double>(now - start_time_).count() < startup_grace_) return;
 
     RCLCPP_WARN(get_logger(),
       "[Watchdog] /clock jumped backward (%.1fs -> %.1fs) — world switch detected",
@@ -153,7 +160,7 @@ private:
       if (killed.count(e.kill_pattern)) continue;
       auto it = last_kill_time_.find(e.kill_pattern);
       if (it != last_kill_time_.end() &&
-          duration<double>(now - it->second).count() < cooldown_) continue;
+          duration<double>(now - it->second).count() < 1.0) continue;
       if (kill_process(e.kill_pattern)) {
         last_kill_time_[e.kill_pattern] = now;
         killed[e.kill_pattern] = true;
