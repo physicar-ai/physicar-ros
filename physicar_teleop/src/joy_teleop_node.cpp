@@ -461,8 +461,12 @@ private:
     bool prev_drive = drive_engaged_;
     bool prev_camera = camera_engaged_;
 
-    drive_engaged_ = btn(last_joy_, static_cast<int>(mapping_["deadman_button"].as_int()));
-    camera_engaged_ = btn(last_joy_, static_cast<int>(mapping_["camera_assist_button"].as_int()));
+    // -1 = no engage button: drive/camera follow the sticks directly. The
+    // e-stop and the stale-/joy release above still apply.
+    const int dm = static_cast<int>(mapping_["deadman_button"].as_int());
+    const int ca = static_cast<int>(mapping_["camera_assist_button"].as_int());
+    drive_engaged_ = dm < 0 ? true : btn(last_joy_, dm);
+    camera_engaged_ = ca < 0 ? true : btn(last_joy_, ca);
 
     auto pub_f64 = [](rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr & pub, double v) {
       auto m = std_msgs::msg::Float64();

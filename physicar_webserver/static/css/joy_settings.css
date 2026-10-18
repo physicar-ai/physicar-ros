@@ -95,6 +95,40 @@
     font-family: 'SF Mono', 'Consolas', monospace;
     font-size: 0.95rem; font-weight: bold; color: #b388ff;
 }
+/* "None" on a card: value line "None" + a small second line "(always on)" / "(off)" */
+.joy-card-sub { display: block; font-size: 0.7rem; font-weight: normal; color: #9a9a9a; margin-top: 2px; font-family: inherit; }
+
+/* Capture dialog (shared by / settings and /kiosk): what to press, plus None / Cancel */
+.joy-capture-overlay {
+    position: fixed; inset: 0; z-index: 10000; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.62);
+}
+.joy-capture-overlay.open { display: flex; }
+.joy-capture-box {
+    width: min(92vw, 440px); padding: 22px 22px 18px; border-radius: 14px;
+    background: #1b1b22; border: 1px solid rgba(179,136,255,0.45); color: #eee;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6); text-align: center;
+}
+.joy-capture-title { font-size: 1.35rem; font-weight: 600; margin-bottom: 8px; }
+.joy-capture-hint { font-size: 1rem; color: #cfcfcf; margin-bottom: 14px; }
+.joy-capture-wait { display: flex; justify-content: center; gap: 8px; margin-bottom: 18px; }
+.joy-capture-wait span { width: 10px; height: 10px; border-radius: 50%; background: #b388ff; opacity: 0.35; animation: joy-capture-dot 1.2s ease-in-out infinite; }
+.joy-capture-wait span:nth-child(2) { animation-delay: 0.2s; }
+.joy-capture-wait span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes joy-capture-dot { 0%, 100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 1; transform: scale(1.25); } }
+.joy-capture-actions { display: flex; gap: 12px; justify-content: center; }
+.joy-capture-actions button {
+    min-width: 140px; min-height: 56px; border-radius: 10px; cursor: pointer; font-family: inherit;
+    font-size: 1.1rem; font-weight: 600; line-height: 1.15;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+}
+.joy-capture-none { color: #fff; background: rgba(179,136,255,0.22); border: 1px solid rgba(179,136,255,0.7); }
+.joy-capture-none small { font-size: 0.75rem; font-weight: normal; color: #cfc4ea; }
+.joy-capture-none:hover { background: rgba(179,136,255,0.38); }
+.joy-capture-cancel { color: #ddd; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.18); }
+.joy-capture-cancel:hover { background: rgba(255,255,255,0.12); }
+@media (prefers-reduced-motion: reduce) { .joy-capture-wait span { animation: none; opacity: 0.8; } }
 
 .joy-tune { display: flex; flex-direction: column; gap: 4px; }
 .joy-tune-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
@@ -160,6 +194,7 @@
 }
 #joy-map-modal .joy-card-label { font-size: 1.2rem; font-weight:600;}
 #joy-map-modal .joy-card-idx  { font-size: 1.4rem; }
+#joy-map-modal .joy-card-sub  { font-size: 0.95rem; }
 
 /* Kiosk Live Input modal — bigger glyphs/rows for 800×480 touch */
 #joy-live-modal .joy-live-col-title { font-size: 0.95rem; margin-bottom: 4px; }

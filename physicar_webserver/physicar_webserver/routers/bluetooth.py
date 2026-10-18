@@ -255,7 +255,10 @@ async def paired_devices():
 
 
 def _scan_blocking(seconds: int) -> list:
-    seconds = max(1, min(int(seconds), 20))
+    # Classic (BR/EDR) controllers such as the DualShock 4 only show up after a
+    # full inquiry: measured on the Pi 5 / BlueZ 5.85, 10 s and 12 s scans missed
+    # it every time, 15 s found it every time. BLE pads (Xbox) appear within 8 s.
+    seconds = max(15, min(int(seconds), 20))
     _bctl("power on", timeout=5)
     try:
         _run(
@@ -295,12 +298,15 @@ async def pair(req: BtMacRequest):
     # rediscovered the device. Run a short discovery first so `pair {mac}`
     # finds it.  scan must be running while pair is issued.
     def _do_pair() -> str:
-        # Make sure adapter is on and start a 6s discovery in the foreground.
+        # Make sure adapter is on and run a discovery in the foreground long
+        # enough for a classic (BR/EDR) controller to answer the inquiry (15 s,
+        # same measurement as _scan_blocking); BlueZ must have just seen the
+        # device for `pair` to find it.
         _bctl("power on", timeout=5)
         try:
             _run(
-                ["bluetoothctl", "--timeout", "6", "scan", "on"],
-                timeout=10,
+                ["bluetoothctl", "--timeout", "15", "scan", "on"],
+                timeout=20,
             )
         except subprocess.TimeoutExpired:
             pass

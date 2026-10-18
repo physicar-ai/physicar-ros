@@ -1846,7 +1846,9 @@
             if (btn) btn.classList.add('spinning');
             if (btManageOpen) btRenderManage();
             try {
-                const res = await fetch('/network/bluetooth/scan?seconds=8');
+                // 15 s: a classic (BR/EDR) pad such as the DualShock answers the
+                // inquiry only after ~13 s; the server enforces the same floor.
+                const res = await fetch('/network/bluetooth/scan?seconds=15');
                 if (res.ok) btLastScan = await res.json();
             } catch (e) { /* keep prior list */ }
             finally {

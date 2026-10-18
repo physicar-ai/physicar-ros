@@ -33,9 +33,12 @@ window.createJoyPanel = function createJoyPanel(opts) {
     { key: 'axis_pan',      label: 'Camera Pan' },
     { key: 'axis_tilt',     label: 'Camera Tilt' },
   ];
+  // Every row accepts -1 = None. For the two engage buttons the node then
+  // treats drive/camera as always engaged ("always on"); for the other rows
+  // -1 simply means nothing is bound ("off").
   const MAP_BUTTONS = [
-    { key: 'deadman_button',       label: 'Engage Drive (hold to drive)' },
-    { key: 'camera_assist_button', label: 'Engage Camera (hold to aim)' },
+    { key: 'deadman_button',       label: 'Engage Drive (hold to drive)', noneLabel: 'always on' },
+    { key: 'camera_assist_button', label: 'Engage Camera (hold to aim)', noneLabel: 'always on' },
     { key: 'estop_button',         label: 'Emergency Stop (toggle)' },
     { key: 'center_camera_button', label: 'Recenter Camera' },
   ];
@@ -309,10 +312,13 @@ window.createJoyPanel = function createJoyPanel(opts) {
       const cardHtml = (r) => {
         const cur = mapping[r.key];
         const tag = r.kind === 'axis' ? 'Axis' : 'Button';
-        const idxLabel = (cur === undefined || cur === null) ? '—' : `${tag} ${cur}`;
-        return `<button type="button" class="joy-card" data-key="${r.key}" data-kind="${r.kind}">
+        let idx;
+        if (cur === undefined || cur === null) idx = '—';
+        else if (cur === -1) idx = `None<span class="joy-card-sub">(${r.noneLabel || 'off'})</span>`;
+        else idx = `${tag} ${cur}`;
+        return `<button type="button" class="joy-card" data-key="${r.key}" data-kind="${r.kind}" data-label="${shortLabel(r.label)}" data-none="${r.noneLabel || 'off'}">
           <span class="joy-card-label">${shortLabel(r.label)}</span>
-          <span class="joy-card-idx">${idxLabel}</span>
+          <span class="joy-card-idx">${idx}</span>
         </button>`;
       };
       const axesHtml  = MAP_AXES.map(r    => cardHtml({ ...r, kind: 'axis' })).join('');
@@ -329,16 +335,7 @@ window.createJoyPanel = function createJoyPanel(opts) {
           </div>
         </div>`;
       map.querySelectorAll('.joy-card').forEach(card => {
-        card.addEventListener('click', () => {
-          if (captureRow && captureRow.key === card.dataset.key) {
-            // Click again to cancel.
-            captureRow = null;
-            card.classList.remove('capturing');
-            setStatus('', '');
-          } else {
-            beginCapture(card);
-          }
-        });
+        card.addEventListener('click', () => beginCapture(card));
       });
     }
 
@@ -417,13 +414,56 @@ window.createJoyPanel = function createJoyPanel(opts) {
   }
 
   // ──────────────── CAPTURE FLOW ────────────────
+  // Capture dialog: "press the button / move the stick", with a None choice
+  // (-1) and Cancel. One per page, created on first use; the dialog is what
+  // ends a capture, so the card itself no longer toggles it.
+  let captureDlg = null;
+  function captureDialog() {
+    if (captureDlg) return captureDlg;
+    const d = document.createElement('div');
+    d.className = 'joy-capture-overlay';
+    d.innerHTML = `
+      <div class="joy-capture-box" role="dialog" aria-modal="true">
+        <div class="joy-capture-title"></div>
+        <div class="joy-capture-hint"></div>
+        <div class="joy-capture-wait"><span></span><span></span><span></span></div>
+        <div class="joy-capture-actions">
+          <button type="button" class="joy-capture-none">None<small></small></button>
+          <button type="button" class="joy-capture-cancel">Cancel</button>
+        </div>
+      </div>`;
+    d.addEventListener('click', (e) => { if (e.target === d) cancelCapture(); });
+    d.querySelector('.joy-capture-cancel').addEventListener('click', cancelCapture);
+    d.querySelector('.joy-capture-none').addEventListener('click', () => { if (captureRow) finishCapture(-1); });
+    document.body.appendChild(d);
+    captureDlg = d;
+    return d;
+  }
+  function closeCaptureDialog() {
+    if (captureDlg) captureDlg.classList.remove('open');
+    document.querySelectorAll(`#${mapId} .joy-card.capturing`).forEach(r => r.classList.remove('capturing'));
+  }
+  function cancelCapture() {
+    captureRow = null;
+    closeCaptureDialog();
+    setStatus('', '');
+  }
+
   function beginCapture(card) {
     document.querySelectorAll(`#${mapId} .joy-card.capturing`).forEach(r => r.classList.remove('capturing'));
     card.classList.add('capturing');
     captureRow = { key: card.dataset.key, kind: card.dataset.kind };
     // baseline current axes so we don't false-trigger on resting drift
     lastAxes = liveData ? liveData.axes.slice() : [];
-    setStatus(`Move/press the control to bind "${card.dataset.key}"… (tap card again to cancel)`, 'info');
+    const d = captureDialog();
+    const isAxis = card.dataset.kind === 'axis';
+    d.querySelector('.joy-capture-title').textContent = card.dataset.label || card.dataset.key;
+    d.querySelector('.joy-capture-hint').textContent = isAxis
+      ? 'Move the stick or trigger you want to use for this.'
+      : 'Press the gamepad button you want to use for this.';
+    d.querySelector('.joy-capture-none small').textContent = `(${card.dataset.none || 'off'})`;
+    d.classList.add('open');
+    setStatus(`Waiting for the gamepad to bind "${card.dataset.key}"…`, 'info');
   }
 
   function handleCapture(d) {
@@ -446,10 +486,11 @@ window.createJoyPanel = function createJoyPanel(opts) {
   async function finishCapture(idx) {
     const cap = captureRow;
     captureRow = null;
-    document.querySelectorAll(`#${mapId} .joy-card.capturing`).forEach(r => r.classList.remove('capturing'));
+    closeCaptureDialog();
     setStatus('Saving…', 'info');
     const ok = await saveKey(cap.key, idx);
-    setStatus(ok ? `Bound ${cap.key} → ${cap.kind === 'axis' ? 'Axis' : 'Button'} ${idx}` : 'Save failed', ok ? 'ok' : 'err');
+    const what = idx === -1 ? 'None' : `${cap.kind === 'axis' ? 'Axis' : 'Button'} ${idx}`;
+    setStatus(ok ? `Bound ${cap.key} → ${what}` : 'Save failed', ok ? 'ok' : 'err');
     setTimeout(() => setStatus('', ''), 2500);
   }
 
