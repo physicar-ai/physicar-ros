@@ -23,6 +23,7 @@ auto-stop).
 """
 import base64
 import json
+import os
 
 from typing import Annotated
 
@@ -53,12 +54,95 @@ def states(
 
 def odom():
     """GET /odom — odometry as JSON (pose + twist). Teleports in the simulator do
-    not reset it.
+    not reset it — robot_odom_reset does.
     """
     r = requests.get("http://localhost/odom", timeout=10)
     r.raise_for_status()
     tool_call_output_contents = [
         {"type": "text", "text": r.text or "ok"},
+    ]
+    return tool_call_output_contents
+
+
+def odom_reset():
+    """POST /odom/reset — zero the odometry now (laser odometry + EKF → (0, 0, 0)
+    in `odom`). Call it after the car was teleported or placed by hand
+    (sim_pose, Move Objects in the 3D view, lifting the real robot): odometry
+    does not notice that by itself. The next /odom reflects it within ~0.1 s.
+    """
+    r = requests.post("http://localhost/odom/reset", timeout=15)
+    r.raise_for_status()
+    tool_call_output_contents = [
+        {"type": "text", "text": r.text or "ok"},
+    ]
+    return tool_call_output_contents
+
+
+# The robot software checkout is named after the kit's generation key — /opt/physicar/src/<key>-ros
+# (today physicar-ros; a gen-2 kit ships physicar2-ros); its VERSION file is the software version.
+# Same rule as the extension's rosSrcDir(): the key from PHYSICAR_GENERATION (the cloud simulator
+# sets it), else derived from /info's generation number; without that checkout, any *-ros there.
+_SRC_DIR = "/opt/physicar/src"
+
+
+def _generation_key(generation):
+    key = os.environ.get("PHYSICAR_GENERATION", "").strip()
+    if key:
+        return key
+    try:
+        n = int(generation)
+    except (TypeError, ValueError):
+        n = 1
+    return "physicar" if n <= 1 else "physicar{}".format(n)
+
+
+def _software_version(key):
+    """(checkout name, version): <key>-ros first, then any other *-ros dir; 'unknown' without a VERSION file."""
+    names = [key + "-ros"]
+    try:
+        names += sorted(n for n in os.listdir(_SRC_DIR) if n.endswith("-ros") and n != names[0])
+    except OSError:
+        pass
+    for name in names:
+        try:
+            with open(os.path.join(_SRC_DIR, name, "VERSION"), encoding="utf-8") as f:
+                version = f.read().strip()
+        except OSError:
+            continue
+        if version:
+            return name, version
+    return names[0], "unknown"
+
+
+def _kv(d):
+    return ", ".join("{}={}".format(k, v) for k, v in (d or {}).items()) or "-"
+
+
+def info():
+    """GET /info — what this machine is, as short text: mode (sim | real), the kit
+    generation (number + key, e.g. 1 / physicar), the robot software version (the
+    VERSION file of /opt/physicar/src/<key>-ros), the hardware, software and
+    physical summary, and the serial. Answer "what generation / version / mode is
+    this?" from it — the System tab shows the same values. Not /info's own
+    `version`/`api_version` fields: those are static API labels.
+    """
+    r = requests.get("http://localhost/info", timeout=10)
+    r.raise_for_status()
+    d = r.json()
+    generation = d.get("generation", 1)
+    key = _generation_key(generation)
+    repo, version = _software_version(key)
+    lines = [
+        "mode: {}".format(d.get("mode", "unknown")),
+        "generation: {} (key {})".format(generation, key),
+        "robot software: {} {}".format(repo, version),
+        "hardware: " + _kv(d.get("hardware")),
+        "software: " + _kv(d.get("software")),
+        "physical: " + _kv(d.get("physical")),
+        "serial: " + (d.get("serial") or "-"),
+    ]
+    tool_call_output_contents = [
+        {"type": "text", "text": "\n".join(lines)},
     ]
     return tool_call_output_contents
 
@@ -257,5 +341,40 @@ def audio():
     r.raise_for_status()
     tool_call_output_contents = [
         {"type": "text", "text": r.text or "ok"},
+    ]
+    return tool_call_output_contents
+
+
+_RESTART_PLAN = (
+    "POST /api/restart restarts the robot software — the whole ROS stack and the web server "
+    "(sim: supervisorctl restart physicar; real robot: systemctl restart physicar.service). "
+    "The car stops; every running program loses the robot (student scripts, Racing courses, "
+    "SLAM/Nav2); the Web API and the robot_* tools are away until the stack is back up "
+    "(longer when a pending update rebuilds). Check afterwards with robot_info or "
+    "GET http://localhost/health."
+)
+
+
+def restart(
+    confirm: Annotated[bool, Field(description="true = restart now. false (default) = do nothing, only describe what the restart would do.")] = False,
+):
+    """POST /api/restart — restart the robot software (the ROS stack + the web
+    server; same on both machines). It ends every running program that talks to
+    the robot and takes the Web API away until the stack is back up, so it
+    requires confirm=true — without it nothing happens and the plan is returned;
+    ask the user first when something is running. This tool server restarts
+    with the stack, so the answer may be cut off: that is the restart, not a
+    failure. Not for the startup script (supervisorctl/systemctl restart it) and
+    not for the simulator itself (physicar.ai).
+    """
+    if confirm not in (True, 1, "true", "True", "1"):
+        tool_call_output_contents = [
+            {"type": "text", "text": "Not restarted (confirm is not true). robot_restart(confirm=true) would: " + _RESTART_PLAN},
+        ]
+        return tool_call_output_contents
+    r = requests.post("http://localhost/api/restart", timeout=10)
+    r.raise_for_status()
+    tool_call_output_contents = [
+        {"type": "text", "text": "restart requested: " + (r.text or "ok") + " — " + _RESTART_PLAN},
     ]
     return tool_call_output_contents

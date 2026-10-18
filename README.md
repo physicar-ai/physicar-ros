@@ -145,6 +145,19 @@ FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) se
 
 Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (`from pcwake import reserve, redeem`); they are one-shot and in-memory. See `physicar_tools/pcwake.py` for the contract.
 
+Built-in tools (`robot.py` → `robot_*`, `utils.py` → `utils_*`; the docstring is the description the AI reads, parameters are `Annotated[type, Field(description=...)]`):
+
+| Tool | What |
+|------|------|
+| `robot_states` | `GET /states` — the full state snapshot (`include` keeps only the listed keys) |
+| `robot_odom`, `robot_battery`, `robot_imu`, `robot_lidar`, `robot_camera` | The sensor GETs 1:1 (`robot_camera` returns the JPEG as an image) |
+| `robot_speed`, `robot_steering`, `robot_camera_pan`, `robot_camera_tilt` | Read without `value`, set with it — radians, m/s, the endpoint's contract (`robot_speed` with `duration` blocks until the drive ends) |
+| `robot_audio_play`, `robot_audio_stop`, `robot_audio_volume`, `robot_audio` | `/audio/play`, `/audio/stop`, `/audio/volume` (an item with `id`, the master without), `/audio` |
+| `robot_info` | `GET /info` plus the checkout's `VERSION` file — mode, generation (number + key), robot software version, hardware/software/physical summary, serial |
+| `robot_odom_reset` | `POST /odom/reset` — zero the odometry (laser odometry + EKF) after a teleport or a hand placement |
+| `robot_restart` | `POST /api/restart` behind `confirm=true` (without it: what it would do) — restarts the robot software; running programs lose the robot, the tool server restarts with it |
+| `utils_sleep`, `utils_music_search`, `utils_wake_reserve`, `utils_wake_status` | Timed sequences, iTunes previews, wake tickets |
+
 ## License
 
 Copyright 2026 **AICASTLE Inc.** "PhysiCar" is a trademark of AICASTLE Inc.
