@@ -46,6 +46,7 @@ _MAX_PER_SESSION = 50
 
 _tickets = {}             # wake_id -> {"session", "message", "created"}
 _redeemed = {}   # wake_id -> redeemed_at — lets status() distinguish 'fired' from 'expired'
+_cancelled = {}   # wake_id -> time cancelled (status answers 'cancelled' for a while)
 _TICKET_TTL = 24 * 3600
 _MAX_TICKETS = 200
 
@@ -94,8 +95,29 @@ def redeem(wake_id, note=""):
     return _enqueue(t["session"], msg, wid)   # id included — the LLM knows which reservation fired
 
 
+def cancel(wake_id):
+    """Withdraw a pending ticket (and a redeemed wake that has not been delivered yet). True when something
+    was removed; False when the id is unknown, expired or already delivered."""
+    wid = str(wake_id or "")
+    removed = False
+    with _lock:
+        if _tickets.pop(wid, None) is not None:
+            removed = True
+        for q in _pending.values():
+            before = len(q)
+            q[:] = [w for w in q if w.get("wake_id") != wid]
+            if len(q) != before:
+                removed = True
+        if removed:
+            _redeemed.pop(wid, None)
+            _cancelled[wid] = time.time()
+            while len(_cancelled) >= _MAX_TICKETS:
+                _cancelled.pop(min(_cancelled, key=_cancelled.get), None)
+    return removed
+
+
 def status(wake_id):
-    """One ticket's state: pending / redeemed / unknown."""
+    """One ticket's state: pending / redeemed / cancelled / unknown."""
     wid = str(wake_id or "")
     now = time.time()
     with _lock:
@@ -107,6 +129,9 @@ def status(wake_id):
         r = _redeemed.get(wid)
         if r:
             return {"state": "redeemed", "redeemed_seconds_ago": round(now - r)}
+        c = _cancelled.get(wid)
+        if c:
+            return {"state": "cancelled", "cancelled_seconds_ago": round(now - c)}
     return {"state": "unknown", "hint": "expired, never existed, or the tool server restarted"}
 
 

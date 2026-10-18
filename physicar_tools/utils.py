@@ -95,6 +95,23 @@ def wake_reserve(
     return tool_call_output_contents
 
 
+def wake_cancel(
+    wake_id: Annotated[str, Field(description="The ticket to withdraw (from utils_wake_reserve or wake_status).")],
+):
+    """Cancel a wake ticket so it will never wake this chat: a pending ticket is
+    discarded, and a fired wake that has not been delivered yet is dropped too.
+    Use it when the job the ticket was reserved for was stopped or is no longer
+    wanted. Scripts can do the same over HTTP: POST
+    http://localhost/physicar-ext/wake/cancel {"wake_id": "<id>"}.
+    """
+    import pcwake
+    ok = pcwake.cancel(wake_id)
+    tool_call_output_contents = [
+        {"type": "text", "text": json.dumps({"cancelled": bool(ok), "state": pcwake.status(wake_id).get("state")})},
+    ]
+    return tool_call_output_contents
+
+
 def wake_status(
     wake_id: Annotated[str, Field(description="Ticket to check. Omit to list this chat's outstanding tickets.")] = None,
 ):

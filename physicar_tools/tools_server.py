@@ -273,6 +273,21 @@ async def redeem_wake(request: Request):
     return {"ok": True}
 
 
+@app.post("/wake/cancel")
+async def wake_cancel(request: Request):
+    """Withdraw a ticket over HTTP: {"wake_id": "..."} -> {"ok": true|false, "state": ...}."""
+    import pcwake
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict) or not body.get("wake_id"):
+        return JSONResponse({"ok": False, "error": "wake_id required"}, status_code=400)
+    wid = str(body["wake_id"])
+    ok = pcwake.cancel(wid)
+    return {"ok": bool(ok), "state": pcwake.status(wid).get("state")}
+
+
 @app.post("/wake/status")
 async def wake_status(request: Request):
     """Ticket state over HTTP (id in the body, like /wake — never in URLs/logs).

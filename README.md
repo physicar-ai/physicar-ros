@@ -139,11 +139,12 @@ FastAPI service (`physicar_tools/tools_server.py`, loopback `127.0.0.1:9004`) se
 | `POST` | `/physicar-ext/tools/<name>` | Run a tool — `{"args": {...}, "session": "<chat session>"}` |
 | `POST` | `/physicar-ext/wake` | Redeem a one-shot wake ticket — `{"wake_id": "...", "note": "optional"}`; starts an automatic turn in the chat that reserved it |
 | `POST` | `/physicar-ext/wake/status` | Ticket state (`{"wake_id"}`) or a session's outstanding tickets (`{"session"}`) |
+| `POST` | `/physicar-ext/wake/cancel` | Withdraw a ticket (`{"wake_id"}`) — a pending ticket is discarded, an undelivered wake dropped |
 | `GET` | `/physicar-ext/wakes/<session>` | Long-poll pending wakes (used by the VSCode extension) |
 | `GET` | `/physicar-ext/health` | Loaded modules, import errors, process RSS |
 | `POST` | `/physicar-ext/reload` | Restart the interpreter — picks up newly installed libraries and replaced model weights |
 
-Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (`from pcwake import reserve, redeem`); they are one-shot and in-memory. See `physicar_tools/pcwake.py` for the contract.
+Wake tickets are reserved from the chat (`utils_wake_reserve`) or in tool code (`from pcwake import reserve, redeem, cancel`); they are one-shot and in-memory, and can be withdrawn (`utils_wake_cancel`). See `physicar_tools/pcwake.py` for the contract.
 
 Built-in tools (`robot.py` → `robot_*`, `utils.py` → `utils_*`; the docstring is the description the AI reads, parameters are `Annotated[type, Field(description=...)]`):
 
@@ -156,7 +157,7 @@ Built-in tools (`robot.py` → `robot_*`, `utils.py` → `utils_*`; the docstrin
 | `robot_info` | `GET /info` plus the checkout's `VERSION` file — mode, generation (number + key), robot software version, hardware/software/physical summary, serial |
 | `robot_odom_reset` | `POST /odom/reset` — zero the odometry (laser odometry + EKF) after a teleport or a hand placement |
 | `robot_restart` | `POST /api/restart` behind `confirm=true` (without it: what it would do) — restarts the robot software; running programs lose the robot, the tool server restarts with it |
-| `utils_sleep`, `utils_music_search`, `utils_wake_reserve`, `utils_wake_status` | Timed sequences, iTunes previews, wake tickets |
+| `utils_sleep`, `utils_music_search`, `utils_wake_reserve`, `utils_wake_status`, `utils_wake_cancel` | Timed sequences, iTunes previews, wake tickets (reserve / state / withdraw) |
 
 ## License
 
