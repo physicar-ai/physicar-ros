@@ -114,6 +114,25 @@ if ! grep -q "dtoverlay=pwm0-gpio13" /boot/firmware/config.txt 2>/dev/null; then
   echo "dtoverlay=pwm0-gpio13" | tee -a /boot/firmware/config.txt
 fi
 
+# ── DSI touch display: load the overlay the bootloader detected, explicitly ──
+# With display_auto_detect=1 the Pi 5 bootloader asks the display's MCU (I2C
+# 0x45) on every boot and silently loads no overlay when it does not answer.
+# The MCU keeps its state across a warm reboot and the 7.0 kernel's attiny
+# shutdown hook can leave it unresponsive, so after a reboot the kiosk screen
+# stayed black until a power cycle (raspberrypi/linux#6341; measured
+# 2026-10-18). The kernel driver needs no probe, so pin the overlay the
+# bootloader found at install time and stop asking.
+_DSI_OVERLAY=$(vclog --msg 2>/dev/null | sed -n "s/.*Loaded overlay '\(vc4-kms-dsi-[^']*\)'.*/\1/p" | head -1)
+if [ -n "$_DSI_OVERLAY" ]; then
+  sed -i 's/^display_auto_detect=1/display_auto_detect=0/' /boot/firmware/config.txt
+  if ! grep -q "^dtoverlay=$_DSI_OVERLAY" /boot/firmware/config.txt 2>/dev/null; then
+    printf '\n# DSI touch display: the overlay the bootloader detected at install, loaded\n# explicitly (its I2C probe fails after a warm reboot)\ndtoverlay=%s\n' "$_DSI_OVERLAY" \
+      | tee -a /boot/firmware/config.txt
+  fi
+else
+  echo "  no DSI display detected by the bootloader at install - display_auto_detect stays on"
+fi
+
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │  2. Package Installation                                                   │
 # └─────────────────────────────────────────────────────────────────────────────┘
