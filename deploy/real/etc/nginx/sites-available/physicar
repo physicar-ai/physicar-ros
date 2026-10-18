@@ -290,7 +290,7 @@ server {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
-        root /usr/lib/code-server/lib/vscode;
+        root /usr/local/lib/code-server/lib/vscode;
         try_files /$cs_asset @cs_static_fb;
         add_header Cache-Control "public, max-age=31536000" always;
     }
@@ -640,7 +640,7 @@ server {
         if ($auth_ok = 0) {
             return 302 /login?next=$uri;
         }
-        root /usr/lib/code-server/lib/vscode;
+        root /usr/local/lib/code-server/lib/vscode;
         try_files /$cs_asset @cs_static_fb;
         add_header Cache-Control "public, max-age=31536000" always;
     }

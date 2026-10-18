@@ -342,8 +342,10 @@ safe_build_locked() {
     fi
 
     log "building (symlink-install)..."
-    if (cd "$WORKSPACE_DIR" && \
-        source /opt/ros/lyrical/setup.bash && \
+    # setup.bash reads unset variables (AMENT_TRACE_SETUP_FILES), so it must be
+    # sourced with -u off; pipefail makes the if see colcon's status, not tail's.
+    if (set -o pipefail && cd "$WORKSPACE_DIR" && \
+        { set +u; source /opt/ros/lyrical/setup.bash; set -u; } && \
         colcon build --symlink-install \
             --base-paths src/physicar-ros \
             --cmake-args -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5); then

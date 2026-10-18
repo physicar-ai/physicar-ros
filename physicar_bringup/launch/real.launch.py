@@ -304,8 +304,10 @@ def generate_launch_description():
     # ── System processes (non-ROS) ──
 
     # USB Audio setup (runs once at startup)
+    # Writes /etc/asound.conf (root-owned): the launch runs as the physicar
+    # user, so go through sudo like every other root step in physicar.sh.
     setup_audio = ExecuteProcess(
-        cmd=['bash', os.path.join(scripts_dir, 'setup_audio.sh')],
+        cmd=['sudo', 'bash', os.path.join(scripts_dir, 'setup_audio.sh')],
         output='screen',
     )
 

@@ -22,7 +22,9 @@
 #include <thread>
 #include <vector>
 
+#include <dirent.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <termios.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -334,10 +336,14 @@ public:
   static constexpr int DUTY_RANGE_NS = 2'000'000;
 
   bool connect(rclcpp::Logger logger) {
+    if (chip_dir().empty()) {
+      RCLCPP_ERROR(logger, "GpioPwmBoard: RP1 PWM0 (%s) not found under /sys/class/pwm - pwm0-gpio13 overlay not loaded?", kChipDevice);
+      return false;
+    }
     for (auto & [ch, idx] : kChannelMap) {
       std::string pwm_dir = pwm_path(idx);
       if (!dir_exists(pwm_dir)) {
-        write_file("/sys/class/pwm/pwmchip0/export", std::to_string(idx));
+        write_file(chip_dir() + "/export", std::to_string(idx));
       }
       write_file(pwm_path(idx, "period"), std::to_string(PERIOD_NS));
       int neutral = MIN_DUTY_NS + DUTY_RANGE_NS / 2;
@@ -385,8 +391,39 @@ private:
   static inline const std::map<int,int> kChannelMap = {{1,1}, {2,0}};
   bool connected_ = false;
 
+  // RP1 PWM0 (pwm@98000, enabled by the pwm0-gpio13 overlay). The pwmchip number is
+  // not stable: the kernel numbers chips in probe order and on 26.04 the cooling-fan
+  // PWM (pwm@9c000) already owns pwmchip0, so the chip is resolved by device path.
+  // Same lookup as physicar.sh (export + group permissions).
+  static constexpr const char * kChipDevice = "1f00098000.pwm";
+
+  static const std::string & chip_dir() {
+    static const std::string dir = [] {
+      std::string found;
+      DIR * d = opendir("/sys/class/pwm");
+      if (!d) return found;
+      while (dirent * e = readdir(d)) {
+        if (std::strncmp(e->d_name, "pwmchip", 7) != 0) continue;
+        std::string chip = std::string("/sys/class/pwm/") + e->d_name;
+        char buf[PATH_MAX];
+        ssize_t n = readlink((chip + "/device").c_str(), buf, sizeof(buf) - 1);
+        if (n <= 0) continue;
+        std::string dev(buf, static_cast<size_t>(n));
+        const std::string suffix(kChipDevice);
+        if (dev.size() >= suffix.size() &&
+            dev.compare(dev.size() - suffix.size(), suffix.size(), suffix) == 0) {
+          found = chip;
+          break;
+        }
+      }
+      closedir(d);
+      return found;
+    }();
+    return dir;
+  }
+
   static std::string pwm_path(int idx, const std::string & attr = "") {
-    std::string p = "/sys/class/pwm/pwmchip0/pwm" + std::to_string(idx);
+    std::string p = chip_dir() + "/pwm" + std::to_string(idx);
     if (!attr.empty()) p += "/" + attr;
     return p;
   }

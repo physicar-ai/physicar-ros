@@ -280,7 +280,10 @@ runuser -u physicar -- python3 -m pip config set global.break-system-packages tr
 # Pin numpy>=2 (Lyrical cv_bridge is built against numpy 2.x)
 mkdir -p /etc/pip
 ln -sf "$DEPLOY_DIR/etc/pip/constraints.txt" /etc/pip/constraints.txt
-ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip/pip.conf
+# /etc/pip.conf is pip's global config path; /etc/pip/ is only where the
+# constraints file lives. Every pip run (the boot updater's upgrade included)
+# then honours the pins, not just the PIP_CONSTRAINT environment below.
+ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip.conf
 grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
   echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
 export PIP_CONSTRAINT=/etc/pip/constraints.txt

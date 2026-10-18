@@ -39,21 +39,29 @@ for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
   echo performance | sudo tee "$cpu" > /dev/null 2>/dev/null || true
 done
 
-# PWM export + permissions (RP1 PWM0: steering ch0 + ESC ch1)
-if [ -d /sys/class/pwm/pwmchip0 ]; then
-  [ ! -d /sys/class/pwm/pwmchip0/pwm0 ] && echo 0 | sudo tee /sys/class/pwm/pwmchip0/export > /dev/null
-  [ ! -d /sys/class/pwm/pwmchip0/pwm1 ] && echo 1 | sudo tee /sys/class/pwm/pwmchip0/export > /dev/null
+# PWM export + permissions (RP1 PWM0 = pwm@98000: steering ch0 + ESC ch1).
+# The pwmchip number is not stable: the kernel numbers chips in probe order and
+# on 26.04 the cooling-fan PWM (pwm@9c000) already owns pwmchip0 — resolve the
+# chip by device path, the same lookup physicar_driver_node uses.
+PWM_CHIP=""
+for _chip in /sys/class/pwm/pwmchip*; do
+  case "$(readlink -f "$_chip/device" 2>/dev/null)" in
+    *1f00098000.pwm) PWM_CHIP="$_chip" ;;
+  esac
+done
+if [ -n "$PWM_CHIP" ]; then
+  [ ! -d "$PWM_CHIP/pwm0" ] && echo 0 | sudo tee "$PWM_CHIP/export" > /dev/null
+  [ ! -d "$PWM_CHIP/pwm1" ] && echo 1 | sudo tee "$PWM_CHIP/export" > /dev/null
   sleep 0.1
-  sudo chgrp gpio /sys/class/pwm/pwmchip0/export /sys/class/pwm/pwmchip0/unexport \
-    /sys/class/pwm/pwmchip0/pwm0/duty_cycle /sys/class/pwm/pwmchip0/pwm0/period \
-    /sys/class/pwm/pwmchip0/pwm0/enable /sys/class/pwm/pwmchip0/pwm0/polarity \
-    /sys/class/pwm/pwmchip0/pwm1/duty_cycle /sys/class/pwm/pwmchip0/pwm1/period \
-    /sys/class/pwm/pwmchip0/pwm1/enable /sys/class/pwm/pwmchip0/pwm1/polarity 2>/dev/null
-  sudo chmod g+w /sys/class/pwm/pwmchip0/export /sys/class/pwm/pwmchip0/unexport \
-    /sys/class/pwm/pwmchip0/pwm0/duty_cycle /sys/class/pwm/pwmchip0/pwm0/period \
-    /sys/class/pwm/pwmchip0/pwm0/enable /sys/class/pwm/pwmchip0/pwm0/polarity \
-    /sys/class/pwm/pwmchip0/pwm1/duty_cycle /sys/class/pwm/pwmchip0/pwm1/period \
-    /sys/class/pwm/pwmchip0/pwm1/enable /sys/class/pwm/pwmchip0/pwm1/polarity 2>/dev/null
+  sudo chgrp gpio "$PWM_CHIP/export" "$PWM_CHIP/unexport" \
+    "$PWM_CHIP"/pwm0/duty_cycle "$PWM_CHIP"/pwm0/period "$PWM_CHIP"/pwm0/enable "$PWM_CHIP"/pwm0/polarity \
+    "$PWM_CHIP"/pwm1/duty_cycle "$PWM_CHIP"/pwm1/period "$PWM_CHIP"/pwm1/enable "$PWM_CHIP"/pwm1/polarity 2>/dev/null
+  sudo chmod g+w "$PWM_CHIP/export" "$PWM_CHIP/unexport" \
+    "$PWM_CHIP"/pwm0/duty_cycle "$PWM_CHIP"/pwm0/period "$PWM_CHIP"/pwm0/enable "$PWM_CHIP"/pwm0/polarity \
+    "$PWM_CHIP"/pwm1/duty_cycle "$PWM_CHIP"/pwm1/period "$PWM_CHIP"/pwm1/enable "$PWM_CHIP"/pwm1/polarity 2>/dev/null
+  echo "[physicar] RP1 PWM0 at $PWM_CHIP"
+else
+  echo "[physicar] RP1 PWM0 (1f00098000.pwm) not found under /sys/class/pwm - pwm0-gpio13 overlay not loaded; steering/ESC unavailable"
 fi
 
 # ────────────────── Repo-applied system artifacts ──────────────────
@@ -72,6 +80,16 @@ if [ -f "$_POL_SRC" ] && ! sudo cmp -s "$_POL_SRC" "$_POL_DST" 2>/dev/null; then
   echo "[physicar] chromium kiosk policy refreshed"
 fi
 
+# chrony drop-in (NTS on an RTC-less board): chronyd's AppArmor profile cannot
+# read a symlink into /opt — reinstall on change and restart chrony.
+_CHR_SRC="$PHYSICAR_ROS_DIR/deploy/real/etc/chrony/conf.d/physicar.conf"
+_CHR_DST="/etc/chrony/conf.d/physicar.conf"
+if [ -f "$_CHR_SRC" ] && ! sudo cmp -s "$_CHR_SRC" "$_CHR_DST" 2>/dev/null; then
+  sudo install -D -m 644 -o root -g root "$_CHR_SRC" "$_CHR_DST"
+  sudo systemctl try-restart chrony 2>/dev/null || true
+  echo "[physicar] chrony drop-in refreshed"
+fi
+
 # NM dispatcher hook: NetworkManager refuses dispatcher scripts that are not
 # root-owned, so the repo copy cannot be symlinked — reinstall on change.
 _DISP_SRC="$PHYSICAR_ROS_DIR/deploy/real/etc/NetworkManager/dispatcher.d/90-physicar-cert"
@@ -83,16 +101,24 @@ fi
 
 # PWM overlay: /boot needs a compiled dtbo; recompile when the repo dts
 # changed. The device-tree is read at boot, so this applies on the NEXT one.
+# Same layout as install-real.sh: the dtbo lives in /etc/flash-kernel/dtbs
+# (flash-kernel copies it into every slot it writes) and is mirrored into the
+# A/B slots that already exist (/boot/firmware/{current,new}/overlays).
 _DTS="$PHYSICAR_ROS_DIR/deploy/real/boot/firmware/overlays/pwm0-gpio13.dts"
-_DTBO="/boot/firmware/overlays/pwm0-gpio13.dtbo"
+_DTBO="/etc/flash-kernel/dtbs/overlays/pwm0-gpio13.dtbo"
 if [ -f "$_DTS" ] && command -v dtc >/dev/null 2>&1; then
   _new_dtbo=$(mktemp)
   if dtc -@ -I dts -O dtb -o "$_new_dtbo" "$_DTS" 2>/dev/null \
      && ! sudo cmp -s "$_new_dtbo" "$_DTBO" 2>/dev/null; then
-    sudo cp "$_new_dtbo" "$_DTBO"
+    sudo install -D -m 644 "$_new_dtbo" "$_DTBO"
     echo "[physicar] pwm overlay recompiled (applies next boot)"
   fi
   rm -f "$_new_dtbo"
+  for _slot in /boot/firmware/current /boot/firmware/new; do
+    if [ -d "$_slot/overlays" ] && ! sudo cmp -s "$_DTBO" "$_slot/overlays/pwm0-gpio13.dtbo" 2>/dev/null; then
+      sudo cp "$_DTBO" "$_slot/overlays/"
+    fi
+  done
 fi
 
 # ────────────────── Environment Variables ──────────────────
@@ -124,15 +150,10 @@ if [ -z "$PASSWORD" ]; then
   PASSWORD="${SERIAL_HASH:8:8}"
 fi
 
-# Only update password if changed
-_CURRENT_PW_HASH=$(sudo getent shadow physicar 2>/dev/null | cut -d: -f2)
-_PW_MATCH=$(_H="$_CURRENT_PW_HASH" _P="$PASSWORD" python3 -c "
-import crypt, os
-current = os.environ.get('_H', '')
-pw = os.environ.get('_P', '')
-print('yes' if current and crypt.crypt(pw, current) == current else 'no')
-" 2>/dev/null || echo "no")
-if [ "$_PW_MATCH" != "yes" ]; then
+# Only update password if changed. unix_chkpwd (libpam-modules-bin) checks a
+# password against /etc/shadow: NUL-terminated on stdin, exit 0 on a match.
+# (Python's crypt module, used before, is gone since 3.13.)
+if ! printf '%s\0' "$PASSWORD" | sudo unix_chkpwd physicar nullok 2>/dev/null; then
   echo "physicar:${PASSWORD}" | sudo chpasswd
 fi
 
@@ -763,6 +784,11 @@ converge_codeserver_version() {
   CS_PIN=$(tr -d '[:space:]' < "$PHYSICAR_ROS_DIR/deploy/code-server-version" 2>/dev/null || true)
   # The first --version line can be a config-file creation log line — pick only the version line
   CS_CUR=$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)
+  # nginx serves the workbench bundles from /usr/local/lib/code-server/lib/vscode
+  # (integrity serving, sites-available/physicar): keep that path on the installed release
+  if [ -n "$CS_CUR" ] && [ -d "/usr/local/lib/code-server-$CS_CUR/lib/vscode" ]; then
+    sudo ln -sfn "/usr/local/lib/code-server-$CS_CUR" /usr/local/lib/code-server
+  fi
   if [ -n "$CS_PIN" ] && [ "$CS_PIN" != "$CS_CUR" ]; then
     echo "[code-server] ${CS_CUR:-none} -> $CS_PIN"
     # pipefail: `curl | sh` otherwise reports sh's status (0 on an empty download) and the cleanup
@@ -771,6 +797,7 @@ converge_codeserver_version() {
        && [ "$(/usr/local/bin/code-server --version 2>/dev/null | grep -oEm1 '^[0-9]+\.[0-9]+\.[0-9]+' || true)" = "$CS_PIN" ]; then
       echo "[code-server] now $CS_PIN"
       sudo ln -sf /usr/local/bin/code-server /usr/local/bin/code
+      sudo ln -sfn "/usr/local/lib/code-server-$CS_PIN" /usr/local/lib/code-server
       # Switch the service to the new version, then remove old version directories
       # (standalone stacks /usr/local/lib/code-server-<ver> per version — SD card space)
       sudo systemctl restart physicar-code.service 2>/dev/null || true

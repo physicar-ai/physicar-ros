@@ -62,6 +62,18 @@ ln -sf "$DEPLOY_DIR/etc/X11/xorg.conf.d/10-no-dpms.conf" /etc/X11/xorg.conf.d/10
 
 ln -sf "$DEPLOY_DIR/etc/udev/rules.d/99-physicar.rules" /etc/udev/rules.d/99-physicar.rules
 
+# Keep the hotspot's virtual interface named ap0 (udev's 26.04 naming scheme
+# renames it to wld0 otherwise — see the .link file). Read by systemd-udevd,
+# not networkd, so it works with networkd masked.
+mkdir -p /etc/systemd/network
+ln -sf "$DEPLOY_DIR/etc/systemd/network/80-physicar-ap.link" /etc/systemd/network/80-physicar-ap.link
+
+# Time sync on an RTC-less board with 26.04's NTS-only pools (see the file).
+# chronyd's AppArmor profile cannot read a symlink into /opt, so this is a copy;
+# physicar.sh refreshes it at boot when the repo copy changes.
+install -D -m 644 -o root -g root "$DEPLOY_DIR/etc/chrony/conf.d/physicar.conf" /etc/chrony/conf.d/physicar.conf
+systemctl try-restart chrony 2>/dev/null || true
+
 # USB modeswitch configs
 # Written inline (not shipped as a file) because the config name is "VID:PID"
 # and the colon is an invalid filename character on Windows, which breaks
@@ -85,9 +97,17 @@ fi
 # This overlay enables it and muxes two header pins:
 #   GPIO12 (board pin 32) alt0 = PWM0 ch0 → steering servo
 #   GPIO13 (board pin 33) alt0 = PWM0 ch1 → ESC speed
-dtc -@ -I dts -O dtb \
-  -o /boot/firmware/overlays/pwm0-gpio13.dtbo \
-  "$DEPLOY_DIR/boot/firmware/overlays/pwm0-gpio13.dts"
+# 26.04 boots A/B slots (piboot-try): config.txt sets os_prefix=current/ (new/
+# under tryboot) and the firmware reads overlays from <slot>/overlays/, there is
+# no /boot/firmware/overlays. flash-kernel rebuilds a slot from
+# /etc/flash-kernel/dtbs + the kernel's device-tree dir, so the compiled overlay
+# lives there and is copied into the slots that already exist.
+_DTBO=/etc/flash-kernel/dtbs/overlays/pwm0-gpio13.dtbo
+mkdir -p "$(dirname "$_DTBO")"
+dtc -@ -I dts -O dtb -o "$_DTBO" "$DEPLOY_DIR/boot/firmware/overlays/pwm0-gpio13.dts"
+for _slot in /boot/firmware/current /boot/firmware/new; do
+  if [ -d "$_slot/overlays" ]; then cp "$_DTBO" "$_slot/overlays/"; fi
+done
 if ! grep -q "dtoverlay=pwm0-gpio13" /boot/firmware/config.txt 2>/dev/null; then
   echo -e "\n# Hardware PWM0: steering (GPIO12) + speed (GPIO13)" \
     | tee -a /boot/firmware/config.txt
@@ -157,7 +177,7 @@ apt-get install -y \
   ffmpeg \
   gpiod python3-libgpiod libgpiod-dev \
   python3-fastapi python3-uvicorn \
-  meson ninja-build python3-ply python3-jinja2 \
+  pkg-config libcamera-dev \
   parted pigz pv exfatprogs wget
 
 # Python bytecode cache -> /opt/physicar/pycache (keeps __pycache__ out of the
@@ -310,7 +330,10 @@ runuser -u physicar -- python3 -m pip config set global.break-system-packages tr
 # Pin numpy>=2 globally (Lyrical cv_bridge is built against numpy 2.x)
 mkdir -p /etc/pip
 ln -sf "$DEPLOY_DIR/etc/pip/constraints.txt" /etc/pip/constraints.txt
-ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip/pip.conf
+# /etc/pip.conf is pip's global config path; /etc/pip/ is only where the
+# constraints file lives. Every pip run (the boot updater's upgrade included)
+# then honours the pins, not just the PIP_CONSTRAINT environment below.
+ln -sf "$DEPLOY_DIR/etc/pip/pip.conf" /etc/pip.conf
 grep -q 'PIP_CONSTRAINT' /etc/environment 2>/dev/null || \
   echo 'PIP_CONSTRAINT=/etc/pip/constraints.txt' >> /etc/environment
 export PIP_CONSTRAINT=/etc/pip/constraints.txt
@@ -371,26 +394,14 @@ KSPEC_DIR=/home/physicar/.local/share/jupyter/kernels/physicar-ai
 sudo -u physicar mkdir -p "$KSPEC_DIR"
 sudo -u physicar cp "$SCRIPT_DIR/jupyter-kernel.json" "$KSPEC_DIR/kernel.json"
 
-# ── libcamera (build from source for RPi camera support) ──
-if ! pkg-config --exists libcamera 2>/dev/null; then
-  TMPD=$(mktemp -d)
-  git clone https://github.com/raspberrypi/libcamera.git --depth 1 "$TMPD/libcamera"
-  cd "$TMPD/libcamera" && meson setup build --buildtype=release \
-    -Dpipelines=rpi/pisp,rpi/vc4 \
-    -Dipas=rpi/pisp,rpi/vc4 \
-    -Dpycamera=disabled \
-    -Dtest=false \
-    -Dcam=disabled \
-    -Dqcam=disabled \
-    -Dgstreamer=disabled \
-    -Ddocumentation=disabled
-  ninja -C build -j2
-  ninja -C build install
-  echo '/usr/local/lib/aarch64-linux-gnu' > /etc/ld.so.conf.d/libcamera.conf
-  ldconfig
-  rm -rf "$TMPD"
-  cd /
-fi
+# ── libcamera ──
+# 26.04 ships libcamera 0.7 with the Raspberry Pi 5 pipeline (rpi/pisp + rpi/vc4
+# handlers in libcamera0.7, their IPAs and tuning data in libcamera-ipa), so the
+# archive package is used — libcamera-dev + pkg-config in the apt list above;
+# physicar_camera finds it through pkg-config. The 24.04 installer built
+# raspberrypi/libcamera from source because the archive version had no Pi 5
+# support; that path is gone. The NoIR tuning file still reaches the IPA through
+# LIBCAMERA_RPI_TUNING_FILE (real.launch.py).
 
 # ── Chromium kiosk ──
 fc-cache -fv 2>/dev/null || true
@@ -480,9 +491,19 @@ sleep 2
 # ── Retire systemd-networkd — one manager per interface ──
 # NetworkManager owns everything from here (netplan renderer above).
 # Leaving networkd enabled produces the dual-manager instability.
+# 26.04: disabling the service is not enough — three sockets re-trigger it
+# (systemd-networkd.socket, -resolve-hook.socket, -varlink.socket) and the
+# dracut initramfs leaves /run/systemd/network/zzzz-dracut-default.network, a
+# match-all DHCP config, so networkd came back and ran DHCP on eth0/wlan0 next
+# to NetworkManager (measured 2026-10-18). Disable the sockets and mask the
+# service, but do not stop it: stopping drops every address for about a minute
+# (eth0 too) and kills the SSH session running this script. It is gone after
+# the reboot that ends the install.
 systemctl stop 'netplan-wpa-*' 2>/dev/null || true
-systemctl disable --now systemd-networkd.service systemd-networkd.socket \
-  systemd-networkd-wait-online.service 2>/dev/null || true
+systemctl disable --now systemd-networkd.socket systemd-networkd-resolve-hook.socket \
+  systemd-networkd-varlink.socket 2>/dev/null || true
+systemctl disable systemd-networkd-wait-online.service 2>/dev/null || true
+systemctl mask systemd-networkd.service 2>/dev/null || true
 nmcli device connect wlan0 2>/dev/null || true
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -550,6 +571,11 @@ if [ ! -f /usr/local/bin/code-server ]; then
 fi
 # 'code' command (so terminal users can do: code file.sh)
 ln -sf /usr/local/bin/code-server /usr/local/bin/code
+# nginx serves the workbench bundles straight from the installed tree
+# (integrity serving in sites-available/physicar) through this
+# version-independent path; physicar.sh moves it when it converges the version.
+_cs_dir=$(dirname "$(dirname "$(readlink -f /usr/local/bin/code-server)")")
+if [ -d "$_cs_dir/lib/vscode" ]; then ln -sfn "$_cs_dir" /usr/local/lib/code-server; fi
 
 # ── Webview microphone/camera patch ──
 # VS Code's webview iframes don't delegate mic/cam permission, which blocks
@@ -643,7 +669,7 @@ fi
 usermod -aG physicar www-data
 
 # Hardware access for the physicar user (physicar.service runs as User=physicar):
-#  - gpio  : /sys/class/pwm/pwmchip0/* — physicar.sh chgrps the PWM sysfs nodes
+#  - gpio  : the RP1 PWM0 sysfs nodes (/sys/class/pwm/pwmchip*) — physicar.sh chgrps them
 #            to 'gpio'; without the group existing AND physicar being a member,
 #            the chgrp fails and the nodes stay root:root, so physicar_driver
 #            cannot write duty_cycle → steering/ESC dead → wheels don't move.
@@ -783,10 +809,13 @@ sudo -u physicar git -C "$PHYSICAR_ROS_DIR" rev-parse HEAD > "$PHYSICAR_WS/insta
 
 echo "[7/7] Cleanup..."
 
-# Remove old kernel packages (keep only the newest)
+# Remove old kernel packages (keep the newest and the running one). On the
+# 26.04 A/B layout the newest kernel sits untested in new/ until the next boot;
+# purging the running kernel here left current/ (the fallback slot) without
+# its modules (measured 2026-10-18: "W: Removing the running kernel").
 for pkg in $(dpkg -l | grep '^ii  linux-\(image\|headers\|modules\)-[0-9]' | awk '{print $2}' | sort -V); do
   case "$pkg" in
-    *"${NEW_KVER}"*) continue ;;
+    *"${NEW_KVER}"*|*"$(uname -r)"*) continue ;;
     *) apt-get purge -y "$pkg" 2>/dev/null || true ;;
   esac
 done

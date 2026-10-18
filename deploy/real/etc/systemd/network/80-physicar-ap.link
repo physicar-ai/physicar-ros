@@ -1,0 +1,10 @@
+# The hotspot runs on a virtual AP interface that physicar.sh adds to the onboard
+# radio as "ap0" (iw dev wlan0 interface add ap0 type __ap). On 26.04 udev's
+# predictable naming (scheme v259, /usr/lib/systemd/network/10-raspi-wlan0.link)
+# renames that new interface to "wld0", so the boot script, NetworkManager
+# profile and ufw rules never find ap0. Pin the name.
+[Match]
+OriginalName=ap0
+
+[Link]
+Name=ap0
