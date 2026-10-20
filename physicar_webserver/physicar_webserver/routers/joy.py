@@ -17,10 +17,15 @@ POST /joy/mapping/reset   - revert to YAML defaults (deletes saved JSON file)
 Mapping keys (see physicar_interfaces/srv/SetJoyMapping.srv):
 
     int   axis_speed | axis_steering | axis_pan | axis_tilt
-    int   deadman_button | estop_button | center_camera_button
+    int   deadman_button | camera_assist_button | estop_button | center_camera_button
     float max_speed | max_steering | max_pan | max_tilt
     float deadzone | rate
     bool  invert_speed | invert_steering | invert_pan | invert_tilt
+
+Every int key accepts -1 = none. With deadman_button / camera_assist_button
+= -1 the joystick takes the drive / the camera only while the matching stick
+is moved (or the e-stop / recenter button is held) and yields 0.3 s after the
+last input; -1 on estop_button / center_camera_button binds nothing.
 """
 
 import json

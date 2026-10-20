@@ -36,6 +36,12 @@ using std::placeholders::_2;
 static constexpr const char * MAPPING_FILE =
   "/opt/physicar/userdata/joy_mapping.json";
 
+// With no engage button (-1) the joystick owns the drive / the camera only
+// while its controls are being operated, and keeps them this long past the
+// last input so a stick sweeping through centre (forward → reverse) or
+// hovering at the deadzone edge does not flap the lock at the tick rate.
+static constexpr int64_t ENGAGE_HOLD_NS = 300000000LL;  // 0.3 s
+
 static const std::set<std::string> INT_KEYS = {
   "axis_speed", "axis_steering", "axis_pan", "axis_tilt",
   "deadman_button", "estop_button", "center_camera_button",
@@ -394,6 +400,21 @@ private:
     return joy.buttons[idx] != 0;
   }
 
+  // "The stick is being operated": either axis outside the deadzone (an
+  // unmapped axis, -1, reads as centred).
+  bool stick_active(const sensor_msgs::msg::Joy & joy, const char * axis_a, const char * axis_b) const {
+    return axis(joy, static_cast<int>(mapping_.at(axis_a).as_int()), false) != 0.0 ||
+           axis(joy, static_cast<int>(mapping_.at(axis_b).as_int()), false) != 0.0;
+  }
+
+  // Engagement without an engage button: engaged from the first operated
+  // input until ENGAGE_HOLD_NS after the last one. `input_ns` remembers the
+  // last operated input (-1 = never).
+  static bool engaged_by_input(bool operated, int64_t now_ns, int64_t & input_ns) {
+    if (operated) input_ns = now_ns;
+    return input_ns >= 0 && (now_ns - input_ns) <= ENGAGE_HOLD_NS;
+  }
+
   void publish_status(bool force = false) {
     // Joy-specific status (latched, only on change)
     auto joy_msg = physicar_interfaces::msg::JoyTeleopStatus();
@@ -461,12 +482,24 @@ private:
     bool prev_drive = drive_engaged_;
     bool prev_camera = camera_engaged_;
 
-    // -1 = no engage button: drive/camera follow the sticks directly. The
-    // e-stop and the stale-/joy release above still apply.
+    // Engage button mapped: engaged while it is held. -1 = no engage button:
+    // the joystick takes the drive only while its drive controls are operated
+    // (speed/steering stick outside the deadzone, or the e-stop held) and the
+    // camera only while the pan/tilt stick is operated or Recenter is held;
+    // ENGAGE_HOLD_NS after the last input it yields to /speed, /steering and
+    // /camera/* exactly like a released button. The e-stop and the stale-/joy
+    // release above still apply in both cases.
+    const int64_t now_ns = now.nanoseconds();
     const int dm = static_cast<int>(mapping_["deadman_button"].as_int());
     const int ca = static_cast<int>(mapping_["camera_assist_button"].as_int());
-    drive_engaged_ = dm < 0 ? true : btn(last_joy_, dm);
-    camera_engaged_ = ca < 0 ? true : btn(last_joy_, ca);
+    drive_engaged_ = dm < 0
+      ? engaged_by_input(stick_active(last_joy_, "axis_speed", "axis_steering") || estop_latched_,
+                         now_ns, drive_input_ns_)
+      : btn(last_joy_, dm);
+    camera_engaged_ = ca < 0
+      ? engaged_by_input(stick_active(last_joy_, "axis_pan", "axis_tilt") || prev_center_,
+                         now_ns, camera_input_ns_)
+      : btn(last_joy_, ca);
 
     auto pub_f64 = [](rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr & pub, double v) {
       auto m = std_msgs::msg::Float64();
@@ -527,6 +560,8 @@ private:
   rclcpp::Time last_joy_time_{0, 0, RCL_ROS_TIME};
   bool drive_engaged_ = false;
   bool camera_engaged_ = false;
+  int64_t drive_input_ns_ = -1;   // last operated drive input (engage button = -1)
+  int64_t camera_input_ns_ = -1;  // last operated camera input (engage button = -1)
   bool estop_latched_ = false;
   bool prev_center_ = false;
   double pan_ = 0.0;

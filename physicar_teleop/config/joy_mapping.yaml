@@ -38,10 +38,16 @@ physicar_joy_teleop:
     # Stick deadzone (already applied by joy_node, kept here for safety)
     deadzone: 0.05
 
-    # Buttons (held = lock + drive)
+    # Buttons (held = lock + drive). Any button or axis may be -1 = none.
+    # With deadman_button / camera_assist_button = -1 the joystick locks
+    # /speed,/steering (or /camera/pan,/camera/tilt) only while the matching
+    # stick is outside the deadzone (or the e-stop / recenter button is held)
+    # and releases the lock 0.3 s after the last input, so REST / MyApp
+    # commands drive the car whenever the pad is idle. estop_button /
+    # center_camera_button = -1 simply bind nothing.
     deadman_button: 4         # LB — hold to drive (locks /speed,/steering)
     camera_assist_button: 5   # RB — hold to drive camera (locks /camera/pan,/camera/tilt)
-    estop_button: 1           # B  — toggle: zero speed and refuse drive
+    estop_button: 1           # B  — held: zero speed and refuse drive
     center_camera_button: 7   # Start — recenter pan/tilt to 0,0
 
     # Publish rate (Hz)

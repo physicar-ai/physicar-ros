@@ -34,11 +34,13 @@ window.createJoyPanel = function createJoyPanel(opts) {
     { key: 'axis_tilt',     label: 'Camera Tilt' },
   ];
   // Every row accepts -1 = None. For the two engage buttons the node then
-  // treats drive/camera as always engaged ("always on"); for the other rows
-  // -1 simply means nothing is bound ("off").
+  // takes the drive / the camera only while the matching sticks are being
+  // moved (plus Emergency Stop / Recenter held) and hands them back 0.3 s
+  // after the last input ("while sticks move"); for the other rows -1 simply
+  // means nothing is bound ("off").
   const MAP_BUTTONS = [
-    { key: 'deadman_button',       label: 'Engage Drive (hold to drive)', noneLabel: 'always on' },
-    { key: 'camera_assist_button', label: 'Engage Camera (hold to aim)', noneLabel: 'always on' },
+    { key: 'deadman_button',       label: 'Engage Drive (hold to drive)', noneLabel: 'while sticks move' },
+    { key: 'camera_assist_button', label: 'Engage Camera (hold to aim)', noneLabel: 'while sticks move' },
     { key: 'estop_button',         label: 'Emergency Stop (toggle)' },
     { key: 'center_camera_button', label: 'Recenter Camera' },
   ];
